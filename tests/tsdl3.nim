@@ -171,6 +171,19 @@ block smoke:
   var ev = default(SDL_Event)
   while SDL_PollEvent(addr ev): discard
   assert not SDL_WaitEventTimeout(addr ev, 1)
+  # Layer 5: the window size, and a key event pushed and read back.
+  var ww = 0.cint
+  var wh = 0.cint
+  assert SDL_SetWindowSize(window, 80, 60)
+  assert SDL_GetWindowSize(window, addr ww, addr wh)
+  assert ww == 80 and wh == 60, $ww & "x" & $wh
+  while SDL_PollEvent(addr ev): discard
+  var key = default(SDL_Event)
+  key.key = SDL_KeyboardEvent(`type`: SDL_EVENT_KEY_DOWN, key: SDLK_ESCAPE, down: true)
+  assert SDL_PushEvent(addr key), fromCString(SDL_GetError())
+  assert SDL_WaitEvent(addr ev)
+  assert ev.`type` == uint32(SDL_EVENT_KEY_DOWN) and ev.key.key == SDLK_ESCAPE
+  assert not (SDL_EVENT_TERMINATING == SDL_EVENT_QUIT)
 
   # Audio, with the dummy driver: a WAV queued on a stream.
   assert SDL_Init(SDL_INIT_AUDIO), fromCString(SDL_GetError())

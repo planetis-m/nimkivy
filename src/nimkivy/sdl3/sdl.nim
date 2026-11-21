@@ -287,6 +287,7 @@ const
   SDL_SCALEMODE_PIXELART* = SDL_ScaleMode(2)
 
   SDL_EVENT_QUIT* = SDL_EventType(0x100'u32)
+  SDL_EVENT_TERMINATING* = SDL_EventType(0x101'u32)
   SDL_EVENT_WILL_ENTER_BACKGROUND* = SDL_EventType(0x103'u32)
   SDL_EVENT_DID_ENTER_BACKGROUND* = SDL_EventType(0x104'u32)
   SDL_EVENT_WILL_ENTER_FOREGROUND* = SDL_EventType(0x105'u32)
@@ -412,6 +413,10 @@ proc SDL_DestroyWindow*(window: SDL_Window)
   ## Destroys a window.
 proc SDL_SetWindowTitle*(window: SDL_Window; title: cstring): bool
   ## Sets the title of a window.
+proc SDL_GetWindowSize*(window: SDL_Window; w, h: nil ptr cint): bool
+  ## The size of the window's client area in window coordinates.
+proc SDL_SetWindowSize*(window: SDL_Window; w, h: cint): bool
+  ## Requests a new size of the window's client area.
 proc SDL_GetWindowSizeInPixels*(window: SDL_Window;
     w, h: nil ptr cint): bool
   ## The size of the window's drawable area in pixels.
@@ -511,6 +516,11 @@ proc SDL_SetSurfaceAlphaMod*(surface: ptr SDL_Surface; alpha: uint8): bool
 # Events.
 proc SDL_PollEvent*(event: nil ptr SDL_Event): bool
   ## Takes the next pending event into `event`; false if there is none.
+proc SDL_WaitEvent*(event: nil ptr SDL_Event): bool
+  ## Waits for the next event and takes it into `event` (nil: leaves it
+  ## queued); false on error.
+proc SDL_PushEvent*(event: ptr SDL_Event): bool
+  ## Adds an event to the queue; false if it was filtered out or on error.
 proc SDL_WaitEventTimeout*(event: nil ptr SDL_Event; timeoutMS: int32): bool
   ## Waits up to `timeoutMS` (-1: forever) for an event; false on timeout.
 

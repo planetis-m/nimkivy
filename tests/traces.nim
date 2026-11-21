@@ -4,12 +4,16 @@
 # Layer 1 writes `events` and `clock`, and the part of `properties` that a
 # plain dispatcher can show (the ReferenceList and Alias order of a Widget's
 # geometry, and VariableList forms). The Widget lines follow in layer 6.
-# Layer 4 writes `label`, through the core label.
+# Layer 4 writes `label`, through the core label. Layer 5 writes `touch`,
+# with stub widgets in place of FloatLayout and ButtonBehavior (layers 6
+# and 7).
 
-import std/[dirs, formatfloat, paths, strutils, syncio]
-import nimkivy/[properties, clock]
+import std/[dirs, formatfloat, os, paths, strutils, syncio]
+import nimkivy/[properties, clock, config, base]
 import nimkivy/core/text
 import nimkivy/core/text/text_sdl3
+import nimkivy/graphics/instructions
+import stubs
 
 type Log = ref object
   lines: seq[string]
@@ -285,7 +289,137 @@ proc traceLabel() =
     log.emit(kw, "->", "(" & fmt3(w) & ", " & fmt3(h) & ")")
   log.save "label"
 
+# ------------------------------------------------------------------ touch
+
+type
+  Btn = ref object of StubWidget
+    # traces.py trace_touch Btn(ButtonBehavior, Widget), with the ButtonBehavior
+    # part written out here until layer 7 ports it (uix/behaviors/button.py).
+    tag: string
+    touchTime: float
+
+let BtnClass = newDispatcherClass("Btn", StubWidgetClass)
+discard BtnClass.addString("state", "normal")
+
+proc r(p: (float, float)): string =
+  # traces.py r(): numbers with 3 decimals.
+  "(" & formatFloat(p[0], ffDecimal, 3) & ", " & formatFloat(p[1], ffDecimal, 3) & ")"
+
+proc pyResult(b: bool; falsy: string): string =
+  # What the Python method returned, printed: True, or its falsy value
+  # (False from on_touch_down and on_touch_move, None from on_touch_up).
+  if b: "True" else: falsy
+
+proc tagOf(d: nil EventDispatcher): string =
+  if d == nil: "None"
+  elif d of Btn: Btn(d).tag
+  else: "?"
+
+proc newBtn(tag: string; x, y, w, h: float): Btn =
+  result = Btn(cls: BtnClass, canvas: newCanvas(), tag: tag, touchTime: 0)
+  result.initStubWidget(x, y, w, h)
+  result.bind("state", proc (d: EventDispatcher; v: Value) {.closure.} =
+    log.emit(tag, "state", v.str))
+
+proc doRelease(b: Btn) =
+  b.setProperty("state", toValue("normal"))
+
+proc key(b: Btn): Value = toValue(RootRef(b))
+
+proc buttonTouchDown(b: Btn; t: MotionEvent): bool =
+  # ButtonBehavior.on_touch_down
+  if procCall onTouchDown(StubWidget(b), t): return true
+  if t.isMouseScrolling: return false
+  if not b.collidePoint(t.x, t.y): return false
+  if b.key in t.ud: return false
+  t.grab(b)
+  t.ud[b.key] = toValue(true)
+  b.touchTime = time()
+  b.setProperty("state", toValue("down"))
+  log.emit(b.tag, "on_press")
+  result = true
+
+proc buttonTouchMove(b: Btn; t: MotionEvent): bool =
+  # ButtonBehavior.on_touch_move
+  if t.grabCurrent == EventDispatcher(b): return true
+  if procCall onTouchMove(StubWidget(b), t): return true
+  result = b.key in t.ud
+
+proc buttonTouchUp(b: Btn; t: MotionEvent): bool =
+  # ButtonBehavior.on_touch_up
+  if t.grabCurrent != EventDispatcher(b):
+    return procCall onTouchUp(StubWidget(b), t)
+  t.ungrab(b)
+  if not b.collidePoint(t.pos[0], t.pos[1]):
+    b.doRelease()
+    return false
+  let touchtime = time() - b.touchTime
+  let minStateTime = Config.getfloat("graphics", "min_state_time")
+  if touchtime < minStateTime:
+    discard Clock.scheduleOnce(proc (dt: float) {.closure.} = b.doRelease(),
+      minStateTime - touchtime)
+  else:
+    b.doRelease()
+  log.emit(b.tag, "on_release")
+  result = true
+
+method onTouchDown(b: Btn; t: MotionEvent): bool =
+  log.emit(b.tag, "on_touch_down", r(t.pos))
+  result = b.buttonTouchDown(t)
+  log.emit(b.tag, "on_touch_down ->", pyResult(result, "False"))
+
+method onTouchMove(b: Btn; t: MotionEvent): bool =
+  result = b.buttonTouchMove(t)
+  log.emit(b.tag, "on_touch_move grab_current", tagOf(t.grabCurrent), "->",
+    pyResult(result, "False"))
+
+method onTouchUp(b: Btn; t: MotionEvent): bool =
+  result = b.buttonTouchUp(t)
+  log.emit(b.tag, "on_touch_up grab_current", tagOf(t.grabCurrent), "->",
+    pyResult(result, "None"))
+
+proc tap(x, y: float; name: string; moveTo = (-1.0, -1.0)) =
+  # traces.py trace_touch tap()
+  log.emit "# " & name
+  let t = newUnitTestTouch(x, y)
+  t.touchDown()
+  if moveTo[0] >= 0:
+    t.touchMove(moveTo[0], moveTo[1])
+  t.touchUp()
+  log.emit "(wait past min_state_time .035 s, tick the clock)"
+  sleep(60)
+  Clock.tick()
+
+proc traceTouch() =
+  # reference/traces.py trace_touch, in an 800 x 600 window. The root is a
+  # plain widget (a FloatLayout there, which only passes touches on here).
+  Config.set("graphics", "width", "800")
+  Config.set("graphics", "height", "600")
+  Config.set("graphics", "resizable", "0")
+  EventLoop.ensureWindow()
+  let win = Window
+  let root = newStubWidget()
+  let a = newBtn("A", 100, 100, 200, 200)
+  let b = newBtn("B", 200, 200, 200, 200)      # added later: on top
+  let c = newBtn("C", 600, 100, 100, 100)
+  c.disabled = true
+  for w in [a, b, c]:
+    root.addWidget(w)
+  win.addWidget(root)
+  win.bind("on_touch_down", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+    log.emit("Window observer on_touch_down", r(toMotionEvent(args[0]).pos))
+    result = false)
+  tap(150, 150, "tap A only")
+  tap(250, 250, "tap overlap: B is on top")
+  tap(150, 150, "press A, release outside", (700.0, 500.0))
+  tap(150, 150, "press A, release over B", (350.0, 350.0))
+  tap(650, 150, "tap disabled C")
+  tap(50, 550, "tap empty space")
+  win.removeWidget(root)
+  log.save "touch"
+
 traceProperties()
 traceEvents()
 traceClock()
 traceLabel()
+traceTouch()
