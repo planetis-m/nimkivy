@@ -12,7 +12,7 @@
 # scenes.py schedules at 0.2 s (opening a modal, freezing a fade) runs after
 # the first frames, followed by a few more.
 
-import std/[formatfloat, os, strutils, syncio]
+import std/[algorithm, envvars, formatfloat, os, strutils, syncio]
 from std/files import tryRemoveFile, moveFile
 from std/paths import path
 import nimkivy/[config, clock]
@@ -649,6 +649,31 @@ proc fmt(p: (float, float)): string =
   # scenes.py fmt: "(x, y)" with 3 decimals.
   "(" & formatFloat(p[0], ffDecimal, 3) & ", " & formatFloat(p[1], ffDecimal, 3) & ")"
 
+proc timeRedraws(name: string) =
+  # With SCENES_REDRAW=<n> (tools/profile.sh): the scene is drawn n more
+  # times, uncapped, and the frame times are printed: the drawing cost of a
+  # settled tree (nothing changes but the redraw request).
+  var n = 0
+  try:
+    n = getEnv("SCENES_REDRAW", "0").parseInt
+  except:
+    quit "SCENES_REDRAW is not a number"
+  if n <= 0: return
+  Clock.maxFps = 0
+  var ms: seq[float] = @[]
+  for _ in 0 ..< n:
+    Window.canvas.askUpdate()
+    let t0 = time()
+    discard EventLoop.idle()
+    ms.add (time() - t0) * 1000.0
+  var total = 0.0
+  for x in ms: total += x
+  ms.sort()
+  echo "redraw ", name, ": n ", n, " mean ", formatFloat(total / float(n), ffDecimal, 3),
+    " p50 ", formatFloat(ms[n div 2], ffDecimal, 3),
+    " p95 ", formatFloat(ms[min(n - 1, int(0.95 * float(n - 1) + 0.5))], ffDecimal, 3),
+    " max ", formatFloat(ms[n - 1], ffDecimal, 3), " ms"
+
 proc shoot(name: string) =
   # scenes.py shoot: the root widget in the window, a few frames, then the
   # screenshot (Window.screenshot numbers the file; it is renamed) and the
@@ -691,6 +716,7 @@ proc shoot(name: string) =
     writeFile(cwd / "tests" / "out" / (name & ".txt"), lines.join("\n") & "\n")
   except:
     quit "cannot write " & name & ".txt"
+  timeRedraws(name)
   let tops = Window.children
   for top in tops:
     if top of ModalView: ModalView(top).dismiss(animation = false)

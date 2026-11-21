@@ -23,7 +23,13 @@ for mode in debug release; do
     t=$(basename "$f" .nim)
     [ "$t" = traces ] && continue
     build "$t" "$mode" "$f"
-    "./bin/$t-$mode"
+    if [ "$t" = tshowcase ]; then
+      # The whole-stack run (examples/showcase.nim) draws on the OpenGL
+      # renderer, like the scenes.
+      SDL_RENDER_DRIVER=opengl "./bin/$t-$mode"
+    else
+      "./bin/$t-$mode"
+    fi
     echo "$t ($mode): passed"
   done
   build traces "$mode" tests/traces.nim
