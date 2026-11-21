@@ -136,9 +136,12 @@ proc. Source paths are relative to `upstream/kivy/kivy/`, Nimony paths to
   `sdl3/*.nim`.
 - Tests: one `tests/t<module>.nim` per module, using `block` tests and
   `assert` (Nimony has no `doAssert`; `assert` stays on in release).
-  `run_tests.sh` runs every `t*.nim` in debug and in `-d:release`. Tests that need a window run with
-  `SDL_VIDEO_DRIVER=offscreen SDL_RENDER_DRIVER=software`, so they are
-  headless and deterministic.
+  `run_tests.sh` runs every `t*.nim` in debug and in `-d:release`. It exports
+  `SDL_VIDEO_DRIVER=offscreen SDL_RENDER_DRIVER=software SDL_AUDIO_DRIVER=dummy`,
+  so tests that open a window or an audio device are headless and
+  deterministic; run a test by hand with the same variables. Tests run from
+  the repository root and read fonts from `reference/assets/fonts/` (Source
+  Sans 3 and Noto Serif, SIL Open Font License, licence files beside them).
 - Scenes: `tests/scenes.nim <scene>` renders the same trees as
   `reference/scenes.py`, into `tests/out/<scene>.png` and `.txt`. Then
   `reference/compare.py tests/out` checks them against `reference/out` (see
@@ -158,7 +161,7 @@ proc. Source paths are relative to `upstream/kivy/kivy/`, Nimony paths to
 | Layer | Modules | State |
 |---|---|---|
 | 1 | event, properties, clock, utils, metrics, config | done: tproperties, tclock, tutils, tmetrics pass in debug and release; traces `events` and `clock` match, `properties` matches its first 44 lines (the rest is layer 6) |
-| 2 | sdl3/sdl, sdl3/ttf, sdl3/image | to do |
+| 2 | sdl3/sdl, sdl3/ttf, sdl3/image | done: tsdl3 passes in debug and release (struct sizes against C; headless smoke test calling every binding: triangle read back, TTF word, PNG load and save, render target, WAV on a dummy audio stream) |
 | 3 | graphics/instructions, context_instructions, vertex_instructions, stencil_instructions, texture, renderer | to do |
 | 4 | core/image, core/text/text_layout, core/text, core/text/text_sdl3 | to do |
 | 5 | input/motionevent, core/window, core/window/window_sdl3, base, app | to do |
@@ -179,13 +182,14 @@ code meets it, adds the `# GAP:` comment, and edits the row.
 |---|---|---|
 | graphics/renderer | No multisample antialiasing. Kivy's default is `multisamples = 2`, so edges of ellipses, rounded corners and wide lines are more jagged. The reference scenes use `multisamples = 0`, except `graphics_basic_msaa`. | SDL_Renderer has no MSAA |
 | graphics/vertex_instructions | A Line of width exactly 1 is drawn with SDL_RenderLines, where Kivy uses GL_LINE_STRIP. Rasterization can differ by a pixel at the ends and on diagonals. | SDL_Renderer has no GL line primitive |
-| uix/screenmanager | Only FadeTransition (and NoTransition): two render-target textures, mixed `t*in + (1-t)*out` with a custom additive blend mode. The other ShaderTransitions and custom shaders (`fs`, `vs`) are not available. | SDL_Renderer has no shaders |
+| uix/screenmanager | Only FadeTransition (and NoTransition): two render-target textures, mixed `t*in + (1-t)*out` with a custom additive blend mode. The other ShaderTransitions and custom shaders (`fs`, `vs`) are not available. SDL's software renderer, which the headless tests use, refuses custom blend modes ("That operation is not supported", seen in tsdl3). | SDL_Renderer has no shaders |
 | core/text/text_sdl3 | Glyphs come from SDL3_ttf 3.2 (FreeType and HarfBuzz), where Kivy 2.3.2 uses the SDL2_ttf bundled in its wheel. Hinting, kerning and shaping can move glyphs by a pixel, and word widths can differ by a pixel, which can change where a line wraps. The `label` trace shows any difference in `texture_size`. | a different SDL_ttf version |
 | core/image | Decoding uses SDL3_image, where Kivy uses its bundled SDL2_image, so JPEG pixels can differ slightly. | a different SDL_image version |
 | event, clock | Observers and Clock callbacks are held strongly. Kivy holds them weakly (WeakMethod, `release_ref`), so a dropped widget that is still bound is not collected, and its callbacks still run. Cycles need `--mm:orc`. | Nimony has no weak references |
 | clock, event | An exception in a callback is not caught and passed to an ExceptionManager (clock), or raised to the dispatcher's caller (event). Callbacks cannot raise. | Nimony's error model (no unwinding through closures) |
 | event | `bind` does not recognise the same method bound twice through two closures, so it is bound twice. Python's bound methods compare equal. | Nim has no bound methods; a closure compares by its environment |
 | clock | `idle` sleeps whole milliseconds (rounded down), where Kivy sleeps microseconds, so each sleep can be up to 1 ms short; the pacing loop then checks again and sleeps or starts the frame. | std/os has only `sleep(milsecs)` |
+| tests/tsdl3 | Only struct sizes are compared with C (Nimony's `const` sizeof against the C compiler's), not field offsets. | Nimony has no `offsetOf` (sem: "to implement"), and the run-time address of an importc field is the C compiler's, not Nimony's |
 | core/audio | WAV only. Kivy's SDL2 provider also plays OGG, MP3 and FLAC through SDL2_mixer. | SDL3_mixer is not installed; core SDL3 loads only WAV |
 
 ## Decisions (coordinator, 2026-11-21, owner: "pragmatic, roll with it")

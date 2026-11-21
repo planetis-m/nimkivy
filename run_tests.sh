@@ -7,6 +7,9 @@ here=$(cd "$(dirname "$0")" && pwd)
 nimony=${NIMONY:-$HOME/Projects/nimony}/bin/nimony
 python=${PY:-$HOME/Projects/philosykos-website/kiosk/.venv/bin/python}
 cd "$here"
+# Tests that open a window (tsdl3 and later) run headless and deterministic.
+export SDL_VIDEO_DRIVER=offscreen SDL_RENDER_DRIVER=software SDL_AUDIO_DRIVER=dummy
+mkdir -p tests/out
 
 # build <program> <mode> <source>: bin/<program>-<mode>, with its own nimcache.
 build() {
