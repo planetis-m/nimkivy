@@ -1,0 +1,50 @@
+# pos = (1, 2)
+x 1.000
+right 101.000
+center (51.000, 50.000)
+y 2.000
+top 102.000
+center (51.000, 52.000)
+pos (1.000, 2.000)
+# pos = (1, 2) again
+# x = 5
+x 5.000
+pos (5.000, 2.000)
+right 105.000
+center (55.000, 52.000)
+# size = (50, 60)
+right 55.000
+center (30.000, 52.000)
+width 50.000
+top 62.000
+center (30.000, 32.000)
+size (50.000, 60.000)
+# right = 300
+x 250.000
+pos (250.000, 2.000)
+right 300.000
+center (275.000, 32.000)
+# center = (0, 0)
+x -25.000
+pos (-25.000, 2.000)
+right 25.000
+y -30.000
+pos (-25.000, -30.000)
+top 30.000
+center (0.000, 0.000)
+# x = 6
+x 6.000
+pos (6.000, -30.000)
+right 56.000
+center (31.000, 0.000)
+x second observer 6.000
+padding 5 -> (5.000, 5.000, 5.000, 5.000)
+padding (10, 20) -> (10.000, 20.000, 10.000, 20.000)
+padding (1, 2, 3, 4) -> (1.000, 2.000, 3.000, 4.000)
+padding [7] -> (7.000, 7.000, 7.000, 7.000)
+defaults size (100.000, 100.000) size_hint (1.000, 1.000) pos_hint {}
+child disabled True
+parent True child True
+child set False while parent disabled -> True
+child disabled False
+parent False -> False

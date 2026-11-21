@@ -1,0 +1,9 @@
+.claude/
+.agents/
+.pi/
+nimcache/
+*.out
+upstream/
+tests/out/
+bin/
+__pycache__/

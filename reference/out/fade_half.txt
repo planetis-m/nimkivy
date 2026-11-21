@@ -1,0 +1,1 @@
+ScreenManager pos=(0.000, 0.000) size=(800.000, 600.000)

@@ -1,0 +1,92 @@
+# tap A only
+Window observer on_touch_down (150.000, 150.000)
+C on_touch_down (150.000, 150.000)
+C on_touch_down -> False
+B on_touch_down (150.000, 150.000)
+B on_touch_down -> False
+A on_touch_down (150.000, 150.000)
+A state down
+A on_press
+A on_touch_down -> True
+C on_touch_up grab_current None -> None
+B on_touch_up grab_current None -> None
+A on_touch_up grab_current None -> None
+A on_release
+A on_touch_up grab_current A -> True
+(wait past min_state_time .035 s, tick the clock)
+A state normal
+# tap overlap: B is on top
+Window observer on_touch_down (250.000, 250.000)
+C on_touch_down (250.000, 250.000)
+C on_touch_down -> False
+B on_touch_down (250.000, 250.000)
+B state down
+B on_press
+B on_touch_down -> True
+C on_touch_up grab_current None -> None
+B on_touch_up grab_current None -> None
+A on_touch_up grab_current None -> None
+B on_release
+B on_touch_up grab_current B -> True
+(wait past min_state_time .035 s, tick the clock)
+B state normal
+# press A, release outside
+Window observer on_touch_down (150.000, 150.000)
+C on_touch_down (150.000, 150.000)
+C on_touch_down -> False
+B on_touch_down (150.000, 150.000)
+B on_touch_down -> False
+A on_touch_down (150.000, 150.000)
+A state down
+A on_press
+A on_touch_down -> True
+C on_touch_move grab_current None -> False
+B on_touch_move grab_current None -> False
+A on_touch_move grab_current None -> True
+A on_touch_move grab_current A -> True
+C on_touch_up grab_current None -> None
+B on_touch_up grab_current None -> None
+A on_touch_up grab_current None -> None
+A state normal
+A on_touch_up grab_current A -> None
+(wait past min_state_time .035 s, tick the clock)
+# press A, release over B
+Window observer on_touch_down (150.000, 150.000)
+C on_touch_down (150.000, 150.000)
+C on_touch_down -> False
+B on_touch_down (150.000, 150.000)
+B on_touch_down -> False
+A on_touch_down (150.000, 150.000)
+A state down
+A on_press
+A on_touch_down -> True
+C on_touch_move grab_current None -> False
+B on_touch_move grab_current None -> False
+A on_touch_move grab_current None -> True
+A on_touch_move grab_current A -> True
+C on_touch_up grab_current None -> None
+B on_touch_up grab_current None -> None
+A on_touch_up grab_current None -> None
+A state normal
+A on_touch_up grab_current A -> None
+(wait past min_state_time .035 s, tick the clock)
+# tap disabled C
+Window observer on_touch_down (650.000, 150.000)
+C on_touch_down (650.000, 150.000)
+C on_touch_down -> True
+C on_touch_up grab_current None -> None
+B on_touch_up grab_current None -> None
+A on_touch_up grab_current None -> None
+(wait past min_state_time .035 s, tick the clock)
+# tap empty space
+Window observer on_touch_down (50.000, 550.000)
+C on_touch_down (50.000, 550.000)
+C on_touch_down -> False
+B on_touch_down (50.000, 550.000)
+B on_touch_down -> False
+A on_touch_down (50.000, 550.000)
+A on_touch_down -> False
+C on_touch_up grab_current None -> None
+B on_touch_up grab_current None -> None
+A on_touch_up grab_current None -> None
+(wait past min_state_time .035 s, tick the clock)
