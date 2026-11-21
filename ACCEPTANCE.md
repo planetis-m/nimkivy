@@ -27,7 +27,7 @@ the reference scenes.
 | `test_screen.py` | test_switch_to, test_switching_does_not_affect_a_list_of_screens | `tscreenmanager.nim` | Only with NoTransition and FadeTransition. |
 | `test_uix_modal.py` | test_modal_app | `tmodalview.nim` | Adapted: the root `ModalButton(Button)` becomes a widget with a ButtonBehavior. Touches are posted to the EventLoop as UnitKivyApp does: down, moves, up. |
 | `test_graphics.py` | test_line_rounded_rectangle | `tvertex_instructions.nim` | The asserts on the normalised `rounded_rectangle` radii (clamping, minimum 1). The renders are covered by `graphics_line`. |
-| `test_app.py` | test_basic_app, test_graphics_app | `tapp.nim` | test_basic_app checks `root.text`. test_graphics_app reads two pixels of the rendered window. |
+| `test_app.py` | test_basic_app, test_graphics_app | `tlabel.nim` (test_basic_app), `tapp.nim` | test_basic_app checks `root.text`. test_graphics_app reads two pixels of the rendered window. |
 | `test_fonts.py` | test_unicode_name | `ttext.nim` | Adapted: `data/fonts/DejaVuSans.ttf` is copied to a temporary file named `कीवी.ttf` (no zip). |
 | `test_audio.py` | test_length_simple, test_length_playing, test_length_stopped | `taudio.nim` | Adapted: `reference/assets/tone.wav` (1.402 s, the length of `sample1.ogg`), because only WAV is supported (Gaps). Kivy reports 1.40200 s for this file. |
 

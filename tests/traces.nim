@@ -3,14 +3,15 @@
 #
 # Layer 1 writes `events` and `clock`, layer 6 `properties` (through the
 # real Widget and BoxLayout). Layer 4 writes `label`, through the core
-# label. Layer 5 writes `touch`; layer 6 gives it the real Widget and
-# FloatLayout, and ButtonBehavior is written out here until layer 7.
+# label; layer 7 moves it to the Label widget, as traces.py does. Layer 5
+# writes `touch`; layers 6 and 7 give it the real Widget, FloatLayout and
+# ButtonBehavior.
 
 import std/[dirs, formatfloat, os, paths, strutils, syncio]
 import nimkivy/[properties, clock, config, base]
 import nimkivy/core/text
-import nimkivy/core/text/text_sdl3
-import nimkivy/uix/[boxlayout, floatlayout]
+import nimkivy/uix/[boxlayout, floatlayout, label]
+import nimkivy/uix/behaviors/button
 import stubs
 
 type Log = ref object
@@ -171,98 +172,85 @@ proc traceClock() =
 
 # ------------------------------------------------------------------ label
 
-proc fmt3(v: int): string =
+proc fmt3(v: float): string =
   # Python's f"{float(v):.3f}"
-  formatFloat(float(v), ffDecimal, 3)
-
-proc labelTextureSize(l: LabelBase): (int, int) =
-  # uix/label.py Label.texture_update, which layer 7 ports: no texture for
-  # an empty text, else the refreshed core label's texture size.
-  let o = l.options
-  if l.text.len == 0 or ((o.halign == halignJustify or o.strip) and
-      pyStrip(l.text).len == 0):
-    result = (0, 0)
-  else:
-    l.refresh()
-    let t = l.texture
-    result = if t != nil: (t.width, t.height) else: (0, 0)
+  formatFloat(v, ffDecimal, 3)
 
 proc traceLabel() =
-  # reference/traces.py trace_label, through the core label (LabelBase) with
-  # the options a Label passes it: font_size sp(15), halign 'auto'.
+  # reference/traces.py trace_label: Label(**kw), texture_update(), and its
+  # texture_size.
   register("Deja", "data/fonts/DejaVuSans.ttf", fnBold = "data/fonts/Roboto-Bold.ttf")
   const text = "Figs have been grown in Greece for thousands of years. The fruit is " &
     "dried in the sun, pressed by hand and packed the same day."
-  type Setup = proc (l: LabelBase) {.closure.}
+  type Setup = proc (l: Label) {.closure.}
   let r = "{'text': '" & text & "'"
-  proc wrap(l: LabelBase) =
+  proc wrap(l: Label) =
     l.text = text
     l.textSize = (some(300.0), none[float]())
   # An array: a seq literal of proc literals is rejected
   # (planetis-m/nimony-bugs-llms#311).
   let cases: array[20, (string, Setup)] = [
-    ("{'text': ''}", proc (l: LabelBase) {.closure.} = l.text = ""),
-    ("{'text': 'A'}", proc (l: LabelBase) {.closure.} = l.text = "A"),
-    ("{'text': 'Hello world'}", proc (l: LabelBase) {.closure.} = l.text = "Hello world"),
-    ("{'text': 'two\\nlines'}", proc (l: LabelBase) {.closure.} = l.text = "two\nlines"),
-    ("{'text': 'trailing space '}", proc (l: LabelBase) {.closure.} =
+    ("{'text': ''}", proc (l: Label) {.closure.} = l.text = ""),
+    ("{'text': 'A'}", proc (l: Label) {.closure.} = l.text = "A"),
+    ("{'text': 'Hello world'}", proc (l: Label) {.closure.} = l.text = "Hello world"),
+    ("{'text': 'two\\nlines'}", proc (l: Label) {.closure.} = l.text = "two\nlines"),
+    ("{'text': 'trailing space '}", proc (l: Label) {.closure.} =
       l.text = "trailing space "),
-    ("{'text': 'Ελληνικά'}", proc (l: LabelBase) {.closure.} = l.text = "Ελληνικά"),
-    ("{'text': 'Hello', 'font_size': 40}", proc (l: LabelBase) {.closure.} =
+    ("{'text': 'Ελληνικά'}", proc (l: Label) {.closure.} = l.text = "Ελληνικά"),
+    ("{'text': 'Hello', 'font_size': 40}", proc (l: Label) {.closure.} =
       l.text = "Hello"
-      l.options.fontSize = 40),
-    ("{'text': 'Hello', 'bold': True}", proc (l: LabelBase) {.closure.} =
+      l.fontSize = 40),
+    ("{'text': 'Hello', 'bold': True}", proc (l: Label) {.closure.} =
       l.text = "Hello"
-      l.options.bold = true),
-    ("{'text': 'Hello', 'font_name': 'Deja'}", proc (l: LabelBase) {.closure.} =
+      l.bold = true),
+    ("{'text': 'Hello', 'font_name': 'Deja'}", proc (l: Label) {.closure.} =
       l.text = "Hello"
-      l.options.fontName = "Deja"),
+      l.fontName = "Deja"),
     ("{'text': 'Hello', 'font_name': 'Deja', 'bold': True}",
-      proc (l: LabelBase) {.closure.} =
+      proc (l: Label) {.closure.} =
         l.text = "Hello"
-        l.options.fontName = "Deja"
-        l.options.bold = true),
-    (r & ", 'text_size': (300, None)}", proc (l: LabelBase) {.closure.} = wrap(l)),
+        l.fontName = "Deja"
+        l.bold = true),
+    (r & ", 'text_size': (300, None)}", proc (l: Label) {.closure.} = wrap(l)),
     (r & ", 'text_size': (300, None), 'line_height': 1.25}",
-      proc (l: LabelBase) {.closure.} =
+      proc (l: Label) {.closure.} =
         wrap(l)
-        l.options.lineHeight = 1.25),
+        l.lineHeight = 1.25),
     (r & ", 'text_size': (300, None), 'line_height': 0.8}",
-      proc (l: LabelBase) {.closure.} =
+      proc (l: Label) {.closure.} =
         wrap(l)
-        l.options.lineHeight = 0.8),
-    (r & ", 'text_size': (300, 100)}", proc (l: LabelBase) {.closure.} =
+        l.lineHeight = 0.8),
+    (r & ", 'text_size': (300, 100)}", proc (l: Label) {.closure.} =
       l.text = text
       l.textSize = (some(300.0), some(100.0))),
     (r & ", 'text_size': (300, 40), 'valign': 'middle'}",
-      proc (l: LabelBase) {.closure.} =
+      proc (l: Label) {.closure.} =
         l.text = text
         l.textSize = (some(300.0), some(40.0))
-        l.options.valign = valignMiddle),
-    ("{'text': 'Hello', 'padding': (10, 5)}", proc (l: LabelBase) {.closure.} =
+        l.valign = valignMiddle),
+    ("{'text': 'Hello', 'padding': (10, 5)}", proc (l: Label) {.closure.} =
       l.text = "Hello"
-      l.options.setPadding([10.0, 5])),
+      l.padding = [10.0, 5]),
     (r & ", 'text_size': (300, None), 'padding': (20, 0)}",
-      proc (l: LabelBase) {.closure.} =
+      proc (l: Label) {.closure.} =
         wrap(l)
-        l.options.setPadding([20.0, 0])),
+        l.padding = [20.0, 0]),
     (r & ", 'text_size': (300, None), 'halign': 'justify'}",
-      proc (l: LabelBase) {.closure.} =
+      proc (l: Label) {.closure.} =
         wrap(l)
-        l.options.halign = halignJustify),
+        l.halign = halignJustify),
     ("{'text': 'averyveryverylongwordthatcannotwrap', 'text_size': (100, None)}",
-      proc (l: LabelBase) {.closure.} =
+      proc (l: Label) {.closure.} =
         l.text = "averyveryverylongwordthatcannotwrap"
         l.textSize = (some(100.0), none[float]())),
-    ("{'text': 'Hello', 'text_size': (None, 100)}", proc (l: LabelBase) {.closure.} =
+    ("{'text': 'Hello', 'text_size': (None, 100)}", proc (l: Label) {.closure.} =
       l.text = "Hello"
       l.textSize = (none[float](), some(100.0)))]
   for (kw, setup) in cases:
-    let l = newLabelSDL3()
-    l.options.fontSize = 15
-    l.options.halign = halignAuto
+    let l = newLabel()
     setup(l)
-    let (w, h) = labelTextureSize(l)
+    l.textureUpdate()
+    let (w, h) = l.textureSize
     log.emit(kw, "->", "(" & fmt3(w) & ", " & fmt3(h) & ")")
   log.save "label"
 
@@ -270,13 +258,12 @@ proc traceLabel() =
 
 type
   Btn = ref object of Widget
-    # traces.py trace_touch Btn(ButtonBehavior, Widget), with the ButtonBehavior
-    # part written out here until layer 7 ports it (uix/behaviors/button.py).
+    # traces.py trace_touch: class Btn(ButtonBehavior, Widget).
     tag: string
-    touchTime: float
+    button: nil ButtonBehavior
 
 let BtnClass = newDispatcherClass("Btn", WidgetClass)
-discard BtnClass.addString("state", "normal")
+BtnClass.addButtonBehavior()
 
 proc r(p: (float, float)): string =
   # traces.py r(): numbers with 3 decimals.
@@ -292,69 +279,47 @@ proc tagOf(d: nil EventDispatcher): string =
   elif d of Btn: Btn(d).tag
   else: "?"
 
+proc onPress(d: EventDispatcher; args: seq[Value]): bool =
+  log.emit(Btn(d).tag, "on_press")
+  result = false
+
+proc onRelease(d: EventDispatcher; args: seq[Value]): bool =
+  log.emit(Btn(d).tag, "on_release")
+  result = false
+
+BtnClass.setEventHandler("on_press", onPress)
+BtnClass.setEventHandler("on_release", onRelease)
+
 proc newBtn(tag: string; x, y, w, h: float): Btn =
-  result = Btn(cls: BtnClass, canvas: newCanvas(), tag: tag, touchTime: 0)
+  result = Btn(cls: BtnClass, canvas: newCanvas(), tag: tag, button: nil)
   result.initWidget()
+  result.button = newButtonBehavior(result)
   result.sizeHint = (none[float](), none[float]())
   result.size = (w, h)
   result.pos = (x, y)
   result.bind("state", proc (d: EventDispatcher; v: Value) {.closure.} =
     log.emit(tag, "state", v.str))
 
-proc doRelease(b: Btn) =
-  b.setProperty("state", toValue("normal"))
-
-proc key(b: Btn): Value = toValue(RootRef(b))
-
-proc buttonTouchDown(b: Btn; t: MotionEvent): bool =
-  # ButtonBehavior.on_touch_down
-  if procCall onTouchDown(Widget(b), t): return true
-  if t.isMouseScrolling: return false
-  if not b.collidePoint(t.x, t.y): return false
-  if b.key in t.ud: return false
-  t.grab(b)
-  t.ud[b.key] = toValue(true)
-  b.touchTime = time()
-  b.setProperty("state", toValue("down"))
-  log.emit(b.tag, "on_press")
-  result = true
-
-proc buttonTouchMove(b: Btn; t: MotionEvent): bool =
-  # ButtonBehavior.on_touch_move
-  if t.grabCurrent == EventDispatcher(b): return true
-  if procCall onTouchMove(Widget(b), t): return true
-  result = b.key in t.ud
-
-proc buttonTouchUp(b: Btn; t: MotionEvent): bool =
-  # ButtonBehavior.on_touch_up
-  if t.grabCurrent != EventDispatcher(b):
-    return procCall onTouchUp(Widget(b), t)
-  t.ungrab(b)
-  if not b.collidePoint(t.pos[0], t.pos[1]):
-    b.doRelease()
-    return false
-  let touchtime = time() - b.touchTime
-  let minStateTime = Config.getfloat("graphics", "min_state_time")
-  if touchtime < minStateTime:
-    discard Clock.scheduleOnce(proc (dt: float) {.closure.} = b.doRelease(),
-      minStateTime - touchtime)
-  else:
-    b.doRelease()
-  log.emit(b.tag, "on_release")
-  result = true
+proc buttonOf(b: Btn): ButtonBehavior =
+  let bb = b.button
+  if bb == nil: quit "Btn without its ButtonBehavior"
+  result = bb
 
 method onTouchDown(b: Btn; t: MotionEvent): bool =
   log.emit(b.tag, "on_touch_down", r(t.pos))
-  result = b.buttonTouchDown(t)
+  result = b.buttonOf.onTouchDown(t, proc (t: MotionEvent): bool {.closure.} =
+    procCall onTouchDown(Widget(b), t))
   log.emit(b.tag, "on_touch_down ->", pyResult(result, "False"))
 
 method onTouchMove(b: Btn; t: MotionEvent): bool =
-  result = b.buttonTouchMove(t)
+  result = b.buttonOf.onTouchMove(t, proc (t: MotionEvent): bool {.closure.} =
+    procCall onTouchMove(Widget(b), t))
   log.emit(b.tag, "on_touch_move grab_current", tagOf(t.grabCurrent), "->",
     pyResult(result, "False"))
 
 method onTouchUp(b: Btn; t: MotionEvent): bool =
-  result = b.buttonTouchUp(t)
+  result = b.buttonOf.onTouchUp(t, proc (t: MotionEvent): bool {.closure.} =
+    procCall onTouchUp(Widget(b), t))
   log.emit(b.tag, "on_touch_up grab_current", tagOf(t.grabCurrent), "->",
     pyResult(result, "None"))
 

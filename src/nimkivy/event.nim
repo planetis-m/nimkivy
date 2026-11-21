@@ -372,7 +372,13 @@ method compareValue*(p: Property; a, b: Value): bool {.base.} =
 
 method doDispatch*(p: Property; d: EventDispatcher; s: PropertyStorage) {.base.} =
   ## Calls the observers with the stored value (Kivy's `_dispatch`).
-  s.observers.dispatchValue(d, s.value)
+  # A copy: an observer can replace `s.value` while the others still need
+  # it (reading a ReferenceList refreshes its storage), as Python's
+  # dispatch keeps the old object alive. Passed as it is, the field goes by
+  # reference and the later observers read freed memory
+  # (planetis-m/nimony-bugs-llms#334).
+  var value = s.value
+  s.observers.dispatchValue(d, value)
 
 proc checkOrQuit*(p: Property; d: EventDispatcher; x: Value) =
   ## Stops the program with Kivy's ValueError text when `x` is invalid.

@@ -32,12 +32,22 @@ def budget(scene):
     return BUDGET["default"]
 
 
+def known_diffs():
+    """(scene, kivy line, nimkivy line) triples listed in known-geometry-diffs.txt."""
+    known = set()
+    for line in (REF.parent / "known-geometry-diffs.txt").read_text().splitlines():
+        if line.strip() and not line.startswith("#"):
+            known.add(tuple(part.strip() for part in line.split(" | ")))
+    return known
+
+
 def compare_text(ref, got):
     if not got.exists():
         return f"missing {got}"
     a, b = ref.read_text().splitlines(), got.read_text().splitlines()
+    known = known_diffs()
     for i, (x, y) in enumerate(zip(a, b)):
-        if x != y:
+        if x != y and (ref.stem, x, y) not in known:
             return f"line {i + 1}: kivy {x!r} / nimkivy {y!r}"
     if len(a) != len(b):
         return f"{len(a)} lines in kivy, {len(b)} in nimkivy"

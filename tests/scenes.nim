@@ -8,7 +8,8 @@
 # 800 x 600 window (SDL3 offscreen; the renderer SDL_RENDER_DRIVER names,
 # run_tests.sh uses opengl), cleared white. After a few frames (the layouts
 # run before each frame) the window takes a screenshot, and the `.txt` gets
-# every widget's class, pos and size, walking from each root widget.
+# every widget's class, pos and size (and a Label's texture_size, an Image's
+# texture_size and norm_image_size), walking from each root widget.
 
 import std/[formatfloat, os, strutils, syncio]
 from std/files import tryRemoveFile, moveFile
@@ -16,7 +17,7 @@ from std/paths import path
 import nimkivy/[config, clock]
 import nimkivy/graphics/[context_instructions, vertex_instructions]
 import nimkivy/core/image
-import nimkivy/uix/[boxlayout, floatlayout, anchorlayout]
+import nimkivy/uix/[boxlayout, floatlayout, anchorlayout, label, image]
 
 proc a(name: string): string =
   # scenes.py a(): an asset of reference/assets.
@@ -363,6 +364,159 @@ proc anchorlayoutTests(): Widget =
       inc i
   result = root
 
+# ---------------------------------------------------------------- labels and images
+
+const Lorem = "Figs have been grown in Greece for thousands of years. The fruit is " &
+  "dried in the sun, pressed by hand and packed the same day."
+  # scenes.py LOREM
+
+proc sizeToTextSize(l: Label) =
+  # lb.bind(size=lambda w, v: setattr(w, "text_size", v))
+  l.bind("size", proc (d: EventDispatcher; v: Value) {.closure.} =
+    l.textSize = (v.items[0].num, v.items[1].num))
+
+proc fitHeight(l: Label) =
+  # fit=True in the kiosk: as tall as its wrapped text.
+  # lb.bind(width=lambda w, v: setattr(w, "text_size", (v, None)),
+  #         texture_size=lambda w, v: setattr(w, "height", v[1]))
+  l.bind("width", proc (d: EventDispatcher; v: Value) {.closure.} =
+    l.textSize = (some(v.num), none[float]()))
+  l.bind("texture_size", proc (d: EventDispatcher; v: Value) {.closure.} =
+    l.height = v.items[1].num)
+
+proc labelAlign(): Widget =
+  # scenes.py label_align
+  let root = newFloatLayout()
+  for i, ha in [halignLeft, halignCenter, halignRight, halignJustify]:
+    for j, va in [valignTop, valignMiddle, valignBottom]:
+      let lb = newLabel(Lorem)
+      lb.color = [0.0, 0, 0, 1]
+      lb.fontSize = 13
+      lb.halign = ha
+      lb.valign = va
+      frame(lb, [0.85, 0.9, 0.95, 1])
+      lb.sizeToTextSize()
+      root.place(lb, float(i) * 200 + 5, 400 - float(j) * 200 + 5, 190, 190)
+  result = root
+
+proc labelWrap(): Widget =
+  # scenes.py label_wrap
+  register("Deja", "data/fonts/DejaVuSans.ttf", fnBold = "data/fonts/Roboto-Bold.ttf")
+  let root = newBoxLayout()
+  root.orientation = orientationVertical
+  root.padding = [10.0]
+  root.spacing = 6
+  frame(root, [0.98, 0.96, 0.94, 1])
+  for lh in [1.0, 1.25, 0.8]:
+    let lb = newLabel("line_height " & $lh & ": " & Lorem)
+    lb.color = [0.2, 0.2, 0.2, 1]
+    lb.fontSize = 18
+    lb.lineHeight = lh
+    lb.halign = halignLeft
+    lb.sizeHintY = none[float]()
+    frame(lb, [0.9, 0.85, 0.8, 1])
+    lb.fitHeight()
+    root.addWidget(lb)
+  let deja = newLabel("Deja regular, size 24")
+  deja.fontName = "Deja"
+  deja.fontSize = 24
+  deja.color = [0.29, 0.18, 0.16, 1]
+  deja.sizeHintY = none[float]()
+  deja.height = 36
+  frame(deja, [0.9, 0.9, 0.8, 1])
+  root.addWidget(deja)
+  let dejaBold = newLabel("Deja bold (Roboto-Bold file), size 24")
+  dejaBold.fontName = "Deja"
+  dejaBold.bold = true
+  dejaBold.fontSize = 24
+  dejaBold.color = [0.29, 0.18, 0.16, 1]
+  dejaBold.sizeHintY = none[float]()
+  dejaBold.height = 36
+  frame(dejaBold, [0.9, 0.9, 0.8, 1])
+  root.addWidget(dejaBold)
+  let padded = newLabel("Roboto bold 20, padding 30 x 4, halign right")
+  padded.bold = true
+  padded.fontSize = 20
+  padded.padding = [30.0, 4]
+  padded.halign = halignRight
+  padded.color = [0.42, 0.55, 0.27, 1]
+  padded.sizeHintY = none[float]()
+  padded.height = 40
+  frame(padded, [0.9, 0.9, 0.8, 1])
+  root.addWidget(padded)
+  let fill = newLabel("fill: size bound to text_size, valign middle")
+  fill.fontSize = 20
+  fill.color = [0.0, 0, 0, 1]
+  fill.halign = halignCenter
+  fill.valign = valignMiddle
+  fill.sizeToTextSize()
+  frame(fill, [0.8, 0.9, 0.8, 1])
+  root.addWidget(fill)
+  let spacer = newWidget()
+  spacer.sizeHintY = 0.2
+  root.addWidget(spacer)
+  result = root
+
+proc labelDefault(): Widget =
+  # scenes.py label_default
+  let root = newFloatLayout()
+  proc add(root: Widget; text: string; size: float; color: array[4, float];
+      bg: array[4, float]; x, y, w, h: float; disabled = false) =
+    let lb = newLabel(text)
+    if size > 0: lb.fontSize = size
+    if color[3] >= 0: lb.color = color
+    lb.disabled = disabled
+    frame(lb, bg)
+    root.place(lb, x, y, w, h)
+  const black = [0.0, 0, 0, 1]
+  const keep = [0.0, 0, 0, -1]      # the default colour
+  root.add("Default label (Roboto 15sp, white)", 0, keep, [0.3, 0.3, 0.3, 1], 20, 500, 360, 60)
+  root.add("first line\nsecond, longer line\nthird", 22, black, Grey, 420, 440, 360, 140)
+  root.add("Too long for the widget, so it overflows both sides", 20, black, Grey,
+    250, 360, 300, 40)
+  root.add("disabled label", 28, keep, [0.2, 0.2, 0.2, 1], 20, 260, 360, 60, disabled = true)
+  root.add("", 0, black, Grey, 420, 260, 360, 60)
+  root.add("Ελληνικά — ünïcödé ½ €", 26, black, Grey, 20, 160, 760, 60)
+  root.add("tiny 9", 9, black, Grey, 20, 60, 120, 40)
+  root.add("huge 64", 64, black, Grey, 200, 40, 400, 100)
+  result = root
+
+const ImageBg = [0.8, 0.8, 0.8, 1]
+
+proc imageFit(): Widget =
+  # scenes.py image_fit
+  let root = newFloatLayout()
+  for i, mode in [fitScaleDown, fitFill, fitContain, fitCover]:
+    for j, src in ["landscape.png", "portrait.png", "small.png"]:
+      let img = newImage(a(src))
+      img.fitMode = mode
+      frame(img, ImageBg)
+      root.place(img, float(i) * 200 + 10, 400 - float(j) * 200 + 10, 180, 150)
+  result = root
+
+proc imageMisc(): Widget =
+  # scenes.py image_misc
+  let root = newFloatLayout()
+  let tinted = newImage(a("landscape.png"))
+  tinted.color = [1.0, 0.5, 0.5, 1]
+  tinted.fitMode = fitContain
+  frame(tinted, ImageBg)
+  root.place(tinted, 10, 310, 380, 280)
+  let faded = newImage(a("landscape.png"))
+  faded.opacity = 0.4
+  faded.fitMode = fitContain
+  frame(faded, ImageBg)
+  root.place(faded, 410, 310, 380, 280)
+  let changed = newImage(a("portrait.png"))
+  changed.fitMode = fitCover
+  changed.source = a("landscape.jpg")
+  frame(changed, ImageBg)
+  root.place(changed, 10, 10, 380, 280)
+  let empty = newImage()       # no source: a white box
+  frame(empty, ImageBg)
+  root.place(empty, 410, 10, 380, 280)
+  result = root
+
 proc build(name: string): Widget =
   case name
   of "graphics_basic", "graphics_basic_msaa": graphicsBasic()
@@ -373,6 +527,11 @@ proc build(name: string): Widget =
   of "boxlayout_hints": boxlayoutHints()
   of "floatlayout_hints": floatlayoutHints()
   of "anchorlayout_tests": anchorlayoutTests()
+  of "label_align": labelAlign()
+  of "label_wrap": labelWrap()
+  of "label_default": labelDefault()
+  of "image_fit": imageFit()
+  of "image_misc": imageMisc()
   else: quit "unknown scene " & name
 
 # ---------------------------------------------------------------- runner
@@ -405,7 +564,14 @@ proc shoot(name: string) =
   for top in Window.children:
     if top of Widget:
       for wid in Widget(top).walk():
-        lines.add wid.cls.name & " pos=" & fmt(wid.pos) & " size=" & fmt(wid.size)
+        var line = wid.cls.name & " pos=" & fmt(wid.pos) & " size=" & fmt(wid.size)
+        # scenes.py: texture_size and norm_image_size where the widget has them.
+        if wid of Label:
+          line.add " texture_size=" & fmt(Label(wid).textureSize)
+        elif wid of Image:
+          line.add " texture_size=" & fmt(Image(wid).textureSize)
+          line.add " norm_image_size=" & fmt(Image(wid).normImageSize)
+        lines.add line
   try:
     writeFile(cwd / "tests" / "out" / (name & ".txt"), lines.join("\n") & "\n")
   except:

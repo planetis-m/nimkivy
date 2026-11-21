@@ -1,7 +1,7 @@
 # Ports kivy/tests/test_app.py (ACCEPTANCE.md, layer 5): test_graphics_app,
 # and the App lifecycle the kiosk relies on. test_basic_app needs Label and
-# is finished in layer 7. Each app stops itself from a Clock callback, as
-# Kivy's UnitKivyApp does when the test is done.
+# is in tlabel. Each app stops itself from a Clock callback, as Kivy's
+# UnitKivyApp does when the test is done.
 
 import std/[assertions, os, syncio]
 from std/dirs import createDir

@@ -36,7 +36,10 @@ for mode in debug release; do
   # renderer rasterizes long thin triangles up to a pixel off GL's and
   # refuses Kivy's blend mode (PORTING.md, Gaps).
   scenes="graphics_basic graphics_basic_msaa graphics_line graphics_texture canvas_order
-    boxlayout_tests boxlayout_hints floatlayout_hints anchorlayout_tests"
+    boxlayout_tests boxlayout_hints floatlayout_hints anchorlayout_tests
+    label_align image_fit image_misc label_wrap label_default"
+  # Known geometry differences (one label a pixel narrower: SDL3_ttf) are
+  # listed exactly in reference/known-geometry-diffs.txt; any other fails.
   build scenes "$mode" tests/scenes.nim
   SDL_RENDER_DRIVER=opengl "./bin/scenes-$mode" $scenes
   "$python" reference/compare.py tests/out $scenes
