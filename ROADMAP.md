@@ -13,4 +13,7 @@ Everything Pythonic goes. Goals:
 - **A declarative UI DSL** in the style of Karax (`buildUi:` as a Nimony template plugin) with Kivy's update model (the tree is built once; bindings keep it current), not Karax's rebuild-and-diff.
 - **Profiling on the development machine** (Linux, SDL3, OpenGL renderer) before and after: frame time and where it goes (properties, layout, drawing, text). The redesign is judged by these numbers and must keep phase 1's behaviour: the same tests, traces and scenes are its safety net, adapted only in syntax.
 
+- **No Pythonisms anywhere in the code (owner, 2026-11-22).** Nim names and idioms, not Python ones: no "None"/"False" strings or Python-format output, no Python-style helpers (`pyResult` and the like), no `**kwargs`-style option bags, no truthiness emulation, no exceptions-as-control-flow, no copying Python module splits that make no sense in Nim.
+- **Standalone.** nimkivy builds, runs and tests without Python: the reference outputs Kivy produced become stored test fixtures; the Python generator scripts (`reference/*.py`) move to an archive folder as provenance. The same applies to the kiosk's Nimony port (`philosykos-website/kiosk/nimony`): its tests stand on their own, the Python parity harness is retired, and the Python kiosk app leaves the working tree (kept in git history) once the Nimony kiosk works.
+
 Work happens on its own branch and starts only when phase 1 is complete.
