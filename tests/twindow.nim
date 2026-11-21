@@ -23,8 +23,10 @@ proc logger(log: Log; tag: string; ret: bool): EventCallback =
     log.lines.add tag
     result = ret
 
-type Child = ref object of StubWidget
-  # A root widget that records its touches and returns `ret`.
+type Child = ref object of WidgetBase
+  # A root widget that records its touches and returns `ret`. A bare
+  # WidgetBase, not a Widget: a Widget opens the window, and this file
+  # opens it last, in `headless_run`.
   tag: string
   log: Log
   ret: bool
@@ -42,8 +44,8 @@ method onTouchUp(c: Child; t: MotionEvent): bool =
   result = c.ret
 
 proc newChild(tag: string; log: Log; ret = false): Child =
-  result = Child(cls: StubWidgetClass, canvas: newCanvas(), tag: tag, log: log, ret: ret)
-  result.initStubWidget(0, 0, 100, 100)
+  result = Child(cls: WidgetBaseClass, canvas: newCanvas(), tag: tag, log: log, ret: ret)
+  result.initWidgetBase()
 
 proc cwd(): string =
   try:
@@ -210,8 +212,9 @@ proc pushKey(t: SDL_EventType; key: SDL_Keycode) =
   ev.key = SDL_KeyboardEvent(`type`: t, key: key, down: t == SDL_EVENT_KEY_DOWN)
   assert pushEvent(ev)
 
-type Recorder = ref object of StubWidget
+type Recorder = ref object of WidgetBase
   # The root widget: a blue box; it records its touches in window coordinates.
+  # A bare WidgetBase (see Child): the window does not size it.
   lines: seq[string]
 
 proc rec(r: Recorder; what: string; t: MotionEvent) =
@@ -241,8 +244,8 @@ block headless_run:
   Config.set("graphics", "width", "320")
   Config.set("graphics", "height", "240")
   Config.set("kivy", "exit_on_escape", "1")
-  let root = Recorder(cls: StubWidgetClass, canvas: newCanvas(), lines: @[])
-  root.initStubWidget(0, 0, 320, 240)
+  let root = Recorder(cls: WidgetBaseClass, canvas: newCanvas(), lines: @[])
+  root.initWidgetBase()
   root.canvas.add newColor(0, 0, 1)
   root.canvas.add newRectangle((10.0, 10.0), (100.0, 50.0))
   let app = newApp()

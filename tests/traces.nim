@@ -1,18 +1,16 @@
 # Replays the steps of reference/traces.py and writes tests/out/traces/<name>.txt,
 # which must equal reference/out/traces/<name>.txt line for line.
 #
-# Layer 1 writes `events` and `clock`, and the part of `properties` that a
-# plain dispatcher can show (the ReferenceList and Alias order of a Widget's
-# geometry, and VariableList forms). The Widget lines follow in layer 6.
-# Layer 4 writes `label`, through the core label. Layer 5 writes `touch`,
-# with stub widgets in place of FloatLayout and ButtonBehavior (layers 6
-# and 7).
+# Layer 1 writes `events` and `clock`, layer 6 `properties` (through the
+# real Widget and BoxLayout). Layer 4 writes `label`, through the core
+# label. Layer 5 writes `touch`; layer 6 gives it the real Widget and
+# FloatLayout, and ButtonBehavior is written out here until layer 7.
 
 import std/[dirs, formatfloat, os, paths, strutils, syncio]
 import nimkivy/[properties, clock, config, base]
 import nimkivy/core/text
 import nimkivy/core/text/text_sdl3
-import nimkivy/graphics/instructions
+import nimkivy/uix/[boxlayout, floatlayout]
 import stubs
 
 type Log = ref object
@@ -52,51 +50,19 @@ proc args(a: seq[Value]): string =
 
 # ------------------------------------------------------------------ properties
 
-type Geometry = ref object of EventDispatcher
-  # The geometry properties of kivy/uix/widget.py, on a plain dispatcher.
-
-let GeometryClass = newDispatcherClass("Widget", EventDispatcherClass)
-let gX = GeometryClass.addNumeric("x", 0)
-let gY = GeometryClass.addNumeric("y", 0)
-let gWidth = GeometryClass.addNumeric("width", 100)
-let gHeight = GeometryClass.addNumeric("height", 100)
-discard GeometryClass.addReferenceList("pos", @[Property(gX), gY])
-discard GeometryClass.addReferenceList("size", @[Property(gWidth), gHeight])
-let gRight = GeometryClass.addAlias("right",
-  proc (d: EventDispatcher): Value = toValue(gX.getNumber(d) + gWidth.getNumber(d)),
-  proc (d: EventDispatcher; v: Value): bool =
-    gX.setNumber(d, v.num - gWidth.getNumber(d))
-    result = false,
-  @["x", "width"], cache = true, watchBeforeUse = false)
-let gTop = GeometryClass.addAlias("top",
-  proc (d: EventDispatcher): Value = toValue(gY.getNumber(d) + gHeight.getNumber(d)),
-  proc (d: EventDispatcher; v: Value): bool =
-    gY.setNumber(d, v.num - gHeight.getNumber(d))
-    result = false,
-  @["y", "height"], cache = true, watchBeforeUse = false)
-let gCenterX = GeometryClass.addAlias("center_x",
-  proc (d: EventDispatcher): Value = toValue(gX.getNumber(d) + gWidth.getNumber(d) / 2),
-  proc (d: EventDispatcher; v: Value): bool =
-    gX.setNumber(d, v.num - gWidth.getNumber(d) / 2)
-    result = false,
-  @["x", "width"], cache = true, watchBeforeUse = false)
-let gCenterY = GeometryClass.addAlias("center_y",
-  proc (d: EventDispatcher): Value = toValue(gY.getNumber(d) + gHeight.getNumber(d) / 2),
-  proc (d: EventDispatcher; v: Value): bool =
-    gY.setNumber(d, v.num - gHeight.getNumber(d) / 2)
-    result = false,
-  @["y", "height"], cache = true, watchBeforeUse = false)
-discard GeometryClass.addReferenceList("center", @[Property(gCenterX), gCenterY])
-
-let PaddedClass = newDispatcherClass("BoxLayout", EventDispatcherClass)
-let pPadding = PaddedClass.addVariableList("padding", @[0.0, 0.0, 0.0, 0.0])
-
 proc logger(name: string): PropertyCallback =
   result = proc (d: EventDispatcher; v: Value) {.closure.} = log.emit(name, $v)
 
+proc pyDict(pairs: seq[(string, Value)]): string =
+  # Python's repr of a dict of numbers: {'top': 0.9}
+  result = "{"
+  for i, (k, v) in pairs:
+    if i > 0: result.add ", "
+    result.add "'" & k & "': " & $v.num
+  result.add "}"
+
 proc traceProperties() =
-  let w = Geometry(cls: GeometryClass)
-  w.initEventDispatcher()
+  let w = newWidget()
   for name in ["x", "y", "pos", "right", "top", "center", "width", "size"]:
     w.bind(name, logger(name))
   log.emit "# pos = (1, 2)"
@@ -114,14 +80,25 @@ proc traceProperties() =
   w.bind("x", logger("x second observer"))
   log.emit "# x = 6"
   w.setProperty("x", toValue(6))
-  let b = EventDispatcher(cls: PaddedClass)
-  b.initEventDispatcher()
+  let b = newBoxLayout()
   let forms = [("5", toValue(5)), ("(10, 20)", toValue([10.0, 20.0])),
     ("(1, 2, 3, 4)", toValue([1.0, 2.0, 3.0, 4.0])), ("[7]", toValue([7.0]))]
   for (text, v) in forms:
-    discard pPadding.set(b, v)
-    log.emit("padding", text, "->", $pPadding.get(b))
-  # The Widget lines (defaults, inherited disabled) come with layer 6.
+    b.setProperty("padding", v)
+    log.emit("padding", text, "->", $b.getProperty("padding"))
+  log.emit("defaults size", $newWidget().getProperty("size"), "size_hint",
+    $newWidget().getProperty("size_hint"), "pos_hint", pyDict(newWidget().posHint))
+  let parent = newWidget()
+  let child = newWidget()
+  parent.addWidget(child)
+  child.bind("disabled", proc (d: EventDispatcher; v: Value) {.closure.} =
+    log.emit("child disabled", $v))
+  parent.disabled = true
+  log.emit("parent", $toValue(parent.disabled), "child", $toValue(child.disabled))
+  child.disabled = false
+  log.emit("child set False while parent disabled ->", $toValue(child.disabled))
+  parent.disabled = false
+  log.emit("parent False ->", $toValue(child.disabled))
   log.save "properties"
 
 # ------------------------------------------------------------------ events
@@ -292,13 +269,13 @@ proc traceLabel() =
 # ------------------------------------------------------------------ touch
 
 type
-  Btn = ref object of StubWidget
+  Btn = ref object of Widget
     # traces.py trace_touch Btn(ButtonBehavior, Widget), with the ButtonBehavior
     # part written out here until layer 7 ports it (uix/behaviors/button.py).
     tag: string
     touchTime: float
 
-let BtnClass = newDispatcherClass("Btn", StubWidgetClass)
+let BtnClass = newDispatcherClass("Btn", WidgetClass)
 discard BtnClass.addString("state", "normal")
 
 proc r(p: (float, float)): string =
@@ -317,7 +294,10 @@ proc tagOf(d: nil EventDispatcher): string =
 
 proc newBtn(tag: string; x, y, w, h: float): Btn =
   result = Btn(cls: BtnClass, canvas: newCanvas(), tag: tag, touchTime: 0)
-  result.initStubWidget(x, y, w, h)
+  result.initWidget()
+  result.sizeHint = (none[float](), none[float]())
+  result.size = (w, h)
+  result.pos = (x, y)
   result.bind("state", proc (d: EventDispatcher; v: Value) {.closure.} =
     log.emit(tag, "state", v.str))
 
@@ -328,7 +308,7 @@ proc key(b: Btn): Value = toValue(RootRef(b))
 
 proc buttonTouchDown(b: Btn; t: MotionEvent): bool =
   # ButtonBehavior.on_touch_down
-  if procCall onTouchDown(StubWidget(b), t): return true
+  if procCall onTouchDown(Widget(b), t): return true
   if t.isMouseScrolling: return false
   if not b.collidePoint(t.x, t.y): return false
   if b.key in t.ud: return false
@@ -342,13 +322,13 @@ proc buttonTouchDown(b: Btn; t: MotionEvent): bool =
 proc buttonTouchMove(b: Btn; t: MotionEvent): bool =
   # ButtonBehavior.on_touch_move
   if t.grabCurrent == EventDispatcher(b): return true
-  if procCall onTouchMove(StubWidget(b), t): return true
+  if procCall onTouchMove(Widget(b), t): return true
   result = b.key in t.ud
 
 proc buttonTouchUp(b: Btn; t: MotionEvent): bool =
   # ButtonBehavior.on_touch_up
   if t.grabCurrent != EventDispatcher(b):
-    return procCall onTouchUp(StubWidget(b), t)
+    return procCall onTouchUp(Widget(b), t)
   t.ungrab(b)
   if not b.collidePoint(t.pos[0], t.pos[1]):
     b.doRelease()
@@ -391,14 +371,10 @@ proc tap(x, y: float; name: string; moveTo = (-1.0, -1.0)) =
   Clock.tick()
 
 proc traceTouch() =
-  # reference/traces.py trace_touch, in an 800 x 600 window. The root is a
-  # plain widget (a FloatLayout there, which only passes touches on here).
-  Config.set("graphics", "width", "800")
-  Config.set("graphics", "height", "600")
-  Config.set("graphics", "resizable", "0")
+  # reference/traces.py trace_touch, in an 800 x 600 window.
   EventLoop.ensureWindow()
   let win = Window
-  let root = newStubWidget()
+  let root = newFloatLayout()
   let a = newBtn("A", 100, 100, 200, 200)
   let b = newBtn("B", 200, 200, 200, 200)      # added later: on top
   let c = newBtn("C", 600, 100, 100, 100)
@@ -418,6 +394,10 @@ proc traceTouch() =
   win.removeWidget(root)
   log.save "touch"
 
+# traces.py sets Config before anything opens the window (a Widget does).
+Config.set("graphics", "width", "800")
+Config.set("graphics", "height", "600")
+Config.set("graphics", "resizable", "0")
 traceProperties()
 traceEvents()
 traceClock()

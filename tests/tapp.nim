@@ -9,8 +9,8 @@ from std/files import tryRemoveFile
 from std/paths import path
 import nimkivy/[app, clock]
 import nimkivy/sdl3/[sdl, image]
-import nimkivy/graphics/[instructions, context_instructions, vertex_instructions]
-import stubs
+import nimkivy/graphics/[context_instructions, vertex_instructions]
+import nimkivy/uix/widget
 
 type
   GraphicsApp = ref object of App
@@ -34,7 +34,7 @@ let GraphicsAppClass = newDispatcherClass("TestApp", AppClass)
 
 method build(a: GraphicsApp): nil WidgetBase =
   # test_app.py graphics_app
-  let widget = newStubWidget()
+  let widget = newWidget()
   widget.canvas.add newColor(1, 0, 0, 1)
   widget.canvas.add newRectangle((0.0, 0.0), (100.0, 100.0))
   widget.canvas.add newColor(0, 1, 0, 1)
@@ -75,7 +75,7 @@ method build(a: LifecycleApp): nil WidgetBase =
   inc a.builds
   a.log.add "build " & $Window.width & "x" & $Window.height
   discard Clock.scheduleOnce(proc (dt: float) {.closure.} = a.stop(), 0.1)
-  result = newStubWidget()
+  result = newWidget()
 
 proc logEvent(a: LifecycleApp; name: string): EventCallback =
   result = proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =

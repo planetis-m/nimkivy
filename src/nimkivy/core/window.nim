@@ -279,16 +279,18 @@ proc updateChildsize*(w: WindowBase; childs: seq[WidgetBase]) =
         elif not shhMax.isNone and ch > shhMax.num:
           ch = shhMax.num
         c.setProperty("height", toValue(ch))
+      # The values of `pos` and `center` are pairs; the window ignores
+      # those keys, as Kivy's does.
       for pair in c.getProperty("pos_hint").items:
         let key = pair.items[0].str
-        let value = pair.items[1].num
+        let value = pair.items[1]
         case key
-        of "x": c.setProperty("x", toValue(value * width))
-        of "right": c.setProperty("right", toValue(value * width))
-        of "y": c.setProperty("y", toValue(value * height))
-        of "top": c.setProperty("top", toValue(value * height))
-        of "center_x": c.setProperty("center_x", toValue(value * width))
-        of "center_y": c.setProperty("center_y", toValue(value * height))
+        of "x": c.setProperty("x", toValue(value.num * width))
+        of "right": c.setProperty("right", toValue(value.num * width))
+        of "y": c.setProperty("y", toValue(value.num * height))
+        of "top": c.setProperty("top", toValue(value.num * height))
+        of "center_x": c.setProperty("center_x", toValue(value.num * width))
+        of "center_y": c.setProperty("center_y", toValue(value.num * height))
         else: discard
 
 proc updateChildsize*(w: WindowBase) =

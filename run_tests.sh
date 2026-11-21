@@ -29,27 +29,16 @@ for mode in debug release; do
   build traces "$mode" tests/traces.nim
   rm -rf tests/out/traces
   "./bin/traces-$mode"
-  # Layer 1 traces, layer 4's label sizes and layer 5's touch dispatch must
-  # match exactly.
-  "$python" reference/compare.py tests/out --traces events clock label touch
-  # The properties trace gets its Widget lines in layer 6: until then the
-  # lines written so far must be the first lines of Kivy's.
-  n=$(wc -l < tests/out/traces/properties.txt)
-  if head -n "$n" reference/out/traces/properties.txt | cmp -s - tests/out/traces/properties.txt; then
-    echo "ok   trace properties: first $n of $(wc -l < reference/out/traces/properties.txt) lines"
-  else
-    echo "FAIL trace properties"
-    head -n "$n" reference/out/traces/properties.txt | diff - tests/out/traces/properties.txt | head -20
-    exit 1
-  fi
-  # The scenes drawn so far, pixels only until Widget (layer 6) gives them
-  # geometry. They use SDL's OpenGL renderer through the offscreen driver's
-  # EGL: the software renderer rasterizes long thin triangles up to a pixel
-  # off GL's and refuses Kivy's blend mode (PORTING.md, Gaps).
+  # The traces written so far must match Kivy's exactly.
+  "$python" reference/compare.py tests/out --traces events clock label touch properties
+  # The scenes drawn so far: geometry exact, pixels within budget. They use
+  # SDL's OpenGL renderer through the offscreen driver's EGL: the software
+  # renderer rasterizes long thin triangles up to a pixel off GL's and
+  # refuses Kivy's blend mode (PORTING.md, Gaps).
+  scenes="graphics_basic graphics_basic_msaa graphics_line graphics_texture canvas_order
+    boxlayout_tests boxlayout_hints floatlayout_hints anchorlayout_tests"
   build scenes "$mode" tests/scenes.nim
-  SDL_RENDER_DRIVER=opengl "./bin/scenes-$mode" graphics_basic graphics_basic_msaa graphics_line \
-    graphics_texture canvas_order
-  "$python" reference/compare.py tests/out --pixels graphics_basic graphics_basic_msaa \
-    graphics_line graphics_texture canvas_order
+  SDL_RENDER_DRIVER=opengl "./bin/scenes-$mode" $scenes
+  "$python" reference/compare.py tests/out $scenes
 done
 echo "all passed"
