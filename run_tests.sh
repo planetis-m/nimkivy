@@ -41,5 +41,14 @@ for mode in debug release; do
     head -n "$n" reference/out/traces/properties.txt | diff - tests/out/traces/properties.txt | head -20
     exit 1
   fi
+  # The scenes drawn so far, pixels only until Widget (layer 6) gives them
+  # geometry. They use SDL's OpenGL renderer through the offscreen driver's
+  # EGL: the software renderer rasterizes long thin triangles up to a pixel
+  # off GL's and refuses Kivy's blend mode (PORTING.md, Gaps).
+  build scenes "$mode" tests/scenes.nim
+  SDL_RENDER_DRIVER=opengl "./bin/scenes-$mode" graphics_basic graphics_basic_msaa graphics_line \
+    canvas_order
+  "$python" reference/compare.py tests/out --pixels graphics_basic graphics_basic_msaa \
+    graphics_line canvas_order
 done
 echo "all passed"

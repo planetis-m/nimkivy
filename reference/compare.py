@@ -3,12 +3,14 @@
 Run from nimkivy/:
     <kiosk>/.venv/bin/python reference/compare.py tests/out [scene ...]
     <kiosk>/.venv/bin/python reference/compare.py tests/out --traces [trace ...]
+    <kiosk>/.venv/bin/python reference/compare.py tests/out --pixels scene ...
 
 For each scene: <scene>.txt (widget geometry) must be equal line for line; <scene>.png may
 differ in at most BUDGET of its pixels by more than TOLERANCE in any channel (rasterization,
 glyph and JPEG differences, see the GAPs in PORTING.md). Traces must be equal line for line.
 Writes <out>/diff/<scene>.png (differing pixels in red) for every scene over budget.
-Exit status 1 if anything fails.
+--pixels compares only the .png, for the scenes drawn before Widget exists (layers 3 to 5),
+which have no geometry yet. Exit status 1 if anything fails.
 """
 import sys
 from pathlib import Path
@@ -75,12 +77,15 @@ def main():
     out = Path(sys.argv[1]).resolve()
     if sys.argv[2:3] == ["--traces"]:
         sys.exit(0 if compare_traces(out, sys.argv[3:]) else 1)
-    scenes = sys.argv[2:] or sorted(p.stem for p in REF.glob("*.png"))
+    pixels_only = sys.argv[2:3] == ["--pixels"]
+    scenes = sys.argv[3 if pixels_only else 2:] or sorted(p.stem for p in REF.glob("*.png"))
     failed = False
     for scene in scenes:
-        for kind, err in (("geometry", compare_text(REF / f"{scene}.txt", out / f"{scene}.txt")),
-                          ("pixels", compare_png(scene, REF / f"{scene}.png", out / f"{scene}.png",
-                                                 out / "diff"))):
+        checks = [] if pixels_only else [
+            ("geometry", compare_text(REF / f"{scene}.txt", out / f"{scene}.txt"))]
+        checks.append(("pixels", compare_png(scene, REF / f"{scene}.png", out / f"{scene}.png",
+                                             out / "diff")))
+        for kind, err in checks:
             print(f"{'FAIL' if err else 'ok  '} {scene} {kind}{': ' + err if err else ''}")
             failed |= bool(err)
     if len(sys.argv) == 2:

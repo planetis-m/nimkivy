@@ -44,9 +44,9 @@ proc. Source paths are relative to `upstream/kivy/kivy/`, Nimony paths to
 | 1 | `metrics.py`, `_metrics.pyx` | `metrics.nim` | Metrics (density, fontscale, dpi), dp, sp, pt, inch, cm, mm, dpi2px |
 | 1 | `config.py` | `config.nim` | Config.get/set in memory, for the keys in SCOPE.md |
 | 2 | (SDL3 headers) | `sdl3/sdl.nim`, `sdl3/ttf.nim`, `sdl3/image.nim` | raw bindings: only the functions listed in LAYERS.md |
-| 3 | `graphics/instructions.pyx` | `graphics/instructions.nim` | Instruction, InstructionGroup, Canvas (before/after, opacity, clear, add, insert, remove) |
+| 3 | `graphics/instructions.pyx` | `graphics/instructions.nim` | Instruction, InstructionGroup, Canvas (before/after, opacity, clear, add, insert, remove), and BindTexture, which every vertex instruction owns |
 | 3 | `graphics/context_instructions.pyx` | `graphics/context_instructions.nim` | Color, PushMatrix, PopMatrix, Translate (2D) |
-| 3 | `graphics/vertex_instructions.pyx`, `vertex_instructions_line.pxi` | `graphics/vertex_instructions.nim` | Rectangle, RoundedRectangle, Ellipse, Triangle, Line, BorderImage: the same vertex generation |
+| 3 | `graphics/vertex_instructions.pyx`, `vertex_instructions_line.pxi` | `graphics/vertex_instructions.nim` | Rectangle, RoundedRectangle, Ellipse, Triangle, Line, BorderImage: the same vertex generation (BorderImage's nine slices too, drawn as geometry, not with SDL_RenderTexture9Grid) |
 | 3 | `graphics/stencil_instructions.pyx` | `graphics/stencil_instructions.nim` | StencilPush/Use/UnUse/Pop, rectangles only, as clip rectangles |
 | 3 | `graphics/texture.pyx` | `graphics/texture.nim` | Texture: size, uvpos/uvsize, flip, from an SDL surface |
 | 3 | (replaces `graphics/opengl*.pyx`, `shader.pyx`, `vbo.pyx`, `context.pyx`) | `graphics/renderer.nim` | draws a canvas tree with SDL_Renderer: geometry, colour times opacity, translate stack, clip stack, render targets |
@@ -142,18 +142,28 @@ proc. Source paths are relative to `upstream/kivy/kivy/`, Nimony paths to
   deterministic; run a test by hand with the same variables. Tests run from
   the repository root and read fonts from `reference/assets/fonts/` (Source
   Sans 3 and Noto Serif, SIL Open Font License, licence files beside them).
-- Scenes: `tests/scenes.nim <scene>` renders the same trees as
+- Scenes: `tests/scenes.nim <scene> ...` renders the same trees as
   `reference/scenes.py`, into `tests/out/<scene>.png` and `.txt`. Then
   `reference/compare.py tests/out` checks them against `reference/out` (see
-  ACCEPTANCE.md).
+  ACCEPTANCE.md). Until Widget exists (layer 6) the scenes are bare canvases
+  without `.txt`, and `compare.py tests/out --pixels <scene> ...` compares
+  only the pictures. `run_tests.sh` runs the scenes on SDL's OpenGL renderer
+  (`SDL_RENDER_DRIVER=opengl`, through the offscreen driver's EGL), which
+  matches GL's rasterization and supports Kivy's blend mode; the tests stay
+  on the software renderer (Gaps).
+- Geometry: `reference/graphics_points.py` writes
+  `reference/out/graphics_points.txt`, the points, radii and normalised Line
+  shapes Kivy computes, and the children of a Canvas after add, insert,
+  remove and clear. `tvertex_instructions` and `tinstructions` compare with
+  it.
 - Traces: `tests/traces.nim` writes `tests/out/traces/*.txt`, which must equal
   `reference/out/traces/*.txt` line for line. Until layer 6 adds the Widget
   lines, `properties.txt` holds the first 44 lines of Kivy's, and
   `run_tests.sh` checks it as a prefix.
 - Python, from `nimkivy/`, with
   `PY=/home/ageralis/Projects/philosykos-website/kiosk/.venv/bin/python`:
-  run `$PY reference/make_assets.py`, `$PY reference/scenes.py` and
-  `$PY reference/traces.py`.
+  run `$PY reference/make_assets.py`, `$PY reference/scenes.py`,
+  `$PY reference/traces.py` and `$PY reference/graphics_points.py`.
 - Do not commit. The coordinator reviews and commits each layer.
 
 ## Progress
@@ -162,7 +172,7 @@ proc. Source paths are relative to `upstream/kivy/kivy/`, Nimony paths to
 |---|---|---|
 | 1 | event, properties, clock, utils, metrics, config | done: tproperties, tclock, tutils, tmetrics pass in debug and release; traces `events` and `clock` match, `properties` matches its first 44 lines (the rest is layer 6) |
 | 2 | sdl3/sdl, sdl3/ttf, sdl3/image | done: tsdl3 passes in debug and release (struct sizes against C; headless smoke test calling every binding: triangle read back, TTF word, PNG load and save, render target, WAV on a dummy audio stream) |
-| 3 | graphics/instructions, context_instructions, vertex_instructions, stencil_instructions, texture, renderer | to do |
+| 3 | graphics/instructions, context_instructions, vertex_instructions, stencil_instructions, texture, renderer | done: tinstructions and tvertex_instructions pass in debug and release (test_line_rounded_rectangle; 2632 numbers of Kivy's geometry, 8 of them 1 ulp off; the canvas children after add, insert, remove and clear; opacity, colour state, translate, stencil clip drawn headless). Scenes, pixels only, on the OpenGL renderer: graphics_basic 0.00%, graphics_line 0.10%, canvas_order 0.00%, graphics_basic_msaa 0.27% (budgets 0.5% and 3%). Added SDL_GetCurrentRenderOutputSize to sdl3/sdl. |
 | 4 | core/image, core/text/text_layout, core/text, core/text/text_sdl3 | to do |
 | 5 | input/motionevent, core/window, core/window/window_sdl3, base, app | to do |
 | 6 | uix/widget, layout, boxlayout, floatlayout, anchorlayout, relativelayout | to do |
@@ -180,8 +190,12 @@ code meets it, adds the `# GAP:` comment, and edits the row.
 
 | Where | What is inaccurate | Because |
 |---|---|---|
-| graphics/renderer | No multisample antialiasing. Kivy's default is `multisamples = 2`, so edges of ellipses, rounded corners and wide lines are more jagged. The reference scenes use `multisamples = 0`, except `graphics_basic_msaa`. | SDL_Renderer has no MSAA |
-| graphics/vertex_instructions | A Line of width exactly 1 is drawn with SDL_RenderLines, where Kivy uses GL_LINE_STRIP. Rasterization can differ by a pixel at the ends and on diagonals. | SDL_Renderer has no GL line primitive |
+| graphics/renderer | No multisample antialiasing. Kivy's default is `multisamples = 2`, so edges of ellipses, rounded corners and wide lines are more jagged. The reference scenes use `multisamples = 0`, except `graphics_basic_msaa`: there 0.27% of the pixels differ (OpenGL renderer; 0.39% on the software renderer), within its 3% budget. | SDL_Renderer has no MSAA |
+| graphics/renderer | A Line of width exactly 1 is drawn with SDL_RenderLines, where Kivy uses GL_LINE_STRIP. Rasterization can differ by a pixel at the ends and on shallow diagonals: graphics_line 0.10% of pixels (OpenGL renderer), all on the 1 px lines. | SDL_Renderer has no GL line primitive |
+| graphics/renderer | On SDL's software renderer, long thin triangles (wide lines) cover up to a pixel more or less than GL's pixel-centre rule: graphics_line 0.91% of pixels differ there (over the 0.5% budget), against 0.10% on the OpenGL renderer, which matches GL exactly (graphics_basic 0.00%, software 0.21%). The scenes run on the OpenGL renderer. | SDL's software triangle rasterizer is less precise than GL's |
+| graphics/renderer | Where the SDL driver refuses custom blend modes (the software renderer of the headless tests), blending is SDL_BLENDMODE_BLEND: the colour is Kivy's, but the target's alpha is `srcA + dstA * (1 - srcA)` instead of Kivy's `srcA + dstA`. Only render-target textures (FadeTransition) show it. The OpenGL renderer uses Kivy's mode. | SDL's software renderer does not support SDL_ComposeCustomBlendMode |
+| graphics/renderer | A stencil mask is the bounding box of what is drawn between StencilPush and StencilUse: exact for one Rectangle, which is all Kivy's own uses (Image, ScreenManager), but not for other shapes or several rectangles. | SDL_Renderer has no stencil buffer, only a clip rectangle |
+| graphics/renderer | A wide Line drawn with alpha below 1 blends its overlapping triangles (joints, caps, a closed end) twice, where Kivy draws it once through a stencil. | SDL_Renderer has no stencil buffer |
 | uix/screenmanager | Only FadeTransition (and NoTransition): two render-target textures, mixed `t*in + (1-t)*out` with a custom additive blend mode. The other ShaderTransitions and custom shaders (`fs`, `vs`) are not available. SDL's software renderer, which the headless tests use, refuses custom blend modes ("That operation is not supported", seen in tsdl3). | SDL_Renderer has no shaders |
 | core/text/text_sdl3 | Glyphs come from SDL3_ttf 3.2 (FreeType and HarfBuzz), where Kivy 2.3.2 uses the SDL2_ttf bundled in its wheel. Hinting, kerning and shaping can move glyphs by a pixel, and word widths can differ by a pixel, which can change where a line wraps. The `label` trace shows any difference in `texture_size`. | a different SDL_ttf version |
 | core/image | Decoding uses SDL3_image, where Kivy uses its bundled SDL2_image, so JPEG pixels can differ slightly. | a different SDL_image version |
@@ -201,3 +215,4 @@ code meets it, adds the `# GAP:` comment, and edits the row.
 5. Antialiasing: none for now; tracked as a GAP. Revisit after layer 7 when the kiosk screens can be compared.
 6. `Label.shorten`: out of scope until something needs it.
 7. Android: layer 10 starts as an investigation; failures are GAPs/bug reports, not workarounds.
+8. Reference scenes are compared on SDL's OpenGL renderer (the tablet draws through its GPU with OpenGL ES); unit tests stay on the software renderer. (coordinator, layer 3 review)

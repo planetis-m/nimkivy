@@ -125,6 +125,10 @@ block smoke:
     SDL_TEXTUREACCESS_TARGET, 16, 16)
   assert target != nil, fromCString(SDL_GetError())
   assert SDL_SetRenderTarget(renderer, target)
+  var outW = 0.cint
+  var outH = 0.cint
+  assert SDL_GetCurrentRenderOutputSize(renderer, addr outW, addr outH)
+  assert outW == 16 and outH == 16
   var clip = SDL_Rect(x: 0, y: 0, w: 8, h: 8)
   assert SDL_SetRenderClipRect(renderer, addr clip)
   let fade = SDL_ComposeCustomBlendMode(SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ONE,

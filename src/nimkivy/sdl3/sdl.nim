@@ -433,6 +433,9 @@ proc SDL_SetRenderDrawColorFloat*(renderer: SDL_Renderer;
 proc SDL_SetRenderDrawBlendMode*(renderer: SDL_Renderer;
     blendMode: SDL_BlendMode): bool
   ## Sets the blend mode of draw operations.
+proc SDL_GetCurrentRenderOutputSize*(renderer: SDL_Renderer;
+    w, h: nil ptr cint): bool
+  ## The size in pixels of the current target: the window or a texture.
 proc SDL_RenderClear*(renderer: SDL_Renderer): bool
   ## Fills the target with the draw colour, ignoring the clip rectangle.
 proc SDL_RenderPresent*(renderer: SDL_Renderer): bool
