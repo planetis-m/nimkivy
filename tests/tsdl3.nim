@@ -186,7 +186,9 @@ block smoke:
   assert not (SDL_EVENT_TERMINATING == SDL_EVENT_QUIT)
 
   # Audio, with the dummy driver: a WAV queued on a stream.
+  assert SDL_WasInit(SDL_INIT_AUDIO) == SDL_InitFlags(0)
   assert SDL_Init(SDL_INIT_AUDIO), fromCString(SDL_GetError())
+  assert SDL_WasInit(SDL_INIT_AUDIO) == SDL_INIT_AUDIO
   var spec = default(SDL_AudioSpec)
   var buf: nil ptr uint8 = nil
   var size = 0'u32
@@ -198,6 +200,7 @@ block smoke:
   assert stream != nil, fromCString(SDL_GetError())
   assert SDL_SetAudioStreamGain(stream, 0.5)
   assert SDL_PutAudioStreamData(stream, buf, cint(size))
+  assert SDL_FlushAudioStream(stream)
   assert SDL_GetAudioStreamQueued(stream) > 0
   assert SDL_ResumeAudioStreamDevice(stream)
   assert SDL_PauseAudioStreamDevice(stream)
@@ -209,3 +212,4 @@ block smoke:
   SDL_DestroyRenderer(renderer)
   SDL_DestroyWindow(window)
   SDL_Quit()
+  assert SDL_WasInit(SDL_INIT_AUDIO) == SDL_InitFlags(0)

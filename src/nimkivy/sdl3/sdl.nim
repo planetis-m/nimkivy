@@ -398,6 +398,8 @@ proc SDL_Init*(flags: SDL_InitFlags): bool
   ## Initializes the subsystems in `flags`.
 proc SDL_Quit*()
   ## Shuts down every subsystem.
+proc SDL_WasInit*(flags: SDL_InitFlags): SDL_InitFlags
+  ## Which of the subsystems in `flags` are initialized (0: none).
 proc SDL_GetError*(): cstring
   ## The message of the last error on this thread.
 proc SDL_SetHint*(name: cstring; value: nil cstring): bool
@@ -531,6 +533,9 @@ proc SDL_LoadWAV*(path: cstring; spec: ptr SDL_AudioSpec;
 proc SDL_PutAudioStreamData*(stream: SDL_AudioStream; buf: pointer;
     len: cint): bool
   ## Queues `len` bytes of audio.
+proc SDL_FlushAudioStream*(stream: SDL_AudioStream): bool
+  ## Marks the end of the data put so far: what the resampler holds back
+  ## waiting for more is converted and made available.
 proc SDL_GetAudioStreamQueued*(stream: SDL_AudioStream): cint
   ## The bytes still queued; -1 on failure.
 proc SDL_ClearAudioStream*(stream: SDL_AudioStream): bool

@@ -234,8 +234,9 @@ A layer is done when:
   `on_play`/`on_stop`, `state`), `core/audio/audio_sdl2.pyx` (the polling
   `_check_play` interval of 0.1 s that calls `stop()` at the end, and
   `unload`). The data path is SDL3: `SDL_LoadWAV`, one audio stream per
-  Sound opened with `SDL_OpenAudioDeviceStream`. Play puts the data and
-  resumes. The end is when `SDL_GetAudioStreamQueued` reaches 0. Volume is
+  Sound opened with `SDL_OpenAudioDeviceStream`. Play puts the data, flushes the stream
+  (`SDL_FlushAudioStream`: without it a resampled WAV keeps a few bytes queued
+  and never ends) and resumes. The end is when `SDL_GetAudioStreamQueued` reaches 0. Volume is
   `SDL_SetAudioStreamGain`. Loop puts the data again at the end.
 - **Tests:** `taudio` (the adapted test_audio, run with
   `SDL_AUDIO_DRIVER=dummy` where it has no device; then `length` comes from
