@@ -102,6 +102,22 @@ block smoke:
   assert SDL_GetTextureSize(tex, addr fw, addr fh)
   assert fw == float32(tw) and fh == float32(th)
   SDL_DestroyTexture(tex)
+  # Layer 4: the word copied into a zeroed RGBA surface, as the text
+  # provider does, and the solid renderer.
+  assert TTF_WasInit() > 0
+  assert TTF_GetFontHinting(font) == TTF_HINTING_NORMAL
+  assert TTF_GetFontKerning(font)
+  let canvas = SDL_CreateSurface(64, 64, SDL_PIXELFORMAT_RGBA32)
+  assert canvas != nil, fromCString(SDL_GetError())
+  assert pixel(canvas, 0, 0) == [0'u8, 0, 0, 0]
+  assert SDL_SetSurfaceAlphaMod(text, 255)
+  assert SDL_SetSurfaceBlendMode(text, SDL_BLENDMODE_NONE)
+  var at = SDL_Rect(x: 2, y: 3, w: text.w, h: text.h)
+  assert SDL_BlitSurface(text, nil, canvas, addr at)
+  SDL_DestroySurface(canvas)
+  let solid = TTF_RenderText_Solid(font, "Kivy", 0, SDL_Color(r: 255, g: 255, b: 255, a: 255))
+  assert solid != nil, fromCString(SDL_GetError())
+  SDL_DestroySurface(solid)
   SDL_DestroySurface(text)
   TTF_CloseFont(font)
   TTF_Quit()

@@ -116,6 +116,20 @@ proc flipHorizontal*(t: Texture) =
   t.uvw = -t.uvw
   t.updateTexCoords()
 
+proc blitData*(t: Texture; surface: ptr SDL_Surface) =
+  ## Replaces the pixels with those of `surface`, which it takes over and
+  ## which has the texture's size; the next draw uploads them.
+  ## texture.pyx Texture.blit_data
+  let old = t.surface
+  if old != nil:
+    SDL_DestroySurface(old)
+  let h = t.handle
+  if h != nil:
+    SDL_DestroyTexture(h)
+  t.handle = nil
+  t.owner = nil
+  t.surface = surface
+
 proc handle*(t: Texture; renderer: SDL_Renderer): nil SDL_Texture =
   ## The SDL texture to draw `t` with on `renderer`, uploading the surface
   ## the first time; nil if the upload fails. Called by the renderer.

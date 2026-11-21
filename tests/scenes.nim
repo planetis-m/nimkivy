@@ -13,6 +13,7 @@
 import std/[assertions, cmdline, sequtils, syncio]
 import nimkivy/sdl3/[sdl, image]
 import nimkivy/graphics/[instructions, context_instructions, vertex_instructions, renderer]
+import nimkivy/core/image
 
 const
   W = 800.cint
@@ -125,6 +126,33 @@ proc boxed(r, g, b: float; pos, size: (float, float)): Canvas =
   result.add newColor(r, g, b)
   result.add newRectangle(pos, size)
 
+proc addTextured(c: Canvas; v: VertexInstruction; name: string) =
+  # Adds an instruction with `source = a(name)` (scenes.py). Kivy sets the
+  # source from the kwargs before building the geometry; here it is set
+  # before the first draw, which builds it.
+  v.source = "reference/assets/" & name
+  c.add v
+
+proc graphicsTexture(): Canvas =
+  # scenes.py graphics_texture
+  let c = newCanvas()
+  c.add newColor(1, 1, 1, 1)
+  c.addTextured(newRectangle((20.0, 380.0), (360.0, 180.0)), "landscape.png")
+  c.addTextured(newRectangle((420.0, 340.0), (110.0, 220.0)), "portrait.png")
+  c.addTextured(newEllipse((580.0, 380.0), (180.0, 180.0)), "flag.png")
+  let rr = newRoundedRectangle((20.0, 140.0), (360.0, 180.0))
+  rr.radius = [40.0]
+  c.addTextured(rr, "landscape.png")
+  c.add newColor(1, 0.5, 0.5, 1)
+  c.addTextured(newRectangle((420.0, 140.0), (200.0, 100.0)), "landscape.jpg")
+  c.add newColor(1, 1, 1, 0.5)
+  c.addTextured(newEllipse((640.0, 140.0), (120.0, 120.0)), "flag.png")
+  c.add newColor(1, 1, 1, 1)
+  c.addTextured(newRectangle((20.0, 20.0), (200.0, 100.0)), "half_alpha.png")
+  c.addTextured(newRectangle((260.0, 20.0), (40.0, 30.0)), "small.png")
+  c.addTextured(newRectangle((320.0, 20.0), (160.0, 100.0)), "small.png")
+  result = c
+
 proc canvasOrder(): Canvas =
   # scenes.py canvas_order
   let root = widgetCanvas()
@@ -170,6 +198,7 @@ proc build(name: string): Canvas =
   case name
   of "graphics_basic", "graphics_basic_msaa": graphicsBasic()
   of "graphics_line": graphicsLine()
+  of "graphics_texture": graphicsTexture()
   of "canvas_order": canvasOrder()
   else: quit "unknown scene " & name
 

@@ -253,10 +253,12 @@ proc source*(b: BindTexture): string {.inline.} =
   ## The file the texture was loaded from ("" when none).
   b.source
 
-proc `source=`*(b: BindTexture; filename: string) =
-  ## Records the file name. Loading it is `core/image`'s `source=`, because
-  ## a graphics module cannot import the image loader above it.
+proc setSource*(b: BindTexture; filename: string; t: nil Texture) =
+  ## Records the file name and binds `t`, the texture loaded from it. The
+  ## setter `source=` that loads the file is in `core/image`, because a
+  ## graphics module cannot import the image loader above it.
   b.source = filename
+  `texture=`(b, t)
 
 # ---------------------------------------------------------------- VertexInstruction
 

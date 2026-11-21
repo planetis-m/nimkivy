@@ -50,7 +50,8 @@ proc. Source paths are relative to `upstream/kivy/kivy/`, Nimony paths to
 | 3 | `graphics/stencil_instructions.pyx` | `graphics/stencil_instructions.nim` | StencilPush/Use/UnUse/Pop, rectangles only, as clip rectangles |
 | 3 | `graphics/texture.pyx` | `graphics/texture.nim` | Texture: size, uvpos/uvsize, flip, from an SDL surface |
 | 3 | (replaces `graphics/opengl*.pyx`, `shader.pyx`, `vbo.pyx`, `context.pyx`) | `graphics/renderer.nim` | draws a canvas tree with SDL_Renderer: geometry, colour times opacity, translate stack, clip stack, render targets |
-| 4 | `core/image/__init__.py`, `core/image/img_sdl2.py` | `core/image.nim` | CoreImage: load with SDL3_image, the 'kv.texture' cache by filename |
+| 4 | `resources.py`, `kivy_data_dir` in `__init__.py` | `resources.nim` | resource_find, resource_add_path, the data directory (`data/`, or `KIVY_DATA_DIR`) |
+| 4 | `core/image/__init__.py`, `core/image/img_sdl2.py` | `core/image.nim` | CoreImage: load with SDL3_image, the 'kv.texture' cache by filename; the `source` setters of BindTexture and the vertex instructions |
 | 4 | `core/text/text_layout.pyx` | `core/text/text_layout.nim` | layout_text, LayoutLine, LayoutWord: wrapping, line_height, padding |
 | 4 | `core/text/__init__.py` | `core/text.nim` | LabelBase: register, resolve_font_name, render, render_lines (halign, valign), texture |
 | 4 | `core/text/text_sdl2.py`, `_text_sdl2.pyx` | `core/text/text_sdl3.nim` | the provider: font cache, get_extents, ascent and descent, render a word with SDL3_ttf |
@@ -173,7 +174,7 @@ proc. Source paths are relative to `upstream/kivy/kivy/`, Nimony paths to
 | 1 | event, properties, clock, utils, metrics, config | done: tproperties, tclock, tutils, tmetrics pass in debug and release; traces `events` and `clock` match, `properties` matches its first 44 lines (the rest is layer 6) |
 | 2 | sdl3/sdl, sdl3/ttf, sdl3/image | done: tsdl3 passes in debug and release (struct sizes against C; headless smoke test calling every binding: triangle read back, TTF word, PNG load and save, render target, WAV on a dummy audio stream) |
 | 3 | graphics/instructions, context_instructions, vertex_instructions, stencil_instructions, texture, renderer | done: tinstructions and tvertex_instructions pass in debug and release (test_line_rounded_rectangle; 2632 numbers of Kivy's geometry, 8 of them 1 ulp off; the canvas children after add, insert, remove and clear; opacity, colour state, translate, stencil clip drawn headless). Scenes, pixels only, on the OpenGL renderer: graphics_basic 0.00%, graphics_line 0.10%, canvas_order 0.00%, graphics_basic_msaa 0.27% (budgets 0.5% and 3%). Added SDL_GetCurrentRenderOutputSize to sdl3/sdl. |
-| 4 | core/image, core/text/text_layout, core/text, core/text/text_sdl3 | to do |
+| 4 | resources, core/image, core/text/text_layout, core/text, core/text/text_sdl3 | done: ttext (test_unicode_name; Roboto and registered fonts, bold/italic fallback, a name in data/fonts, missing font, wrapping, a long Greek word split between characters, pixels in the label colour, texture reuse, centring) and timage_core (PNG and JPEG sizes, flipped, missing file, cache, `source` on instructions) pass in debug and release; trace `label` matches all 20 lines; scene graphics_texture 0.00% (OpenGL renderer, budget 1%). Copied `data/fonts/` from Kivy. Added SDL_CreateSurface, SDL_BlitSurface, SDL_SetSurfaceBlendMode, SDL_SetSurfaceAlphaMod to sdl3/sdl, and TTF_RenderText_Solid, TTF_WasInit, TTF_GetFontHinting, TTF_GetFontKerning to sdl3/ttf (all called in tsdl3). Layer 3 changes: BindTexture's recording `source=` became `setSource` (the loading `source=` is in core/image), and Texture got `blitData`. Bugs filed: planetis-m/nimony-bugs-llms#331, #332 (comment on #311). |
 | 5 | input/motionevent, core/window, core/window/window_sdl3, base, app | to do |
 | 6 | uix/widget, layout, boxlayout, floatlayout, anchorlayout, relativelayout | to do |
 | 7 | uix/label, uix/image, uix/behaviors/button | to do |
@@ -197,14 +198,21 @@ code meets it, adds the `# GAP:` comment, and edits the row.
 | graphics/renderer | A stencil mask is the bounding box of what is drawn between StencilPush and StencilUse: exact for one Rectangle, which is all Kivy's own uses (Image, ScreenManager), but not for other shapes or several rectangles. | SDL_Renderer has no stencil buffer, only a clip rectangle |
 | graphics/renderer | A wide Line drawn with alpha below 1 blends its overlapping triangles (joints, caps, a closed end) twice, where Kivy draws it once through a stencil. | SDL_Renderer has no stencil buffer |
 | uix/screenmanager | Only FadeTransition (and NoTransition): two render-target textures, mixed `t*in + (1-t)*out` with a custom additive blend mode. The other ShaderTransitions and custom shaders (`fs`, `vs`) are not available. SDL's software renderer, which the headless tests use, refuses custom blend modes ("That operation is not supported", seen in tsdl3). | SDL_Renderer has no shaders |
-| core/text/text_sdl3 | Glyphs come from SDL3_ttf 3.2 (FreeType and HarfBuzz), where Kivy 2.3.2 uses the SDL2_ttf bundled in its wheel. Hinting, kerning and shaping can move glyphs by a pixel, and word widths can differ by a pixel, which can change where a line wraps. The `label` trace shows any difference in `texture_size`. | a different SDL_ttf version |
-| core/image | Decoding uses SDL3_image, where Kivy uses its bundled SDL2_image, so JPEG pixels can differ slightly. | a different SDL_image version |
+| core/text/text_sdl3 | Glyphs come from SDL3_ttf 3.2 (FreeType and HarfBuzz), where Kivy 2.3.2 uses the SDL2_ttf bundled in its wheel. Hinting, kerning and shaping can move glyphs by a pixel, and word widths can differ by a pixel, which can change where a line wraps. Measured: the `label` trace matches all 20 `texture_size` lines (Roboto, DejaVu Sans, sizes 15 and 40, bold, Greek, wrapping, line_height, padding, justify, a long word). Pixels are compared in the label scenes (layer 7). | a different SDL_ttf version |
+| core/image | Decoding uses SDL3_image, where Kivy uses its bundled SDL2_image, so JPEG pixels can differ slightly. Measured: graphics_texture (PNG and JPEG) 0.00% of pixels over the tolerance. | a different SDL_image version |
+| resources | Without `KIVY_DATA_DIR`, the data directory (fonts) is `data` under the current directory, where Kivy's is beside its package, wherever the program runs from. Tests run from the repository root. | Nimony has no `currentSourcePath`; `instantiationInfo` gives only the file name |
 | event, clock | Observers and Clock callbacks are held strongly. Kivy holds them weakly (WeakMethod, `release_ref`), so a dropped widget that is still bound is not collected, and its callbacks still run. Cycles need `--mm:orc`. | Nimony has no weak references |
 | clock, event | An exception in a callback is not caught and passed to an ExceptionManager (clock), or raised to the dispatcher's caller (event). Callbacks cannot raise. | Nimony's error model (no unwinding through closures) |
 | event | `bind` does not recognise the same method bound twice through two closures, so it is bound twice. Python's bound methods compare equal. | Nim has no bound methods; a closure compares by its environment |
 | clock | `idle` sleeps whole milliseconds (rounded down), where Kivy sleeps microseconds, so each sleep can be up to 1 ms short; the pacing loop then checks again and sleeps or starts the frame. | std/os has only `sleep(milsecs)` |
 | tests/tsdl3 | Only struct sizes are compared with C (Nimony's `const` sizeof against the C compiler's), not field offsets. | Nimony has no `offsetOf` (sem: "to implement"), and the run-time address of an importc field is the C compiler's, not Nimony's |
 | core/audio | WAV only. Kivy's SDL2 provider also plays OGG, MP3 and FLAC through SDL2_mixer. | SDL3_mixer is not installed; core SDL3 loads only WAV |
+
+## Design differences (not gaps: chosen, not forced)
+
+- `core/image`: the texture cache by file name never expires; Kivy's Cache drops entries after 60 s. A kiosk loads a fixed set of photos, so keeping them is fine.
+- `core/text`: a label's texture is filled at once, not on first draw; Label always refreshes after a change, so the result is the same.
+- Font lookup searches only `data/fonts` (and registered paths), not the system font folders.
 
 ## Decisions (coordinator, 2026-11-21, owner: "pragmatic, roll with it")
 

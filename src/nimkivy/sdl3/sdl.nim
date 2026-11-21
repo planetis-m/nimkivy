@@ -495,6 +495,18 @@ proc SDL_ConvertSurface*(surface: ptr SDL_Surface;
   ## A new surface with the pixels in another format, or nil on failure.
 proc SDL_DestroySurface*(surface: ptr SDL_Surface)
   ## Frees a surface.
+proc SDL_CreateSurface*(width, height: cint;
+    format: SDL_PixelFormat): nil ptr SDL_Surface
+  ## A new surface with zeroed pixels, or nil on failure.
+proc SDL_BlitSurface*(src: ptr SDL_Surface; srcrect: nil ptr SDL_Rect;
+    dst: ptr SDL_Surface; dstrect: nil ptr SDL_Rect): bool
+  ## Copies `src` onto `dst` at `dstrect`'s position, clipped, with `src`'s
+  ## blend mode and alpha modulation.
+proc SDL_SetSurfaceBlendMode*(surface: ptr SDL_Surface;
+    blendMode: SDL_BlendMode): bool
+  ## Sets how the surface is blended when blitted.
+proc SDL_SetSurfaceAlphaMod*(surface: ptr SDL_Surface; alpha: uint8): bool
+  ## Sets an alpha multiplier applied when the surface is blitted.
 
 # Events.
 proc SDL_PollEvent*(event: nil ptr SDL_Event): bool

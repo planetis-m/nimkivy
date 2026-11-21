@@ -4,9 +4,12 @@
 # Layer 1 writes `events` and `clock`, and the part of `properties` that a
 # plain dispatcher can show (the ReferenceList and Alias order of a Widget's
 # geometry, and VariableList forms). The Widget lines follow in layer 6.
+# Layer 4 writes `label`, through the core label.
 
-import std/[dirs, paths, strutils, syncio]
+import std/[dirs, formatfloat, paths, strutils, syncio]
 import nimkivy/[properties, clock]
+import nimkivy/core/text
+import nimkivy/core/text/text_sdl3
 
 type Log = ref object
   lines: seq[string]
@@ -185,6 +188,104 @@ proc traceClock() =
   c.stopClock()
   log.save "clock"
 
+# ------------------------------------------------------------------ label
+
+proc fmt3(v: int): string =
+  # Python's f"{float(v):.3f}"
+  formatFloat(float(v), ffDecimal, 3)
+
+proc labelTextureSize(l: LabelBase): (int, int) =
+  # uix/label.py Label.texture_update, which layer 7 ports: no texture for
+  # an empty text, else the refreshed core label's texture size.
+  let o = l.options
+  if l.text.len == 0 or ((o.halign == halignJustify or o.strip) and
+      pyStrip(l.text).len == 0):
+    result = (0, 0)
+  else:
+    l.refresh()
+    let t = l.texture
+    result = if t != nil: (t.width, t.height) else: (0, 0)
+
+proc traceLabel() =
+  # reference/traces.py trace_label, through the core label (LabelBase) with
+  # the options a Label passes it: font_size sp(15), halign 'auto'.
+  register("Deja", "data/fonts/DejaVuSans.ttf", fnBold = "data/fonts/Roboto-Bold.ttf")
+  const text = "Figs have been grown in Greece for thousands of years. The fruit is " &
+    "dried in the sun, pressed by hand and packed the same day."
+  type Setup = proc (l: LabelBase) {.closure.}
+  let r = "{'text': '" & text & "'"
+  proc wrap(l: LabelBase) =
+    l.text = text
+    l.textSize = (some(300.0), none[float]())
+  # An array: a seq literal of proc literals is rejected
+  # (planetis-m/nimony-bugs-llms#311).
+  let cases: array[20, (string, Setup)] = [
+    ("{'text': ''}", proc (l: LabelBase) {.closure.} = l.text = ""),
+    ("{'text': 'A'}", proc (l: LabelBase) {.closure.} = l.text = "A"),
+    ("{'text': 'Hello world'}", proc (l: LabelBase) {.closure.} = l.text = "Hello world"),
+    ("{'text': 'two\\nlines'}", proc (l: LabelBase) {.closure.} = l.text = "two\nlines"),
+    ("{'text': 'trailing space '}", proc (l: LabelBase) {.closure.} =
+      l.text = "trailing space "),
+    ("{'text': 'Ελληνικά'}", proc (l: LabelBase) {.closure.} = l.text = "Ελληνικά"),
+    ("{'text': 'Hello', 'font_size': 40}", proc (l: LabelBase) {.closure.} =
+      l.text = "Hello"
+      l.options.fontSize = 40),
+    ("{'text': 'Hello', 'bold': True}", proc (l: LabelBase) {.closure.} =
+      l.text = "Hello"
+      l.options.bold = true),
+    ("{'text': 'Hello', 'font_name': 'Deja'}", proc (l: LabelBase) {.closure.} =
+      l.text = "Hello"
+      l.options.fontName = "Deja"),
+    ("{'text': 'Hello', 'font_name': 'Deja', 'bold': True}",
+      proc (l: LabelBase) {.closure.} =
+        l.text = "Hello"
+        l.options.fontName = "Deja"
+        l.options.bold = true),
+    (r & ", 'text_size': (300, None)}", proc (l: LabelBase) {.closure.} = wrap(l)),
+    (r & ", 'text_size': (300, None), 'line_height': 1.25}",
+      proc (l: LabelBase) {.closure.} =
+        wrap(l)
+        l.options.lineHeight = 1.25),
+    (r & ", 'text_size': (300, None), 'line_height': 0.8}",
+      proc (l: LabelBase) {.closure.} =
+        wrap(l)
+        l.options.lineHeight = 0.8),
+    (r & ", 'text_size': (300, 100)}", proc (l: LabelBase) {.closure.} =
+      l.text = text
+      l.textSize = (some(300.0), some(100.0))),
+    (r & ", 'text_size': (300, 40), 'valign': 'middle'}",
+      proc (l: LabelBase) {.closure.} =
+        l.text = text
+        l.textSize = (some(300.0), some(40.0))
+        l.options.valign = valignMiddle),
+    ("{'text': 'Hello', 'padding': (10, 5)}", proc (l: LabelBase) {.closure.} =
+      l.text = "Hello"
+      l.options.setPadding([10.0, 5])),
+    (r & ", 'text_size': (300, None), 'padding': (20, 0)}",
+      proc (l: LabelBase) {.closure.} =
+        wrap(l)
+        l.options.setPadding([20.0, 0])),
+    (r & ", 'text_size': (300, None), 'halign': 'justify'}",
+      proc (l: LabelBase) {.closure.} =
+        wrap(l)
+        l.options.halign = halignJustify),
+    ("{'text': 'averyveryverylongwordthatcannotwrap', 'text_size': (100, None)}",
+      proc (l: LabelBase) {.closure.} =
+        l.text = "averyveryverylongwordthatcannotwrap"
+        l.textSize = (some(100.0), none[float]())),
+    ("{'text': 'Hello', 'text_size': (None, 100)}", proc (l: LabelBase) {.closure.} =
+      l.text = "Hello"
+      l.textSize = (none[float](), some(100.0)))]
+  for (kw, setup) in cases:
+    let l = newLabelSDL3()
+    l.options.fontSize = 15
+    l.options.halign = halignAuto
+    setup(l)
+    let (w, h) = labelTextureSize(l)
+    log.emit(kw, "->", "(" & fmt3(w) & ", " & fmt3(h) & ")")
+  log.save "label"
+
 traceProperties()
 traceEvents()
 traceClock()
+traceLabel()

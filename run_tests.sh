@@ -29,8 +29,8 @@ for mode in debug release; do
   build traces "$mode" tests/traces.nim
   rm -rf tests/out/traces
   "./bin/traces-$mode"
-  # Layer 1 traces must match exactly.
-  "$python" reference/compare.py tests/out --traces events clock
+  # Layer 1 traces, and layer 4's label sizes, must match exactly.
+  "$python" reference/compare.py tests/out --traces events clock label
   # The properties trace gets its Widget lines in layer 6: until then the
   # lines written so far must be the first lines of Kivy's.
   n=$(wc -l < tests/out/traces/properties.txt)
@@ -47,8 +47,8 @@ for mode in debug release; do
   # off GL's and refuses Kivy's blend mode (PORTING.md, Gaps).
   build scenes "$mode" tests/scenes.nim
   SDL_RENDER_DRIVER=opengl "./bin/scenes-$mode" graphics_basic graphics_basic_msaa graphics_line \
-    canvas_order
+    graphics_texture canvas_order
   "$python" reference/compare.py tests/out --pixels graphics_basic graphics_basic_msaa \
-    graphics_line canvas_order
+    graphics_line graphics_texture canvas_order
 done
 echo "all passed"

@@ -72,6 +72,16 @@ proc TTF_GetStringSize*(font: TTF_Font; text: cstring; length: csize_t;
 proc TTF_RenderText_Blended*(font: TTF_Font; text: cstring; length: csize_t;
     fg: SDL_Color): nil ptr SDL_Surface
   ## A new ARGB surface with the antialiased text, or nil on failure.
+proc TTF_RenderText_Solid*(font: TTF_Font; text: cstring; length: csize_t;
+    fg: SDL_Color): nil ptr SDL_Surface
+  ## A new 8-bit palettized surface with the text, not antialiased, or nil on
+  ## failure.
+proc TTF_WasInit*(): cint
+  ## How many times the library was initialized and not yet quit.
+proc TTF_GetFontHinting*(font: TTF_Font): TTF_HintingFlags
+  ## The current hinter.
+proc TTF_GetFontKerning*(font: TTF_Font): bool
+  ## Whether kerning is on.
 proc TTF_SetFontDirection*(font: TTF_Font; direction: TTF_Direction): bool
   ## Sets the direction text is shaped in.
 proc TTF_SetFontScript*(font: TTF_Font; script: uint32): bool
