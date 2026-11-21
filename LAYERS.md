@@ -244,23 +244,10 @@ A layer is done when:
 - **Done:** the tests pass, and the kiosk's `voice.py` usage (load, bind
   on_stop, play, stop, unload, `state == "play"`) works on a real device.
 
-## 10. Android packaging (notes and a smoke test)
+## 10. Whole-stack check on this machine (owner, 2026-11-22: no tablet testing for now)
 
-- **Goal:** a nimkivy app runs on an Android 10" tablet. The kiosk's current
-  build is Kivy and buildozer (`kiosk/buildozer.spec`).
-- **Path to investigate:** compile with Nimony using `--os:android
-  --cpu:arm64` and the NDK's clang as the C compiler, into a shared library
-  `libmain.so`. Build it with SDL3's Android project template (SDLActivity
-  Java, Gradle), which loads `libSDL3.so`, `libSDL3_ttf.so`,
-  `libSDL3_image.so` and `libmain.so` and calls `SDL_main`. Fonts, images
-  and WAVs go in the APK's assets and are read through SDL's IOStream (SDL3
-  resolves relative paths in the APK assets on Android). Keep the screen on
-  and use full-screen immersive mode with SDLActivity settings. `on_pause`
-  and `on_resume` map to the background and foreground events, and Back
-  maps to key 27 (`SDL_HINT_ANDROID_TRAP_BACK_BUTTON`).
-- **Unknowns to settle first:** whether Nimony's C backend cross-compiles
-  cleanly to android/arm64 (try a hello-world shared library), how the NDK
-  toolchain is passed to it, and whether SDL3 3.4's Android template builds
-  with the installed SDK.
-- **Done:** a smoke-test APK shows the `boxlayout_tests` scene and answers
-  touches, and the steps are written down in `ANDROID.md`.
+- **Goal:** all of phase 1 works together on the development machine (Linux, SDL3, OpenGL renderer): every reference scene and trace, plus one small app that uses every widget, layout, animation, screen change, the modal view and audio together, driven by a scripted run.
+- **Profiling baseline:** measure frame time on this machine for that app and for the busiest reference scenes, and record where time goes (properties, layout, drawing, text). This is the "before" number for phase 2 (`ROADMAP.md`).
+- **Android:** not tested now. Write down in `ANDROID.md` what a later Android build will need (the path below), without building it.
+- **Path for later Android work:** compile with Nimony using `--os:android --cpu:arm64` (and `arm` for 32-bit) and the NDK's clang into `libmain.so`, packaged with SDL3's Android project template (SDLActivity), assets read through SDL's IOStream, Back as key 27 (`SDL_HINT_ANDROID_TRAP_BACK_BUTTON`), keep-screen-on and immersive mode in SDLActivity.
+- **Done:** the scripted whole-stack run passes in debug and release, the profiling baseline is recorded, `ANDROID.md` is written.
