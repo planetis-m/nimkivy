@@ -16,6 +16,12 @@
 ##
 ## Blending is Kivy's `glBlendFuncSeparate(SRC_ALPHA, ONE_MINUS_SRC_ALPHA,
 ## ONE, ONE)` (instructions.pyx `reset_gl_context`).
+##
+## Two instructions exist only for FadeTransition (layer 8), because they
+## need the SDL renderer: `Fbo` draws its children into a render-target
+## texture with a fresh render context, cleared to its `clearColor` (Kivy's
+## Fbo with ClearColor and ClearBuffers), and `FadeMix` draws two such
+## textures mixed, `t*in + (1-t)*out`, as FadeTransition's shader does.
 
 import std/math
 import ../sdl3/sdl
@@ -32,9 +38,39 @@ type
     # A bounding box in window coordinates, y up; empty when x0 > x1.
     x0, y0, x1, y1: float
 
+  Fbo* = ref object of InstructionGroup
+    ## Draws its children into a texture of `width` x `height`, cleared to
+    ## `clearColor` first, when it or a child changed. Kivy's Fbo, only as
+    ## FadeTransition uses it (graphics/fbo.pyx).
+    width*, height*: int
+    clearColor*: array[4, float]
+    texture*: nil Texture          ## the render target, made on first draw
+
+  FadeMix* = ref object of Instruction
+    ## A rectangle showing `t*in + (1-t)*out` of two Fbo textures: the
+    ## render context and shader of FadeTransition (uix/screenmanager.py).
+    fboOut, fboIn: Fbo
+    x, y, w, h: float
+    t: float
+
+  RenderState = object
+    # The render context state an Fbo saves and restores.
+    target: nil Texture
+    height: float32
+    color: array[4, float]
+    opacity: float
+    opacityStack: seq[float]
+    tx, ty: float32
+    matrixStack: seq[(float32, float32)]
+    texture: nil Texture
+    phase: StencilPhase
+    mask: Box
+    clipStack: seq[SDL_Rect]
+
   Renderer* = ref object
     ## Draws canvases on an SDL renderer it does not own.
     sdl: SDL_Renderer
+    target: nil Texture               # the current render target; nil is the window
     blendMode: SDL_BlendMode
     height: float32                   # of the current target, for the y flip
     color: array[4, float]            # Kivy's 'color' state
@@ -59,7 +95,7 @@ proc newRenderer*(sdl: SDL_Renderer): Renderer =
   # `multisamples = 2`: edges of ellipses, rounded corners and wide lines are
   # more jagged (graphics_basic_msaa: 0.27% of pixels differ), because
   # SDL_Renderer has no MSAA
-  result = Renderer(sdl: sdl, blendMode: SDL_BLENDMODE_BLEND, height: 0, color: [1.0, 1, 1, 1],
+  result = Renderer(sdl: sdl, target: nil, blendMode: SDL_BLENDMODE_BLEND, height: 0, color: [1.0, 1, 1, 1],
     opacity: 1, opacityStack: @[], tx: 0, ty: 0, matrixStack: @[], texture: nil, phase: spNone,
     mask: emptyBox(), clipStack: @[], vbuf: @[], ibuf: @[], points: @[])
   let kivyBlend = SDL_ComposeCustomBlendMode(SDL_BLENDFACTOR_SRC_ALPHA,
@@ -204,9 +240,16 @@ proc drawVertex(r: Renderer; v: VertexInstruction) =
       # stencil, because SDL_Renderer has no stencil buffer
       r.drawTriangles(v)
 
+proc applyFbo(r: Renderer; f: Fbo)
+proc applyFadeMix(r: Renderer; m: FadeMix)
+
 proc apply(r: Renderer; i: Instruction) =
   # One instruction, as its Kivy `apply`.
-  if i of VertexInstruction:
+  if i of Fbo:
+    r.applyFbo(Fbo(i))
+  elif i of FadeMix:
+    r.applyFadeMix(FadeMix(i))
+  elif i of VertexInstruction:
     r.drawVertex(VertexInstruction(i))
   elif i of Color:
     r.color = Color(i).rgba
@@ -300,6 +343,103 @@ proc setTarget*(r: Renderer; target: nil Texture): bool =
     result = SDL_SetRenderTarget(r.sdl, nil)
   else:
     result = SDL_SetRenderTarget(r.sdl, target.handle(r.sdl))
+  if result:
+    r.target = target
+
+# ---------------------------------------------------------------- Fbo, FadeMix
+
+proc newFbo*(width, height: int; clearColor: array[4, float]): Fbo =
+  ## `Fbo(size=(width, height))` cleared to `clearColor` on each draw.
+  Fbo(children: @[], width: width, height: height, clearColor: clearColor, texture: nil)
+
+proc saveState(r: Renderer): RenderState =
+  RenderState(target: r.target, height: r.height, color: r.color, opacity: r.opacity,
+    opacityStack: r.opacityStack, tx: r.tx, ty: r.ty, matrixStack: r.matrixStack,
+    texture: r.texture, phase: r.phase, mask: r.mask, clipStack: r.clipStack)
+
+proc restoreState(r: Renderer; s: RenderState) =
+  discard r.setTarget(s.target)
+  r.height = s.height
+  r.color = s.color
+  r.opacity = s.opacity
+  r.opacityStack = s.opacityStack
+  r.tx = s.tx
+  r.ty = s.ty
+  r.matrixStack = s.matrixStack
+  r.texture = s.texture
+  r.phase = s.phase
+  r.mask = s.mask
+  r.clipStack = s.clipStack
+  r.setClip()
+
+proc applyFbo(r: Renderer; f: Fbo) =
+  # Fbo.apply: when flagged (or new), bind the texture, clear it, draw the
+  # children with Kivy's initial render context, and go back.
+  var t = f.texture
+  if t == nil or t.width != f.width or t.height != f.height:
+    t = r.newRenderTarget(f.width, f.height)
+    f.texture = t
+    f.flagUpdate()
+  if t != nil and f.needsRedraw:
+    let saved = r.saveState()
+    if r.setTarget(t):
+      r.updateHeight()
+      r.clipStack = @[]
+      r.setClip()
+      r.clear(f.clearColor)
+      r.color = [1.0, 1, 1, 1]
+      r.opacity = 1
+      r.opacityStack = @[]
+      r.tx = 0
+      r.ty = 0
+      r.matrixStack = @[]
+      r.texture = nil
+      r.phase = spNone
+      var k = 0
+      while k < f.children.len:
+        r.apply(f.children[k])
+        inc k
+      r.restoreState(saved)
+  f.flagUpdateDone()
+
+proc newFadeMix*(fboOut, fboIn: Fbo; pos, size: (float, float)): FadeMix =
+  ## The mix of the two textures in a rectangle at `pos` of `size`, at t 0.
+  result = FadeMix(fboOut: fboOut, fboIn: fboIn, x: pos[0], y: pos[1], w: size[0],
+    h: size[1], t: 0)
+  result.flagUpdate()
+
+proc t*(m: FadeMix): float {.inline.} =
+  ## How far the mix is: 0 shows `out`, 1 shows `in`.
+  m.t
+
+proc `t=`*(m: FadeMix; t: float) =
+  ## Sets how far the mix is (FadeTransition's `render_ctx['t']`).
+  m.t = t
+  m.flagUpdate()
+
+proc applyFadeMix(r: Renderer; m: FadeMix) =
+  # FadeTransition's shader, `mix(cout, cin, t)` written over the target, in
+  # two copies: `out` times 1-t replacing what is there (its alpha is 1, as
+  # the Fbo was cleared to opaque black, so Kivy's blending replaces too),
+  # then `in` times t added.
+  let tOut = m.fboOut.texture
+  let tIn = m.fboIn.texture
+  if tOut != nil and tIn != nil:
+    let hOut = tOut.handle(r.sdl)
+    let hIn = tIn.handle(r.sdl)
+    if hOut != nil and hIn != nil:
+      let topLeft = r.toSdl(float32(m.x), float32(m.y + m.h))
+      var dst = SDL_FRect(x: topLeft.x, y: topLeft.y, w: float32(m.w), h: float32(m.h))
+      let k = float32(1.0 - m.t)
+      discard SDL_SetTextureBlendMode(hOut, SDL_BLENDMODE_NONE)
+      discard SDL_SetTextureColorModFloat(hOut, k, k, k)
+      discard SDL_SetTextureAlphaModFloat(hOut, 1)
+      discard SDL_RenderTexture(r.sdl, hOut, nil, addr dst)
+      discard SDL_SetTextureBlendMode(hIn, SDL_BLENDMODE_ADD)
+      discard SDL_SetTextureColorModFloat(hIn, 1, 1, 1)
+      discard SDL_SetTextureAlphaModFloat(hIn, float32(m.t))
+      discard SDL_RenderTexture(r.sdl, hIn, nil, addr dst)
+  m.flagUpdateDone()
 
 proc readPixels*(r: Renderer): nil ptr SDL_Surface =
   ## The pixels of the current target in a new surface (free it with

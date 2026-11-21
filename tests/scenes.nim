@@ -1,5 +1,4 @@
-# Renders the reference scenes of reference/scenes.py that nimkivy can build
-# so far, into tests/out/<scene>.png and <scene>.txt, for
+# Renders the reference scenes of reference/scenes.py into tests/out/<scene>.png and <scene>.txt, for
 # `reference/compare.py tests/out <scene> ...`:
 #
 #   bin/scenes-<mode> graphics_basic boxlayout_tests ...
@@ -9,7 +8,9 @@
 # run_tests.sh uses opengl), cleared white. After a few frames (the layouts
 # run before each frame) the window takes a screenshot, and the `.txt` gets
 # every widget's class, pos and size (and a Label's texture_size, an Image's
-# texture_size and norm_image_size), walking from each root widget.
+# texture_size and norm_image_size), walking from each root widget. What
+# scenes.py schedules at 0.2 s (opening a modal, freezing a fade) runs after
+# the first frames, followed by a few more.
 
 import std/[formatfloat, os, strutils, syncio]
 from std/files import tryRemoveFile, moveFile
@@ -17,7 +18,8 @@ from std/paths import path
 import nimkivy/[config, clock]
 import nimkivy/graphics/[context_instructions, vertex_instructions]
 import nimkivy/core/image
-import nimkivy/uix/[boxlayout, floatlayout, anchorlayout, label, image]
+import nimkivy/uix/[boxlayout, floatlayout, anchorlayout, label, image, screenmanager,
+  modalview]
 
 proc a(name: string): string =
   # scenes.py a(): an asset of reference/assets.
@@ -517,6 +519,109 @@ proc imageMisc(): Widget =
   root.place(empty, 410, 10, 380, 280)
   result = root
 
+type
+  LateAction = proc () {.closure.}
+    # What scenes.py schedules at 0.2 s (Clock.schedule_once): run by
+    # `shoot` after the first frames.
+  Late = ref object
+    action: nil LateAction
+
+let late = Late(action: nil)
+
+proc screenRelative(): Widget =
+  # scenes.py screen_relative
+  let root = newFloatLayout()
+  let sm = newScreenManager()
+  sm.sizeHint = (none[float](), none[float]())
+  sm.size = (500.0, 400.0)
+  sm.pos = (200.0, 100.0)
+  let s = newScreen("one")
+  s.addWidget(boxed(0.9, 0.9, 0.7))
+  let box = newBoxLayout()
+  box.padding = [20.0]
+  box.spacing = 20
+  box.addWidget(boxed(1, 0, 0))
+  box.addWidget(boxed(0, 0, 1, proc (w: Widget) {.closure.} = w.sizeHintY = 0.5))
+  s.addWidget(box)
+  s.addWidget(boxed(0, 0.6, 0, proc (w: Widget) {.closure.} =     # local (0, 0)
+    w.sizeHint = (none[float](), none[float]())
+    w.size = (50.0, 50.0)
+    w.pos = (0.0, 0.0)))
+  s.addWidget(boxed(0.5, 0, 0.5, proc (w: Widget) {.closure.} =   # clipped
+    w.sizeHint = (none[float](), none[float]())
+    w.size = (80.0, 80.0)
+    w.pos = (450.0, 350.0)))
+  sm.addWidget(s)
+  root.addWidget(sm)
+  result = root
+
+proc fadeHalf(): Widget =
+  # scenes.py fade_half: FadeTransition frozen at progress 0.5.
+  let sm = newScreenManager()
+  let fade = newFadeTransition()
+  fade.duration = 10
+  sm.transition = fade
+  let one = newScreen("one")
+  let two = newScreen("two")
+  one.addWidget(boxed(0.9, 0.2, 0.2))
+  one.addWidget(boxed(1, 1, 1, proc (w: Widget) {.closure.} =
+    w.sizeHint = (0.4, 0.4)
+    w.posHint = {"x": 0.1, "y": 0.1}))
+  two.addWidget(boxed(0.2, 0.2, 0.9, proc (w: Widget) {.closure.} =
+    w.sizeHint = (0.6, 0.6)
+    w.posHint = {"right": 0.9, "top": 0.9}))
+  sm.addWidget(one)
+  sm.addWidget(two)
+  late.action = proc () {.closure.} =
+    sm.current = "two"
+    let tr = sm.transition
+    let a = tr.anim
+    if a != nil:
+      a.cancel(tr)    # stop the clock-driven progress: deterministic picture
+    tr.animProgress(0.5)
+  result = sm
+
+proc modalCustom(): Widget =
+  # scenes.py modal_custom: the kiosk's picker style.
+  let root = newWidget()
+  root.addWidget(boxed(0.2, 0.6, 0.3, proc (w: Widget) {.closure.} =
+    w.pos = (0.0, 0.0)
+    w.size = (800.0, 600.0)))
+  let mv = newModalView()
+  mv.sizeHint = (none[float](), none[float]())
+  mv.size = (420.0, 260.0)
+  mv.autoDismiss = true
+  mv.background = ""
+  mv.backgroundColor = [0.0, 0, 0, 0]
+  mv.overlayColor = [0.29, 0.18, 0.16, 0.45]
+  let panel = newBoxLayout()
+  panel.orientation = orientationVertical
+  panel.padding = [20.0]
+  panel.spacing = 10
+  frame(panel, [0.98, 0.96, 0.94, 1])
+  let title = newLabel("Choose language")
+  title.color = [0.29, 0.18, 0.16, 1]
+  title.fontSize = 24
+  title.bold = true
+  panel.addWidget(title)
+  panel.addWidget(boxed(0.74, 0.65, 0.44))
+  mv.addWidget(panel)
+  late.action = proc () {.closure.} = mv.open(animation = false)
+  result = root
+
+proc modalDefault(): Widget =
+  # scenes.py modal_default: Kivy's defaults (nimkivy's background is a
+  # plain white box, not the atlas image: expected to differ).
+  let root = newWidget()
+  root.addWidget(boxed(0.9, 0.9, 0.9, proc (w: Widget) {.closure.} =
+    w.pos = (0.0, 0.0)
+    w.size = (800.0, 600.0)))
+  let mv = newModalView()
+  mv.sizeHint = (0.5, 0.4)
+  mv.addWidget(newLabel("default ModalView"))
+  late.action = proc () {.closure.} = mv.open(animation = false)
+  result = root
+
 proc build(name: string): Widget =
   case name
   of "graphics_basic", "graphics_basic_msaa": graphicsBasic()
@@ -532,6 +637,10 @@ proc build(name: string): Widget =
   of "label_default": labelDefault()
   of "image_fit": imageFit()
   of "image_misc": imageMisc()
+  of "screen_relative": screenRelative()
+  of "fade_half": fadeHalf()
+  of "modal_custom": modalCustom()
+  of "modal_default": modalDefault()
   else: quit "unknown scene " & name
 
 # ---------------------------------------------------------------- runner
@@ -548,6 +657,12 @@ proc shoot(name: string) =
   Window.addWidget(root)
   for _ in 0 ..< 5:
     discard EventLoop.idle()
+  let act = late.action
+  if act != nil:
+    late.action = nil
+    act()
+    for _ in 0 ..< 5:
+      discard EventLoop.idle()
   var cwd = ""
   try:
     cwd = getCurrentDir()
@@ -576,7 +691,10 @@ proc shoot(name: string) =
     writeFile(cwd / "tests" / "out" / (name & ".txt"), lines.join("\n") & "\n")
   except:
     quit "cannot write " & name & ".txt"
-  Window.removeWidget(root)
+  let tops = Window.children
+  for top in tops:
+    if top of ModalView: ModalView(top).dismiss(animation = false)
+    else: Window.removeWidget(top)
   echo "wrote tests/out/", name, ".png and .txt"
 
 proc main() =

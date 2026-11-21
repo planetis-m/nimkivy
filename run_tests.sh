@@ -30,18 +30,24 @@ for mode in debug release; do
   rm -rf tests/out/traces
   "./bin/traces-$mode"
   # The traces written so far must match Kivy's exactly.
-  "$python" reference/compare.py tests/out --traces events clock label touch properties
+  "$python" reference/compare.py tests/out --traces events clock label touch properties \
+    animation screens modal
   # The scenes drawn so far: geometry exact, pixels within budget. They use
   # SDL's OpenGL renderer through the offscreen driver's EGL: the software
   # renderer rasterizes long thin triangles up to a pixel off GL's and
   # refuses Kivy's blend mode (PORTING.md, Gaps).
   scenes="graphics_basic graphics_basic_msaa graphics_line graphics_texture canvas_order
     boxlayout_tests boxlayout_hints floatlayout_hints anchorlayout_tests
-    label_align image_fit image_misc label_wrap label_default"
+    label_align image_fit image_misc label_wrap label_default
+    screen_relative fade_half modal_custom"
   # Known geometry differences (one label a pixel narrower: SDL3_ttf) are
   # listed exactly in reference/known-geometry-diffs.txt; any other fails.
   build scenes "$mode" tests/scenes.nim
-  SDL_RENDER_DRIVER=opengl "./bin/scenes-$mode" $scenes
+  SDL_RENDER_DRIVER=opengl "./bin/scenes-$mode" $scenes modal_default
   "$python" reference/compare.py tests/out $scenes
+  # Kivy's default ModalView background is an atlas image, which is out of
+  # scope: nimkivy draws a plain white box, so only the geometry must match.
+  diff reference/out/modal_default.txt tests/out/modal_default.txt
+  echo "ok   modal_default geometry (pixels differ as expected: SCOPE.md, ModalView)"
 done
 echo "all passed"

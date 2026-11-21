@@ -5,12 +5,14 @@
 # real Widget and BoxLayout). Layer 4 writes `label`, through the core
 # label; layer 7 moves it to the Label widget, as traces.py does. Layer 5
 # writes `touch`; layers 6 and 7 give it the real Widget, FloatLayout and
-# ButtonBehavior.
+# ButtonBehavior. Layer 8 writes `animation`, `screens` and `modal`; the
+# Window observer `touch` binds stays bound, as in traces.py, so the `modal`
+# touches are logged by it too.
 
 import std/[dirs, formatfloat, os, paths, strutils, syncio]
-import nimkivy/[properties, clock, config, base]
+import nimkivy/[properties, clock, config, base, animation]
 import nimkivy/core/text
-import nimkivy/uix/[boxlayout, floatlayout, label]
+import nimkivy/uix/[boxlayout, floatlayout, label, screenmanager, modalview]
 import nimkivy/uix/behaviors/button
 import stubs
 
@@ -254,6 +256,75 @@ proc traceLabel() =
     log.emit(kw, "->", "(" & fmt3(w) & ", " & fmt3(h) & ")")
   log.save "label"
 
+# ------------------------------------------------------------------ animation
+
+proc tickFor(seconds: float) =
+  # traces.py: `while time.time() - t0 < s: time.sleep(0.01); Clock.tick()`
+  let t0 = time()
+  while time() - t0 < seconds:
+    sleep(10)
+    Clock.tick()
+
+proc logOnComplete(a: Animation; text: string; w: Widget) =
+  # Logs `text` and w's opacity when `a` completes (one closure per call).
+  a.bind("on_complete", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+    log.emit(text, fmt3(w.opacity))
+    result = false)
+
+proc traceAnimation() =
+  # reference/traces.py trace_animation
+  let w = newWidget()
+  w.opacity = 0
+  let anim = newAnimation({"opacity": 1.0}, duration = 0.2)
+  anim.bind("on_start", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+    log.emit "on_start"
+    result = false)
+  anim.logOnComplete("on_complete opacity", w)
+  var progress: seq[float] = @[]
+  anim.bind("on_progress", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+    progress.add args[1].num
+    result = false)
+  anim.start(w)
+  # traces.py checks `w in [x["widget"] for x in anim._widgets.values()]`.
+  log.emit("after start opacity", fmt3(w.opacity), "running",
+    if anim.havePropertiesToAnimate(w): "True" else: "False")
+  tickFor(0.5)
+  var monotonic = true
+  for i in 1 ..< progress.len:
+    if progress[i] < progress[i - 1]: monotonic = false
+  log.emit("progress first", fmt3(progress[0]), "last", fmt3(progress[^1]), "monotonic",
+    if monotonic: "True" else: "False")
+  let w2 = newWidget()
+  w2.opacity = 1
+  let a1 = newAnimation({"opacity": 0.0}, duration = 0.1)
+  let a2 = newAnimation({"opacity": 0.5}, duration = 0.3)
+  a1.logOnComplete("a1 complete opacity", w2)
+  a2.logOnComplete("a2 complete opacity", w2)
+  a1.start(w2)
+  a2.start(w2)  # both run on the same property; the later write each frame wins
+  tickFor(0.6)
+  let w3 = newWidget()
+  w3.opacity = 1
+  let a3 = newAnimation({"opacity": 0.0}, duration = 1)
+  a3.bind("on_complete", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+    log.emit "a3 complete (stop)"
+    result = false)
+  a3.start(w3)
+  Clock.tick()
+  a3.stop(w3)
+  let a4 = newAnimation({"opacity": 0.0}, duration = 1)
+  a4.bind("on_complete", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+    log.emit "a4 complete (must not appear: cancel)"
+    result = false)
+  a4.start(w3)
+  a4.cancel(w3)
+  let a5 = newAnimation({"opacity": 0.25}, duration = 0)
+  a5.logOnComplete("a5 duration 0 complete opacity", w3)
+  a5.start(w3)
+  Clock.tick()
+  Clock.tick()
+  log.save "animation"
+
 # ------------------------------------------------------------------ touch
 
 type
@@ -359,6 +430,112 @@ proc traceTouch() =
   win.removeWidget(root)
   log.save "touch"
 
+# ------------------------------------------------------------------ screens
+
+proc pyList(items: seq[string]): string =
+  # Python's repr of a list of strings: ['a', 'b']
+  result = "["
+  for i, x in items:
+    if i > 0: result.add ", "
+    result.add "'" & x & "'"
+  result.add "]"
+
+proc childNames(sm: ScreenManager): string =
+  var names: seq[string] = @[]
+  for c in sm.children:
+    if c of Screen: names.add Screen(c).name
+  result = pyList(names)
+
+proc logScreenEvent(s: Screen; e: string) =
+  # One closure per call: closures made in a loop share the loop's variables.
+  s.bind(e, proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+    log.emit(Screen(d).name, e)
+    result = false)
+
+proc newS(name: string): Screen =
+  # traces.py trace_screens: class S(Screen) logging its four events.
+  result = newScreen(name)
+  for ev in ["on_pre_enter", "on_enter", "on_pre_leave", "on_leave"]:
+    result.logScreenEvent(ev)
+
+proc pyTrue(b: bool): string =
+  if b: "True" else: "False"
+
+proc traceScreens() =
+  # reference/traces.py trace_screens
+  let win = Window
+  let sm = newScreenManager()
+  let fade = newFadeTransition()
+  fade.duration = 0.1
+  sm.transition = fade
+  win.addWidget(sm)
+  log.emit "# add first screen"
+  sm.addWidget(newS("a"))
+  log.emit("current", sm.current.get("None"))
+  sm.addWidget(newS("b"))
+  sm.addWidget(newS("c"))
+  log.emit("screen_names", pyList(sm.screenNames), "children", childNames(sm))
+  log.emit "# current = b"
+  sm.current = "b"
+  log.emit("is_active", pyTrue(sm.transition.isActive), "children", childNames(sm))
+  log.emit "# current = c while a->b is running"
+  sm.current = "c"
+  tickFor(0.4)
+  log.emit("after", "current", sm.current.get("None"), "is_active",
+    pyTrue(sm.transition.isActive), "children", childNames(sm))
+  log.emit "# current = c again (no-op)"
+  sm.current = "c"
+  win.removeWidget(sm)
+  log.save "screens"
+
+# ------------------------------------------------------------------ modal
+
+proc logModalEvent(mv: ModalView; e: string) =
+  mv.bind(e, proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+    log.emit e
+    result = false)
+
+proc touchAt(x, y: float) =
+  # traces.py make_touch(x, y): touch_down() then touch_up()
+  let t = newUnitTestTouch(x, y)
+  t.touchDown()
+  t.touchUp()
+
+proc traceModal() =
+  # reference/traces.py trace_modal
+  let win = Window
+  let mv = newModalView()
+  mv.sizeHint = (none[float](), none[float]())
+  mv.size = (200.0, 100.0)
+  for ev in ["on_pre_open", "on_open", "on_pre_dismiss", "on_dismiss"]:
+    mv.logModalEvent(ev)
+  proc inWindow(mv: ModalView): string =
+    pyTrue(Window.children.find(WidgetBase(mv)) >= 0)
+  log.emit "# open(animation=False)"
+  mv.open(animation = false)
+  log.emit("is_open", pyTrue(mv.isOpen), "center", r(mv.center), "in window", inWindow(mv))
+  log.emit "# touch inside"
+  touchAt(400, 300)
+  log.emit("is_open", pyTrue(mv.isOpen))
+  log.emit "# touch outside"
+  touchAt(10, 10)
+  log.emit("is_open", pyTrue(mv.isOpen), "in window", inWindow(mv))
+  log.emit "# open again, escape key"
+  mv.open(animation = false)
+  discard win.dispatch("on_keyboard", toValue(27), toValue(41), noneValue(),
+    toValue(newSeq[Value]()))
+  log.emit("is_open after escape (animated dismiss pending)", pyTrue(mv.isOpen))
+  tickFor(0.3)
+  log.emit("is_open after animation", pyTrue(mv.isOpen))
+  log.emit "# auto_dismiss False"
+  mv.autoDismiss = false
+  mv.open(animation = false)
+  touchAt(10, 10)
+  log.emit("is_open", pyTrue(mv.isOpen))
+  mv.dismiss(animation = false)
+  log.emit("is_open", pyTrue(mv.isOpen))
+  log.save "modal"
+
 # traces.py sets Config before anything opens the window (a Widget does).
 Config.set("graphics", "width", "800")
 Config.set("graphics", "height", "600")
@@ -366,5 +543,8 @@ Config.set("graphics", "resizable", "0")
 traceProperties()
 traceEvents()
 traceClock()
+traceAnimation()
 traceLabel()
 traceTouch()
+traceScreens()
+traceModal()
