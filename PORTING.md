@@ -37,7 +37,7 @@ proc. Source paths are relative to `upstream/kivy/kivy/`, Nimony paths to
 
 | L | Kivy | nimkivy | What |
 |---|---|---|---|
-| 1 | `event.py`, `_event.pyx` | `event.nim` | EventDispatcher: register_event_type, bind/fbind/unbind_uid, dispatch, property() |
+| 1 | `event.py`, `_event.pyx` | `event.nim` | EventDispatcher: register_event_type, bind/fbind/unbind_uid, dispatch, property(); also the base `Property`, which the dispatcher links and binds by name (Nim modules cannot import each other) |
 | 1 | `properties.pyx` | `properties.nim` | Numeric, String, Boolean, Object, List, Option, Color, VariableList, ReferenceList, Alias properties |
 | 1 | `clock.py`, `_clock.pyx` | `clock.nim` | Clock: schedule_once, schedule_interval, create_trigger, unschedule, tick, tick_draw |
 | 1 | `utils.py` | `utils.nim` | get_color_from_hex, get_hex_from_color |
@@ -120,17 +120,23 @@ proc. Source paths are relative to `upstream/kivy/kivy/`, Nimony paths to
   nim-code-organization and nim-testing before writing. For layer 2, also read
   nim-c-bindings and nim-c-wrappers.
 
-## Build and tests (proposed)
+## Build and tests
 
 - Never run two Nimony builds at once. Each build uses its own `--nimcache`.
+- **Run everything:** `./run_tests.sh` (from anywhere). It builds every
+  `tests/t*.nim` and `tests/traces.nim` in debug and in `-d:release` with
+  `nimony c --mm:orc --path:src --nimcache:nimcache/<name>-<mode> -o:bin/<name>-<mode>`,
+  runs them, and compares the traces with
+  `$PY reference/compare.py tests/out --traces <name> ...`. `NIMONY` and `PY`
+  override the Nimony checkout and the Python with Kivy.
 - Build:
   `nimony c --mm:orc --path:src --nimcache:nimcache/<name> -o:bin/<name> <file>.nim`.
   `--mm:orc` is needed because widgets and their closures form cycles (see
   Gaps). SDL is linked with `{.passL: "-lSDL3 -lSDL3_ttf -lSDL3_image".}` in
   `sdl3/*.nim`.
 - Tests: one `tests/t<module>.nim` per module, using `block` tests and
-  `doAssert`. `tests/tester.nim` runs every `t*.nim` in debug and in
-  `-d:release`. Tests that need a window run with
+  `assert` (Nimony has no `doAssert`; `assert` stays on in release).
+  `run_tests.sh` runs every `t*.nim` in debug and in `-d:release`. Tests that need a window run with
   `SDL_VIDEO_DRIVER=offscreen SDL_RENDER_DRIVER=software`, so they are
   headless and deterministic.
 - Scenes: `tests/scenes.nim <scene>` renders the same trees as
@@ -138,7 +144,9 @@ proc. Source paths are relative to `upstream/kivy/kivy/`, Nimony paths to
   `reference/compare.py tests/out` checks them against `reference/out` (see
   ACCEPTANCE.md).
 - Traces: `tests/traces.nim` writes `tests/out/traces/*.txt`, which must equal
-  `reference/out/traces/*.txt` line for line.
+  `reference/out/traces/*.txt` line for line. Until layer 6 adds the Widget
+  lines, `properties.txt` holds the first 44 lines of Kivy's, and
+  `run_tests.sh` checks it as a prefix.
 - Python, from `nimkivy/`, with
   `PY=/home/ageralis/Projects/philosykos-website/kiosk/.venv/bin/python`:
   run `$PY reference/make_assets.py`, `$PY reference/scenes.py` and
@@ -149,7 +157,7 @@ proc. Source paths are relative to `upstream/kivy/kivy/`, Nimony paths to
 
 | Layer | Modules | State |
 |---|---|---|
-| 1 | event, properties, clock, utils, metrics, config | to do |
+| 1 | event, properties, clock, utils, metrics, config | done: tproperties, tclock, tutils, tmetrics pass in debug and release; traces `events` and `clock` match, `properties` matches its first 44 lines (the rest is layer 6) |
 | 2 | sdl3/sdl, sdl3/ttf, sdl3/image | to do |
 | 3 | graphics/instructions, context_instructions, vertex_instructions, stencil_instructions, texture, renderer | to do |
 | 4 | core/image, core/text/text_layout, core/text, core/text/text_sdl3 | to do |
@@ -175,7 +183,9 @@ code meets it, adds the `# GAP:` comment, and edits the row.
 | core/text/text_sdl3 | Glyphs come from SDL3_ttf 3.2 (FreeType and HarfBuzz), where Kivy 2.3.2 uses the SDL2_ttf bundled in its wheel. Hinting, kerning and shaping can move glyphs by a pixel, and word widths can differ by a pixel, which can change where a line wraps. The `label` trace shows any difference in `texture_size`. | a different SDL_ttf version |
 | core/image | Decoding uses SDL3_image, where Kivy uses its bundled SDL2_image, so JPEG pixels can differ slightly. | a different SDL_image version |
 | event, clock | Observers and Clock callbacks are held strongly. Kivy holds them weakly (WeakMethod, `release_ref`), so a dropped widget that is still bound is not collected, and its callbacks still run. Cycles need `--mm:orc`. | Nimony has no weak references |
-| clock, event | An exception in a callback is not caught and passed to an ExceptionManager. Callbacks cannot raise. | Nimony's error model (no unwinding through closures) |
+| clock, event | An exception in a callback is not caught and passed to an ExceptionManager (clock), or raised to the dispatcher's caller (event). Callbacks cannot raise. | Nimony's error model (no unwinding through closures) |
+| event | `bind` does not recognise the same method bound twice through two closures, so it is bound twice. Python's bound methods compare equal. | Nim has no bound methods; a closure compares by its environment |
+| clock | `idle` sleeps whole milliseconds (rounded down), where Kivy sleeps microseconds, so each sleep can be up to 1 ms short; the pacing loop then checks again and sleeps or starts the frame. | std/os has only `sleep(milsecs)` |
 | core/audio | WAV only. Kivy's SDL2 provider also plays OGG, MP3 and FLAC through SDL2_mixer. | SDL3_mixer is not installed; core SDL3 loads only WAV |
 
 ## Decisions (coordinator, 2026-11-21, owner: "pragmatic, roll with it")

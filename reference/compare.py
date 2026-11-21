@@ -2,6 +2,7 @@
 
 Run from nimkivy/:
     <kiosk>/.venv/bin/python reference/compare.py tests/out [scene ...]
+    <kiosk>/.venv/bin/python reference/compare.py tests/out --traces [trace ...]
 
 For each scene: <scene>.txt (widget geometry) must be equal line for line; <scene>.png may
 differ in at most BUDGET of its pixels by more than TOLERANCE in any channel (rasterization,
@@ -59,8 +60,21 @@ def compare_png(scene, ref, got, diff_dir):
     return None
 
 
+def compare_traces(out, names):
+    """Compares the named traces (all when none are named); True if all match."""
+    ok = True
+    refs = [REF / "traces" / f"{n}.txt" for n in names] or sorted((REF / "traces").glob("*.txt"))
+    for ref in refs:
+        err = compare_text(ref, out / "traces" / ref.name)
+        print(f"{'FAIL' if err else 'ok  '} trace {ref.stem}{': ' + err if err else ''}")
+        ok = ok and not err
+    return ok
+
+
 def main():
     out = Path(sys.argv[1]).resolve()
+    if sys.argv[2:3] == ["--traces"]:
+        sys.exit(0 if compare_traces(out, sys.argv[3:]) else 1)
     scenes = sys.argv[2:] or sorted(p.stem for p in REF.glob("*.png"))
     failed = False
     for scene in scenes:
@@ -70,10 +84,7 @@ def main():
             print(f"{'FAIL' if err else 'ok  '} {scene} {kind}{': ' + err if err else ''}")
             failed |= bool(err)
     if len(sys.argv) == 2:
-        for ref in sorted((REF / "traces").glob("*.txt")):
-            err = compare_text(ref, out / "traces" / ref.name)
-            print(f"{'FAIL' if err else 'ok  '} trace {ref.stem}{': ' + err if err else ''}")
-            failed |= bool(err)
+        failed |= not compare_traces(out, [])
     sys.exit(1 if failed else 0)
 
 
