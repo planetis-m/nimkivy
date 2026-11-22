@@ -181,32 +181,29 @@ proc emitHandler(dest: var NifBuilder; n: NifCursor; owner: NifCursor) =
   var lambda = createTree()
   var c = firstChild(n)
   skip c                       # the name
-  lambda.openTree("proc", n.info)
-  lambda.addEmptyNode()
-  for i in 0 ..< 4:            # exported, pattern, type vars, params
-    lambda.takeTree c
-  let addBool = c.kind == DotToken and event in Events
-  if addBool:
-    lambda.addIdent "bool"
+  lambda.withTree ProcS, n.info:
+    lambda.addEmptyNode()
+    for i in 0 ..< 4:          # exported, pattern, type vars, params
+      lambda.takeTree c
+    let addBool = c.kind == DotToken and event in Events
+    if addBool:
+      lambda.addIdent "bool"
+      skip c
+    else:
+      lambda.takeTree c
+    lambda.withTree PragmasU, c.info:
+      if c.kind == TagLit:
+        for pragma in c.children: lambda.addSubtree pragma
+      lambda.addIdent "closure"
     skip c
-  else:
-    lambda.takeTree c
-  lambda.openTree("pragmas", c.info)
-  if c.kind == TagLit:
-    for pragma in c.children: lambda.addSubtree pragma
-  lambda.addIdent "closure"
-  lambda.closeTree()
-  skip c
-  lambda.takeTree c            # effects
-  if addBool:
-    lambda.openTree("stmts", c.info)
-    var reset = parseStmt("result = false", c.info)
-    lambda.addSubtree firstChild(reset)
-    for line in c.children: lambda.addSubtree line
-    lambda.closeTree()
-  else:
-    lambda.takeTree c
-  lambda.closeTree()
+    lambda.takeTree c          # effects
+    if addBool:
+      lambda.withTree StmtsS, c.info:
+        var reset = parseStmt("result = false", c.info)
+        lambda.addSubtree firstChild(reset)
+        for line in c.children: lambda.addSubtree line
+    else:
+      lambda.takeTree c
   dest.emitStmts("discard OwnerV.bind" & name.substr(2) & "(LambdaV)\n",
     Subst(trees: @[("OwnerV", owner), ("LambdaV", snapshot(lambda))]), n.info)
 
