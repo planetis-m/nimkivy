@@ -218,8 +218,8 @@ t1.addWidget(dots)
 textCol.addWidget(t1)
 ```
 
-## 8. Open question
+## 8. Backgrounds
 
-- A `background(w, fill)` helper in nimkivy (a plain proc: a colour and a
-  rectangle under `w`, following its pos and size; 7 uses), or the plain
-  lines at each use.
+A background is a `rectangle` (or `smoothRoundedRectangle`) in `canvas.before`
+that follows its widget with `<-`: `rectangle(pos <- column.pos, size <-
+column.size)`. No helper.
