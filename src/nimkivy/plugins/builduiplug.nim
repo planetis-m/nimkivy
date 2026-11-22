@@ -25,10 +25,9 @@
 ##    is `let name = expr` in step 1 and is otherwise a widget like any.
 ##
 ## `self` in an item is the widget the item belongs to (for a canvas
-## instruction, the widget whose canvas it is). The checks a plugin cannot
-## make without types (is it a property, an event with these parameters) are
-## generated as `when compiles(...)` with an `{.error.}` at the item, so a
-## wrong name is a compile error that says what is wrong where it is written.
+## instruction, the widget whose canvas it is). Syntax the reader does not
+## know fails with `buildUi: unsupported syntax`; a wrong name is left to the
+## compiler's own error on the generated code.
 ##
 ## The generated code is written as Nim text with placeholder names
 ## (`HandleV`, `ValueV`, ...), parsed at the item's position and copied with
@@ -48,7 +47,6 @@ type
     path: seq[string]          # ikOn: `button` in `on button.release`
     value: NifCursor           # the value, the expression or the body
     params: string             # ikOn: the parameters, types as `ArgT<i>`
-    shown: string              # ikOn: the parameters as written, for messages
     paramTypes: seq[NifCursor]
     hasParams: bool
     info: LineInfo
@@ -63,7 +61,7 @@ type
 
   Node = object
     kind: NodeKind
-    typeName: string           # for messages (an arm's: its widget's)
+    typeName: string           # `newTYPE`
     layer: Layer               # `widget`, or the canvas an instruction is on
     args: seq[NifCursor]       # positional constructor arguments
     placed: NifCursor          # `place expr`: the expression; else empty
@@ -86,12 +84,7 @@ type
 const
   letCode = "let NameV = newTYPE(ARGS)\n"
   placeCode = "let NameV = ExprV\n"
-  setCode = """
-when compiles(HandleV.PROP):
-  HandleV.PROP = ValueV
-else:
-  {.error: "buildUi: `PROP` is not a property of TYPE".}
-"""
+  setCode = "HandleV.PROP = ValueV\n"
   bindCode = """
 discard DepV.bindDEP(proc (ParamV: typeof(DepV.dep)) {.closure.} =
   HandleV.PROP = ValueV)
@@ -103,15 +96,13 @@ when compiles(RecvV.bindEVENT(proc (PARAMS): bool {.closure.} = false)):
   discard RecvV.bindEVENT(proc (PARAMS): bool {.closure.} =
     result = false
     BodyV)
-elif compiles(RecvV.bindEVENT(proc (PROPCHECK) {.closure.} = discard)):
+else:
   discard RecvV.bindEVENT(proc (PROPPARAMS) {.closure.} =
     BodyV)
-else:
-  {.error: "buildUi: TYPE has no event or property `WHAT".}
 """
 
-proc fail(t: var Tree; msg: string; at: NifCursor) =
-  if t.err.isEmpty: t.err = errorTree("buildUi: " & msg, at)
+proc fail(t: var Tree; at: NifCursor) =
+  if t.err.isEmpty: t.err = errorTree("buildUi: unsupported syntax", at)
 
 proc isCapitalIdent(n: NifCursor): bool =
   n.kind == Ident and n.identText.len > 0 and n.identText[0] in {'A' .. 'Z'}
@@ -143,22 +134,6 @@ proc isCanvas(n: NifCursor): bool =
   result = isTag(head, "dot") and firstChild(head).kind == Ident and
     firstChild(head).identText == "canvas"
 
-proc text(n: NifCursor): string =
-  # A type as written, for messages: `float`, `MotionEvent`, `seq[int]`.
-  if n.kind == Ident: return n.identText
-  if isTag(n, "at"):
-    var c = firstChild(n)
-    result = text(c) & "["
-    skip c
-    var first = true
-    while c.hasMore:
-      if not first: result.add ", "
-      result.add text(c)
-      first = false
-      skip c
-    return result & "]"
-  result = "..."
-
 # ------------------------------------------------------------------ reading
 
 proc readParams(t: var Tree; call: NifCursor; item: var Item) =
@@ -176,18 +151,15 @@ proc readParams(t: var Tree; call: NifCursor; item: var Item) =
       if group.len > 0: group.add ", "
       group.add kv.identText
       skip kv
-      if item.params.len > 0:
-        item.params.add "; "
-        item.shown.add "; "
+      if item.params.len > 0: item.params.add "; "
       item.params.add group & ": ArgT" & $item.paramTypes.len
-      item.shown.add group & ": " & text(kv)
       item.paramTypes.add kv
       group = ""
     else:
-      t.fail("a handler's parameters are `name: Type`", c)
+      t.fail(c)
     skip c
   if group.len > 0:
-    t.fail("a handler's parameter needs a type: `" & group & ": Type`", call)
+    t.fail(call)
 
 proc readEvent(t: var Tree; spec: NifCursor; item: var Item) =
   # `release`, `button.release`, `touch(t: MotionEvent)`,
@@ -204,12 +176,12 @@ proc readEvent(t: var Tree; spec: NifCursor; item: var Item) =
     let left = d
     skip d
     if d.kind != Ident:
-      t.fail("an event is `name` or `part.name`", spec)
+      t.fail(spec)
       return
     names.add d.identText
     c = left
   if c.kind != Ident:
-    t.fail("an event is `name` or `part.name`", spec)
+    t.fail(spec)
     return
   names.add c.identText          # read right to left
   item.name = names[0]
@@ -227,7 +199,7 @@ proc readArg(t: var Tree; c: NifCursor; node: var Node) =
     let name = kv
     skip kv
     if name.kind != Ident:
-      t.fail("a property is set as `prop = value`", c)
+      t.fail(c)
     else:
       node.items.add Item(kind: ikSet, name: name.identText, value: kv, info: name.info)
   elif isTag(c, "infix") and firstChild(c).identText == "<-":
@@ -236,11 +208,9 @@ proc readArg(t: var Tree; c: NifCursor; node: var Node) =
     let name = b
     skip b
     if name.kind != Ident:
-      t.fail("a binding is `prop <- expr`", c)
+      t.fail(c)
     else:
       node.items.add Item(kind: ikBind, name: name.identText, value: b, info: name.info)
-  elif node.items.len > 0:
-    t.fail("positional arguments come before `prop = value`", c)
   else:
     node.args.add c
 
@@ -252,17 +222,17 @@ proc readIf(t: var Tree; n: NifCursor; layer: Layer; owner, scope: int): int =
   ## Reads an `if` item, in a widget's block (`layer` widget) or in a
   ## canvas; returns its index.
   result = t.nodes.len
-  t.nodes.add Node(kind: nkIf, typeName: t.nodes[owner].typeName, layer: layer,
+  t.nodes.add Node(kind: nkIf, layer: layer,
     handle: t.nodes[owner].handle, owner: owner, scope: scope, info: n.info)
   for branch in asIfStmt(n).branches:
     if t.err.isEmpty:
       let arm = t.nodes.len
-      t.nodes.add Node(kind: nkArm, typeName: t.nodes[owner].typeName, layer: layer,
+      t.nodes.add Node(kind: nkArm, layer: layer,
         handle: t.nodes[owner].handle, owner: owner, scope: scope, info: branch.body.info)
       t.nodes[result].arms.add arm
       if not branch.isElse: t.nodes[result].conds.add branch.cond
       if branch.body.stmtKind != StmtsS:
-        t.fail("expected a block after `:`", branch.body)
+        t.fail(branch.body)
       elif layer == widget:
         readItems(t, branch.body, arm)
       else:
@@ -281,7 +251,7 @@ proc readInstructions(t: var Tree; body: NifCursor; layer: Layer; owner, into: i
       let k = readNode(t, i, layer, owner, scope)
       if k >= 0: t.nodes[into].instructions.add k
     else:
-      t.fail("expected a canvas instruction: `Type(...) [as name]`", i)
+      t.fail(i)
     skip i
 
 proc readItems(t: var Tree; body: NifCursor; index: int) =
@@ -298,7 +268,7 @@ proc readItems(t: var Tree; body: NifCursor; index: int) =
       let name = c
       skip c
       if name.kind != Ident:
-        t.fail("a property is set as `prop = value`", n)
+        t.fail(n)
       else:
         t.nodes[index].items.add Item(kind: ikSet, name: name.identText, value: c,
           info: name.info)
@@ -308,13 +278,12 @@ proc readItems(t: var Tree; body: NifCursor; index: int) =
       let name = c
       skip c
       if name.kind != Ident:
-        t.fail("a binding is `prop <- expr`", n)
+        t.fail(n)
       else:
         t.nodes[index].items.add Item(kind: ikBind, name: name.identText, value: c,
           info: name.info)
     elif isInstruction:
-      t.fail("a canvas instruction's block has `prop = value` and " &
-        "`prop <- expr` only", n)
+      t.fail(n)
     elif isTag(n, "cmd") and firstChild(n).identText == "on":
       var c = firstChild(n)
       skip c
@@ -322,14 +291,11 @@ proc readItems(t: var Tree; body: NifCursor; index: int) =
       readEvent(t, c, item)
       skip c
       if not c.hasMore or c.stmtKind != StmtsS:
-        t.fail("a handler is `on event: statements`", n)
+        t.fail(n)
       else:
         item.value = c
         t.nodes[index].items.add item
-    elif isCanvas(n):
-      if t.nodes[index].kind == nkArm:
-        t.fail("`canvas:` cannot be inside `if`; put the `if` inside `canvas:`", n)
-        return
+    elif isCanvas(n) and t.nodes[index].kind != nkArm:
       var c = firstChild(n)
       var layer = canvasMain
       if c.kind != Ident:
@@ -338,10 +304,10 @@ proc readItems(t: var Tree; body: NifCursor; index: int) =
         case d.identText
         of "before": layer = canvasBefore
         of "after": layer = canvasAfter
-        else: t.fail("a canvas is `canvas`, `canvas.before` or `canvas.after`", c)
+        else: t.fail(c)
       skip c
       if not c.hasMore or c.stmtKind != StmtsS:
-        t.fail("`canvas:` expects a block of instructions", n)
+        t.fail(n)
       else:
         readInstructions(t, c, layer, owner, index)
     elif isTag(n, "if"):
@@ -351,36 +317,25 @@ proc readItems(t: var Tree; body: NifCursor; index: int) =
       let k = readNode(t, n, widget, owner, scope)
       if k >= 0: t.nodes[index].children.add k
     else:
-      t.fail("expected a widget, `place widget`, `prop = value`, `prop <- expr`, " &
-        "`on event: ...`, `canvas: ...` or `if`", n)
+      t.fail(n)
     skip n
 
-proc readPlace(t: var Tree; call: NifCursor; node: var Node; name, body: var NifCursor) =
+proc readPlace(call: NifCursor; node: var Node; name, body: var NifCursor) =
   # `place expr [as name] [: ...]`: `expr` is an existing widget (or, in a
   # canvas, an instruction).
   var c = firstChild(call)
   skip c                       # `place`
-  if not c.hasMore:
-    t.fail("`place` expects a widget: `place expr [as name]`", call)
-    return
   var e = c
   if isTag(c, "infix") and firstChild(c).identText == "as":
     var d = firstChild(c)
     skip d
     e = d
     skip d
-    if d.kind != Ident:
-      t.fail("`as` expects a name", d)
-      return
     name = d
   node.placed = e
-  node.typeName = if e.kind == Ident: "`" & e.identText & "`" else: "the placed widget"
   skip c
   if c.hasMore and c.stmtKind == StmtsS:
     body = c
-    skip c
-  if c.hasMore:
-    t.fail("`place` takes one widget: `place expr [as name]`", c)
 
 proc readNode(t: var Tree; n: NifCursor; layer: Layer; owner, scope: int): int =
   ## Reads one widget or canvas instruction and its block; returns its index.
@@ -394,17 +349,13 @@ proc readNode(t: var Tree; n: NifCursor; layer: Layer; owner, scope: int): int =
     skip c                     # `as`
     call = c
     skip c
-    if c.kind != Ident:
-      t.fail("`as` expects a name", c)
-      return -1
     name = c                   # the source token, with its position
     skip c
     if c.hasMore: body = c
   if call.kind == Ident:
     node.typeName = call.identText
   elif isPlace(call) and not isTag(n, "infix"):
-    readPlace(t, call, node, name, body)
-    if not t.err.isEmpty: return -1
+    readPlace(call, node, name, body)
   elif (isTag(call, "call") or isTag(call, "cmd")) and isCapitalIdent(firstChild(call)):
     var c = firstChild(call)
     node.typeName = c.identText
@@ -414,7 +365,7 @@ proc readNode(t: var Tree; n: NifCursor; layer: Layer; owner, scope: int): int =
       else: readArg(t, c, node)
       skip c
   else:
-    t.fail("expected `Type(...)`", call)
+    t.fail(call)
     return -1
   if name.hasMore:
     node.handle = name
@@ -431,7 +382,7 @@ proc readNode(t: var Tree; n: NifCursor; layer: Layer; owner, scope: int): int =
   t.nodes.add node
   if body.hasMore and t.err.isEmpty:
     if body.stmtKind != StmtsS:
-      t.fail("expected a block after `:`", body)
+      t.fail(body)
     else:
       readItems(t, body, result)
 
@@ -499,40 +450,30 @@ proc emitSets(dest: var NifBuilder; t: Tree; scope: int) =
     if not (node.declared(scope) or i == scope): continue
     for item in node.items:
       if item.kind == ikSet:
-        let code = setCode.replace("PROP", item.name).replace("TYPE", node.typeName)
+        let code = setCode.replace("PROP", item.name)
         let s = Subst(trees: @[("HandleV", node.handle),
           ("ValueV", substituted(item.value, t.selfSubst(node)))])
         dest.emitStmts(code, s, item.info)
 
 proc emitBinding(dest: var NifBuilder; t: Tree; node: Node; item: Item) =
-  # Set now (the set checks that the target is a property), then follow
-  # every `h.p` of the expression that is a property; one at least must be.
+  # Set now, then follow every `h.p` of the expression that is a property.
   let self = t.nodes[node.owner].handle
   let value = substituted(item.value, t.selfSubst(node))
-  let set = setCode.replace("PROP", item.name).replace("TYPE", node.typeName)
   var s = Subst(trees: @[("HandleV", node.handle), ("ValueV", value)])
-  dest.emitStmts(set, s, item.info)
+  dest.emitStmts(setCode.replace("PROP", item.name), s, item.info)
   var acc: seq[(NifCursor, string)] = @[]
-  deps(item.value, acc)        # checked non-empty by `transform`
-  var checks: seq[string] = @[]
-  var read: seq[string] = @[]
+  deps(item.value, acc)
   for i in 0 ..< acc.len:
     let (obj, prop) = acc[i]
     let dep = "Dep" & $i & "V"
     s.trees.add (dep, if obj.identText == "self": self else: obj)
     let check = "compiles(" & dep & ".bind" & capital(prop) & "(proc (v: typeof(" & dep &
       "." & prop & ")) {.closure.} = discard))"
-    checks.add check
-    read.add obj.identText & "." & prop
     let code = bindCode.replace("DepV", dep).replace("bindDEP", "bind" & capital(prop)).
       replace(".dep", "." & prop).replace("PROP", item.name)
     var sd = s
     sd.trees.add ("ParamV", paramDef(item.info))
     dest.emitStmts("when " & check & ":\n" & indent(code, 2), sd, item.info)
-  let none = "when not (" & checks.join(" or ") & "):\n  {.error: \"buildUi: `" &
-    item.name & " <- ...` follows no property: " & read.join(", ") &
-    (if read.len == 1: " is not one" else: " are not") & "\".}\n"
-  dest.emitStmts(none, s, item.info)
 
 proc emitHandler(dest: var NifBuilder; t: Tree; node: Node; item: Item) =
   var recv = "HandleV"
@@ -541,13 +482,8 @@ proc emitHandler(dest: var NifBuilder; t: Tree; node: Node; item: Item) =
   # body cannot name.
   let propParams = if item.hasParams: item.params
     else: "ParamV: typeof(RecvV." & item.name & ")"
-  let propCheck = if item.hasParams: item.params
-    else: "v: typeof(RecvV." & item.name & ")"
-  let what = (if item.path.len > 0: item.path.join(".") & "." else: "") & item.name & "` " &
-    (if item.hasParams: "with parameters (" & item.shown & ")" else: "without parameters")
-  let code = eventCode.replace("PROPCHECK", propCheck).replace("PROPPARAMS", propParams).
-    replace("PARAMS", item.params).    replace("RecvV", recv).replace("EVENT", capital(item.name)).
-    replace("TYPE", node.typeName).replace("WHAT", what)
+  let code = eventCode.replace("PROPPARAMS", propParams).replace("PARAMS", item.params).
+    replace("RecvV", recv).replace("EVENT", capital(item.name))
   var s = Subst(trees: @[("HandleV", node.handle),
     ("BodyV", substituted(item.value, t.selfSubst(node)))])
   s.trees.add ("ParamV", paramDef(item.info))
@@ -616,25 +552,15 @@ proc emitNode(dest: var NifBuilder; t: Tree; i: int) =
 
 proc transform(root: NifCursor): NifBuilder =
   var body = callArgs(root)
-  if body.stmtKind != StmtsS:
-    return errorTree("buildUi expects a block with one widget", root)
-  var b = firstChild(body)
-  if not isWidget(b):
-    return errorTree("buildUi expects a widget: `Type(...) [as name]: ...`", b)
   var t = Tree(nodes: @[], err: createTree())
-  discard readNode(t, b, widget, 0, -1)
+  if body.stmtKind != StmtsS: t.fail(root)
+  else:
+    var b = firstChild(body)
+    if isWidget(b): discard readNode(t, b, widget, 0, -1)
+    else: t.fail(b)
+    skip b
+    if b.hasMore: t.fail(b)
   if not t.err.isEmpty: return t.err
-  skip b
-  if b.hasMore:
-    return errorTree("buildUi expects one root widget", b)
-  for node in t.nodes:
-    for item in node.items:
-      if item.kind == ikBind:
-        var acc: seq[(NifCursor, string)] = @[]
-        deps(item.value, acc)
-        if acc.len == 0:
-          return errorTree("buildUi: `" & item.name & " <- ...` reads no " &
-            "`object.property`; a value set once is `" & item.name & " = ...`", item.value)
   result = createTree()
   result.withTree StmtsS, root.info:
     result.emitLets(t, -1)

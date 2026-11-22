@@ -42,8 +42,8 @@
 ##   `h.p` that `expr` reads and that is a property, so that a change of one
 ##   sets `prop` again. As in kv, a read that is not a property (a plain
 ##   field, a proc call such as `s.scale`) is evaluated but not followed, and
-##   `a.b.c` follows `a.b` only; a binding that follows no property at all
-##   is an error.
+##   `a.b.c` follows `a.b` only; a binding that follows no property is set
+##   once.
 ## - `on name[(params)]: stmts` binds a handler: to the event `name`
 ##   (`bindName`, the parameters are the event's, with their types;
 ##   `result` starts false, and setting it to true stops the dispatch), or
@@ -82,11 +82,8 @@
 ## bindings and handlers bound, all inside the arm. Nothing is rebuilt
 ## later.
 ##
-## A wrong name or a wrong handler is a compile error at the item, for
-## example `buildUi: \`txt\` is not a property of Label`,
-## `buildUi: Label has no event or property \`touchDown\` with parameters
-## (x: float)` or `buildUi: \`text <- ...\` follows no property: topic.name
-## is not one`.
+## A wrong name or a wrong handler is the compiler's error on the generated
+## code; syntax the plugin does not know is `buildUi: unsupported syntax`.
 
 template buildUi*(body: untyped) {.plugin: "plugins/builduiplug".}
   ## Builds the widget tree of `body` once and binds its bindings and

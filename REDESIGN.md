@@ -259,10 +259,10 @@ belongs to. Expansion, in the caller's scope, nothing rebuilt later:
 So a child's handlers are bound before it is added (a Screen's `enter`
 fires when the ScreenManager makes it current), a widget's own after its
 children are added (a ScreenManager's `current` does not see its first
-screen). Property, event and binding checks the plugin cannot make without
-types are generated as `when compiles(...)` with an `{.error.}` at the
-item: a wrong name, handler signature or binding is a compile error that
-says what is wrong at the line it is on (`tests/bad/bad_ui_*.nim`).
+screen). A wrong name, handler signature or binding is the compiler's own
+error on the generated code; syntax the plugin does not know is `buildUi:
+unsupported syntax` (`tests/bad/bad_ui_*.nim`). A binding that follows no
+property is set once.
 
 Added for the kiosk (after phase 2):
 
@@ -275,7 +275,7 @@ Added for the kiosk (after phase 2):
   `prop = value` items, then its children or instructions, bindings and
   handlers), so a name declared in an arm is visible in that arm only. An
   arm in a widget's block holds the widget's items, children and `if`s,
-  not `canvas:` (put the `if` inside the canvas; `tests/bad/bad_ui_if.nim`).
+  not `canvas:` (put the `if` inside the canvas).
 - `place expr [as name] [: item+]` puts an existing widget (a header built
   by another proc) at its place among the children, as a child written
   there: `let name = expr` with the constructors, then its items and
@@ -525,11 +525,9 @@ part.event` (`on button.release`), handlers on properties (`on size:`,
 kv's `on_size`), `result` in a handler (false unless set), `canvas`,
 `canvas.before` and `canvas.after` blocks of instructions, `self`,
 positional constructor arguments and components (`Type(args)` calls any
-`newType(args)`), `prop <- expr` in the parentheses, and clear errors at the
-item (`when compiles` + `{.error.}`: not a property, no such event or
-property with these parameters, a binding that follows no property; the
-plugin's own: a statement that is not an item, a binding that reads
-nothing, two roots). The prototype bound every handler after the whole
+`newType(args)`), `prop <- expr` in the parentheses, and compile errors at
+the item (later cut to the compiler's own errors and one plugin error,
+`buildUi: unsupported syntax`). The prototype bound every handler after the whole
 tree was assembled; now each widget's bindings and handlers are bound
 before it is added to its parent (after its own children), because a
 Screen's `enter` fires when the ScreenManager adds it. Bindings follow kv's

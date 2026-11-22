@@ -73,13 +73,16 @@ proc names(v: NifCursor): seq[string] =
   else:
     for c in v.children: result.add c.identText
 
+proc fail(err: var NifBuilder; at: NifCursor) =
+  err = errorTree("properties: unsupported syntax", at)
+
 proc readPragma(prop: var Prop; p: NifCursor; local: Local; err: var NifBuilder) =
   case pragmaName(p)
   of "prop": prop.kind = kProp
   of "bounds":
     let range = pragmaValue(p)
     if range.kind != TagLit or range.tagText != "infix":
-      err = errorTree("bounds expects `low .. high`", p)
+      fail(err, p)
     else:
       var r = firstChild(range)
       skip r                   # `..`
@@ -111,12 +114,12 @@ proc readPragma(prop: var Prop; p: NifCursor; local: Local; err: var NifBuilder)
   of "varlist":
     let n = pragmaValue(p)
     if n.kind != IntLit or (n.intValue != 2 and n.intValue != 4):
-      err = errorTree("varlist expects 2 or 4", p)
+      fail(err, p)
     else:
       prop.varlist = int(n.intValue)
   of "event":
     if local.typ.kind != TagLit or local.typ.tagText != "proctype":
-      err = errorTree("an event's type is `proc (arguments)`", local.typ)
+      fail(err, local.typ)
     else:
       var pt = firstChild(local.typ)
       for _ in 0 ..< 4: skip pt  # name, export, pattern, typevars
@@ -124,8 +127,7 @@ proc readPragma(prop: var Prop; p: NifCursor; local: Local; err: var NifBuilder)
         prop.args.add asLocal(param).typ
       prop.kind = kEvent
   else:
-    err = errorTree("unknown property pragma (prop, bounds, refs, alias, deps, " &
-      "cache, eager, always, handler, color, varlist, event)", p)
+    fail(err, p)
 
 proc readField(f: NifCursor; props: var seq[Prop]; err: var NifBuilder) =
   # (fld name export pragmas type default)
@@ -137,14 +139,7 @@ proc readField(f: NifCursor; props: var seq[Prop]; err: var NifBuilder) =
   for p in local.pragmas.children:
     readPragma(prop, p, local, err)
     if not err.isEmpty: return
-  if prop.kind != kAlias and (prop.deps.len > 0 or prop.cache or prop.eager):
-    err = errorTree("deps, cache and eager go with alias", f)
-  elif prop.kind == kEvent and (prop.always or prop.handler):
-    err = errorTree("always and handler go with a property, not an event", f)
-  elif prop.kind != kProp and (prop.bounded or prop.color or prop.varlist > 0):
-    err = errorTree("bounds, color and varlist go with prop", f)
-  else:
-    props.add prop
+  props.add prop
 
 proc readType(t: NifCursor; err: var NifBuilder): TypeInfo =
   let decl = asTypeDecl(t)
@@ -160,7 +155,7 @@ proc readType(t: NifCursor; err: var NifBuilder): TypeInfo =
   var body = decl.body
   if body.typeKind == RefT: body = firstChild(body)
   if body.typeKind != ObjectT:
-    err = errorTree("properties expects `ref object of Base`", t)
+    fail(err, t)
     return
   var f = firstChild(body)
   result.base = f
@@ -576,7 +571,7 @@ proc emitInit(dest: var NifBuilder; t: TypeInfo) =
 proc transform(root: NifCursor): NifBuilder =
   var body = callArgs(root)
   if body.stmtKind != StmtsS:
-    return errorTree("properties expects a block of type declarations", root)
+    return errorTree("properties: unsupported syntax", root)
   var err = createTree()
   var types: seq[TypeInfo] = @[]
   var rest: seq[NifCursor] = @[]
