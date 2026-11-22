@@ -15,8 +15,8 @@ proc tickFor(seconds: float) =
     sleep(10)
     Clock.tick()
 
-Config.set("graphics", "width", "800")
-Config.set("graphics", "height", "600")
+Config.graphics.width = 800
+Config.graphics.height = 600
 
 block testSwitchTo:
   # test_screen.py test_switch_to (with nimkivy's default NoTransition).
@@ -154,7 +154,7 @@ block fadeTransition:
   # A touch is ignored during a transition.
   sm.current = "a"
   assert t.isActive
-  assert not sm.dispatch("on_touch_down", toValue(newUnitTestTouch(50, 50)))
+  assert not sm.dispatchTouchDown(newUnitTestTouch(50, 50))
   # Starting a running transition twice stops the program (tested by the
   # behaviour of `current`: it stops the running transition first).
   sm.current = "b"

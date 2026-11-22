@@ -18,8 +18,25 @@ import stubs
 type Log = ref object
   lines: seq[string]
 
-proc logger(log: Log; tag: string; ret: bool): EventCallback =
-  result = proc (d: EventDispatcher; a: seq[Value]): bool {.closure.} =
+proc logger(log: Log; tag: string; ret: bool): proc (): bool {.closure.} =
+  result = proc (): bool {.closure.} =
+    log.lines.add tag
+    result = ret
+
+proc touchLogger(log: Log; tag: string; ret: bool): TouchCallback =
+  result = proc (t: MotionEvent): bool {.closure.} =
+    log.lines.add tag
+    result = ret
+
+proc closeLogger(log: Log; tag: string; ret: bool): proc (keyboard: bool): bool {.closure.} =
+  result = proc (keyboard: bool): bool {.closure.} =
+    log.lines.add tag
+    result = ret
+
+proc keyLogger(log: Log; tag: string; ret: bool): proc (key, scancode: int;
+    codepoint: string; modifiers: set[Modifier]): bool {.closure.} =
+  result = proc (key, scancode: int; codepoint: string;
+      modifiers: set[Modifier]): bool {.closure.} =
     log.lines.add tag
     result = ret
 
@@ -92,11 +109,11 @@ block window_properties:
   w.clearcolor = [1.0, 0.0, 0.0]
   assert w.clearcolor == [1.0, 0.0, 0.0, 1.0]
   var resized: seq[(float, float)] = @[]
-  w.bind("on_resize", proc (d: EventDispatcher; a: seq[Value]): bool {.closure.} =
-    resized.add (a[0].num, a[1].num)
+  discard w.bindResize(proc (width, height: float): bool {.closure.} =
+    resized.add (width, height)
     result = false)
   var widths: seq[float] = @[]
-  w.bind("width", proc (d: EventDispatcher; v: Value) {.closure.} = widths.add v.num)
+  discard w.bindWidth(proc (v: float) {.closure.} = widths.add v)
   w.size = (640.0, 480.0)
   assert w.size == (640.0, 480.0) and w.systemSize == (640.0, 480.0)
   assert resized == @[(640.0, 480.0)] and widths == @[640.0]
@@ -117,16 +134,16 @@ block children_dispatch_order:
   assert a.parent == WidgetBase(w)
   assert w.canvas.indexof(a.canvas) == 0 and w.canvas.indexof(c.canvas) == 2
   let t = newUnitTestTouch(10, 10)
-  assert w.dispatch("on_touch_down", toValue(t))
+  assert w.dispatchTouchDown(t)
   assert log.lines == @["c down", "b down"]
   log.lines = @[]
   w.removeWidget(b)
   assert b.parent == nil and w.canvas.indexof(b.canvas) == -1
-  assert not w.dispatch("on_touch_up", toValue(t))
+  assert not w.dispatchTouchUp(t)
   assert log.lines == @["c up", "a up"]
   # canvas 'before' and 'after'
   let d = newChild("d", log)
-  w.addWidget(d, canvas = "after")
+  w.addWidget(d, canvas = layerAfter)
   assert w.canvas.after.indexof(d.canvas) == 0
   w.removeWidget(d)
   assert w.canvas.after.indexof(d.canvas) == -1
@@ -136,13 +153,13 @@ block observer_before_default_handler:
   w.initWindowBase()
   let log = Log(lines: @[])
   w.addWidget(newChild("child", log))
-  w.bind("on_touch_down", logger(log, "observer", false))
+  discard w.bindTouchDown(touchLogger(log, "observer", false))
   let t = newUnitTestTouch(10, 10)
-  discard w.dispatch("on_touch_down", toValue(t))
+  discard w.dispatchTouchDown(t)
   assert log.lines == @["observer", "child down"]
   log.lines = @[]
-  w.bind("on_touch_down", logger(log, "stopper", true))
-  assert w.dispatch("on_touch_down", toValue(t))
+  discard w.bindTouchDown(touchLogger(log, "stopper", true))
+  assert w.dispatchTouchDown(t)
   assert log.lines == @["stopper"]
 
 block key_27_without_exit_on_escape:
@@ -151,14 +168,14 @@ block key_27_without_exit_on_escape:
   let log = Log(lines: @[])
   var stopped = 0
   w.stopTouchApp = proc () {.closure.} = inc stopped
-  w.bind("on_request_close", logger(log, "request_close", false))
-  w.bind("on_close", logger(log, "close", false))
-  Config.set("kivy", "exit_on_escape", "0")
-  assert not w.dispatch("on_keyboard", toValue(27), toValue(41), noneValue(), toValue(@[]))
+  discard w.bindRequestClose(closeLogger(log, "requestClose", false))
+  discard w.bindClose(logger(log, "close", false))
+  Config.kivy.exitOnEscape = false
+  assert not w.dispatchKeyboard(27, 41, "", {})
   assert log.lines.len == 0 and stopped == 0
-  Config.set("kivy", "exit_on_escape", "1")
+  Config.kivy.exitOnEscape = true
   # Another key does nothing either.
-  assert not w.dispatch("on_keyboard", toValue(13), toValue(40), noneValue(), toValue(@[]))
+  assert not w.dispatchKeyboard(13, 40, "", {})
   assert log.lines.len == 0 and stopped == 0
 
 block key_27_with_exit_on_escape:
@@ -167,21 +184,21 @@ block key_27_with_exit_on_escape:
   let log = Log(lines: @[])
   var stopped = 0
   w.stopTouchApp = proc () {.closure.} = inc stopped
-  w.bind("on_close", logger(log, "close", false))
-  w.bind("on_request_close", proc (d: EventDispatcher; a: seq[Value]): bool {.closure.} =
-    log.lines.add "request_close " & a[0].str
+  discard w.bindClose(logger(log, "close", false))
+  discard w.bindRequestClose(proc (keyboard: bool): bool {.closure.} =
+    log.lines.add "requestClose keyboard " & $keyboard
     result = false)
-  assert w.dispatch("on_keyboard", toValue(27), toValue(41), noneValue(), toValue(@[]))
-  assert log.lines == @["request_close keyboard", "close"] and stopped == 1
-  # An on_request_close observer returning true keeps the app running.
+  assert w.dispatchKeyboard(27, 41, "", {})
+  assert log.lines == @["requestClose keyboard true", "close"] and stopped == 1
+  # A requestClose observer returning true keeps the app running.
   log.lines = @[]
-  w.bind("on_request_close", logger(log, "keep", true))
-  assert not w.dispatch("on_keyboard", toValue(27), toValue(41), noneValue(), toValue(@[]))
+  discard w.bindRequestClose(closeLogger(log, "keep", true))
+  assert not w.dispatchKeyboard(27, 41, "", {})
   assert log.lines == @["keep"] and stopped == 1
-  # An on_keyboard observer returning true comes first.
+  # A keyboard observer returning true comes first.
   log.lines = @[]
-  w.bind("on_keyboard", logger(log, "app key", true))
-  assert w.dispatch("on_keyboard", toValue(27), toValue(41), noneValue(), toValue(@[]))
+  discard w.bindKeyboard(keyLogger(log, "app key", true))
+  assert w.dispatchKeyboard(27, 41, "", {})
   assert log.lines == @["app key"]
 
 proc pixel(s: ptr SDL_Surface; x, y: int): array[3, uint8] =
@@ -219,7 +236,7 @@ type Recorder = ref object of WidgetBase
 
 proc rec(r: Recorder; what: string; t: MotionEvent) =
   r.lines.add what & " " & t.device & " " & $int(t.x + 0.5) & "," & $int(t.y + 0.5) &
-    " " & t.button
+    " " & $t.button
 
 method onTouchDown(r: Recorder; t: MotionEvent): bool =
   r.rec("down", t)
@@ -227,11 +244,11 @@ method onTouchDown(r: Recorder; t: MotionEvent): bool =
   result = true
 
 method onTouchMove(r: Recorder; t: MotionEvent): bool =
-  if t.grabCurrent == EventDispatcher(r): r.rec("move", t)
+  if t.grabCurrent == RootRef(r): r.rec("move", t)
   result = true
 
 method onTouchUp(r: Recorder; t: MotionEvent): bool =
-  if t.grabCurrent == EventDispatcher(r):
+  if t.grabCurrent == RootRef(r):
     r.rec("up", t)
     t.ungrab(r)
   result = true
@@ -241,9 +258,9 @@ block headless_run:
   # screenshot, turn fingers and the mouse into touches, and stop on key 27
   # (Escape; Android's Back is mapped to it).
   removeFile(outDir() / "headless0001.png")
-  Config.set("graphics", "width", "320")
-  Config.set("graphics", "height", "240")
-  Config.set("kivy", "exit_on_escape", "1")
+  Config.graphics.width = 320
+  Config.graphics.height = 240
+  Config.kivy.exitOnEscape = true
   let root = Recorder(cls: WidgetBaseClass, canvas: newCanvas(), lines: @[])
   root.initWidgetBase()
   root.canvas.add newColor(0, 0, 1)
@@ -251,8 +268,8 @@ block headless_run:
   let app = newApp()
   app.root = root
   let events = Log(lines: @[])
-  for name in ["on_start", "on_stop"]:
-    app.bind(name, logger(events, name, false))
+  discard app.bindStart(logger(events, "start", false))
+  discard app.bindStop(logger(events, "stop", false))
   var keys: seq[string] = @[]
   var shot = ""
   var steps = 0
@@ -261,8 +278,9 @@ block headless_run:
     case steps
     of 1:
       Window.clearcolor = [1.0, 1.0, 1.0, 1.0]
-      Window.bind("on_keyboard", proc (d: EventDispatcher; a: seq[Value]): bool {.closure.} =
-        keys.add $int(a[0].num)
+      discard Window.bindKeyboard(proc (key, scancode: int; codepoint: string;
+          modifiers: set[Modifier]): bool {.closure.} =
+        keys.add $key
         result = false)
     of 2:
       shot = Window.screenshot(outDir() / "headless.png")
@@ -295,8 +313,8 @@ block headless_run:
       discard, 0.05)
   app.run()
   # Escape stopped the event loop, not the app: App.run's own stop
-  # dispatches on_stop once.
-  assert events.lines == @["on_start", "on_stop"], $events.lines
+  # dispatches stop once.
+  assert events.lines == @["start", "stop"], $events.lines
   assert Window.size == (320.0, 240.0)
   # The screenshot: RGB, white, with the blue box at (10, 10) y up.
   assert shot == outDir() / "headless0001.png", shot
@@ -317,6 +335,6 @@ block headless_run:
   # Left is Kivy's 276; Escape (27) closed the app and the window.
   assert keys == @["276", "27"], $keys
   assert not Window.initialized
-  assert EventLoop.status == "closed"
+  assert EventLoop.status == loopClosed
   assert getRunningApp() == nil
   assert Window.children.len == 0

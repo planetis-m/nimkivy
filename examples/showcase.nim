@@ -206,8 +206,6 @@ type
     fadeDuration*: float         ## the photo crossfade (1.6)
     idleTimeout*: float          ## seconds without a touch before the reset (60)
 
-let ShowcaseAppClass = newDispatcherClass("ShowcaseApp", AppClass)
-
 proc scale(s: Showcase): float =
   # The kiosk's sc(): sizes follow the window height (600 is 1).
   Window.height / 600.0
@@ -320,7 +318,7 @@ proc attractScreen(s: Showcase): Screen =
   shade.addWidget(s.attractTitle)
   f.addWidget(shade)
   result.addWidget(f)
-  result.bind("on_touch_down", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+  discard result.bindTouchDown(proc (t: MotionEvent): bool {.closure.} =
     s.go("home")
     result = true)
   result.bind("on_enter", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
@@ -408,11 +406,8 @@ proc topicScreen(s: Showcase): Screen =
   col.addWidget(nav)
   result.addWidget(col)
   # A horizontal swipe on the card turns it (the kiosk's on_touch_up).
-  card.bind("on_touch_up", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+  discard card.bindTouchUp(proc (t: MotionEvent): bool {.closure.} =
     result = false
-    let o = args[0].obj
-    if o == nil or not (o of MotionEvent): return false
-    let t = MotionEvent(o)
     let dx = t.x - t.ox
     if card.collidePoint(t.ox, t.oy) and abs(dx) > 80.0 * s.scale:
       s.showCard(s.card + (if dx < 0: 1 else: -1))
@@ -517,19 +512,18 @@ method build(a: ShowcaseApp): nil WidgetBase =
   a.state = s
   s.lastTouch = Clock.getTime()
   Window.clearcolor = [0.0, 0.0, 0.0, 1.0]
-  Window.bind("on_touch_down", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+  discard Window.bindTouchDown(proc (t: MotionEvent): bool {.closure.} =
     s.lastTouch = Clock.getTime()
     result = false)
-  Window.bind("size", proc (d: EventDispatcher; v: Value) {.closure.} = s.rescale())
+  discard Window.bindSize(proc (v: (float, float)) {.closure.} = s.rescale())
   s.rescale()
   discard Clock.scheduleInterval(proc (dt: float) {.closure.} = s.idleCheck(), 0.25)
   result = s.sm
 
 proc newShowcaseApp*(): ShowcaseApp =
   ## The app; `run` opens the window and shows the attract screen.
-  result = ShowcaseApp(cls: ShowcaseAppClass, state: nil, slideInterval: 6, fadeDuration: 1.6,
-    idleTimeout: 60)
-  result.initApp()
+  result = ShowcaseApp(state: nil, slideInterval: 6, fadeDuration: 1.6, idleTimeout: 60)
+  result.initApp("ShowcaseApp")
 
 proc show*(a: ShowcaseApp): Showcase =
   ## The app's state, once built.
@@ -538,6 +532,6 @@ proc show*(a: ShowcaseApp): Showcase =
   result = s
 
 when isMainModule:
-  Config.set("graphics", "width", "1024")
-  Config.set("graphics", "height", "600")
+  Config.graphics.width = 1024
+  Config.graphics.height = 600
   newShowcaseApp().run()

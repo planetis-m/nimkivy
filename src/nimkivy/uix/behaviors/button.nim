@@ -67,7 +67,7 @@ proc newButtonBehavior*(widget: Widget): ButtonBehavior =
   ## argument does in Kivy. ButtonBehavior.__init__
   result = ButtonBehavior(widget: widget, stateEvent: nil, touchTime: 0)
   widget.setProperty("min_state_time",
-    toValue(Config.getfloat("graphics", "min_state_time")))
+    toValue(Config.graphics.minStateTime))
   let b = result
   discard widget.fbind("state", proc (d: EventDispatcher; v: Value) {.closure.} =
     b.cancelEvent())
@@ -119,9 +119,9 @@ proc doRelease(b: ButtonBehavior) =
   # ButtonBehavior._do_release
   b.state = stateNormal
 
-proc key(b: ButtonBehavior): Value {.inline.} =
-  # The widget as a key of `touch.ud` (Kivy's `self in touch.ud`).
-  toValue(RootRef(b.widget))
+proc key(b: ButtonBehavior): RootRef {.inline.} =
+  # The widget, as it claims a touch (Kivy's `self in touch.ud`).
+  RootRef(b.widget)
 
 proc onTouchDown*(b: ButtonBehavior; touch: MotionEvent; inherited: TouchHandler): bool =
   ## The children first (`inherited`); then a touch down on the widget,
@@ -134,11 +134,11 @@ proc onTouchDown*(b: ButtonBehavior; touch: MotionEvent; inherited: TouchHandler
   let w = b.widget
   if not w.collidePoint(touch.x, touch.y):
     return false
-  if b.key in touch.ud:
+  if b.key in touch.claimedBy:
     return false
   touch.grab(w)
-  touch.ud[b.key] = toValue(true)
-  w.setProperty("last_touch", toValue(touch))
+  touch.claimedBy.add b.key
+  w.setProperty("last_touch", toValue(RootRef(touch)))
   b.touchTime = time()
   b.doPress()
   discard w.dispatch("on_press")
@@ -148,11 +148,11 @@ proc onTouchMove*(b: ButtonBehavior; touch: MotionEvent; inherited: TouchHandler
   ## A grabbed touch is the button's; otherwise the children's
   ## (`inherited`), or the button's if it pressed it.
   ## ButtonBehavior.on_touch_move
-  if touch.grabCurrent == EventDispatcher(b.widget):
+  if touch.grabCurrent == RootRef(b.widget):
     return true
   if inherited(touch):
     return true
-  result = b.key in touch.ud
+  result = b.key in touch.claimedBy
 
 proc onTouchUp*(b: ButtonBehavior; touch: MotionEvent; inherited: TouchHandler): bool =
   ## The end of the touch that pressed the button: ungrabs it and releases
@@ -161,11 +161,11 @@ proc onTouchUp*(b: ButtonBehavior; touch: MotionEvent; inherited: TouchHandler):
   ## Other touches go to `inherited`. Returns false (Kivy's None) for a
   ## release off the widget. ButtonBehavior.on_touch_up
   let w = b.widget
-  if touch.grabCurrent != EventDispatcher(w):
+  if touch.grabCurrent != RootRef(w):
     return inherited(touch)
-  assert b.key in touch.ud
+  assert b.key in touch.claimedBy
   touch.ungrab(w)
-  w.setProperty("last_touch", toValue(touch))
+  w.setProperty("last_touch", toValue(RootRef(touch)))
   if not b.alwaysRelease and not w.collidePoint(touch.pos[0], touch.pos[1]):
     b.doRelease()
     return false

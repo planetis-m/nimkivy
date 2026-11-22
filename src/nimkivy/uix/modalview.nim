@@ -26,7 +26,7 @@ type
   ModalView* = ref object of AnchorLayout
     ## uix/modalview.py ModalView
     touchStartedInside: int        # Kivy's `_touch_started_inside`: -1 None, 0 False, 1 True
-    windowUids: seq[(string, int)] # the Window events bound while open
+    windowBindings: array[2, Binding] # the Window's `resize` and `keyboard` while open
 
 proc noHandler(d: EventDispatcher; args: seq[Value]): bool =
   # The default handlers on_pre_open, on_open, on_pre_dismiss, on_dismiss.
@@ -140,20 +140,19 @@ proc applyStyle(m: ModalView) =
   for name in ["overlay_color", "_anim_alpha"]:
     discard m.fbind(name, proc (d: EventDispatcher; v: Value) {.closure.} =
       m.setOverlay(overlay))
-  var sizeUid = 0
+  var sizeBinding = Binding(0)
   var sizeOf: nil WindowBase = nil
   discard m.fbind("_window", proc (d: EventDispatcher; v: Value) {.closure.} =
     let old = sizeOf
-    if old != nil and sizeUid != 0:
-      old.unbindUid("size", sizeUid)
-    sizeUid = 0
+    if old != nil and sizeBinding != Binding(0):
+      old.unbindSize(sizeBinding)
+    sizeBinding = Binding(0)
     sizeOf = nil
     let w = m.window
     if w != nil:
       shade.size = w.size
       sizeOf = w
-      sizeUid = w.fbind("size", proc (d: EventDispatcher; v: Value) {.closure.} =
-        shade.size = (v.items[0].num, v.items[1].num))
+      sizeBinding = w.bindSize(proc (v: (float, float)) {.closure.} = shade.size = v)
     else:
       shade.size = (0.0, 0.0))
   discard m.fbind("background_color", proc (d: EventDispatcher; v: Value) {.closure.} =
@@ -174,14 +173,14 @@ proc initModalView*(m: ModalView) =
   ## Build a subclass with `T(cls: TClass, canvas: newCanvas())`, then call
   ## it. ModalView.__init__
   m.touchStartedInside = -1
-  m.windowUids = @[]
+  m.windowBindings = [Binding(0), Binding(0)]
   m.initAnchorLayout()
   m.applyStyle()
 
 proc newModalView*(): ModalView =
   ## A modal view that fills the window (size_hint 1, 1) until hinted.
   result = ModalView(cls: ModalViewClass, canvas: newCanvas(), touchStartedInside: -1,
-    windowUids: @[])
+    windowBindings: [Binding(0), Binding(0)])
   result.initModalView()
 
 # ------------------------------------------------------------------ open, dismiss
@@ -200,10 +199,9 @@ proc realRemoveWidget(m: ModalView) =
   let w = m.window
   if w != nil:
     w.removeWidget(m)
-    let uids = m.windowUids
-    for (name, uid) in uids:
-      w.unbindUid(name, uid)
-  m.windowUids = @[]
+    w.unbindResize(m.windowBindings[0])
+    w.unbindKeyboard(m.windowBindings[1])
+  m.windowBindings = [Binding(0), Binding(0)]
   discard pIsOpen.set(m, toValue(false))
   discard pWindow.set(m, noneValue())
 
@@ -228,16 +226,17 @@ proc open*(m: ModalView; animation = true) =
   if m.isOpen:
     return
   let win = Window
-  discard pWindow.set(m, toValue(win))
+  discard pWindow.set(m, toValue(RootRef(win)))
   discard pIsOpen.set(m, toValue(true))
   discard m.dispatch("on_pre_open")
   win.addWidget(m)
-  let resizeUid = win.fbind("on_resize", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
-    m.alignCenter()
-    result = false)
-  let keyUid = win.fbind("on_keyboard", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
-    m.handleKeyboard(int(args[0].num)))
-  m.windowUids = @[("on_resize", resizeUid), ("on_keyboard", keyUid)]
+  m.windowBindings = [
+    win.bindResize(proc (width, height: float): bool {.closure.} =
+      m.alignCenter()
+      result = false),
+    win.bindKeyboard(proc (key, scancode: int; codepoint: string;
+        modifiers: set[Modifier]): bool {.closure.} =
+      m.handleKeyboard(key))]
   m.center = win.center
   # Kivy binds these on every open and never unbinds them.
   for name in ["center", "size"]:

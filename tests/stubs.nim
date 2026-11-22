@@ -6,29 +6,23 @@ import nimkivy/base
 
 type
   UnitTestTouch* = ref object of MotionEvent
-    ## kivy/tests/common.py UnitTestTouch: args are the normalized x and y.
-
-method depack*(t: UnitTestTouch; args: seq[Value]) =
-  t.sx = args[0].num
-  t.sy = args[1].num
-  procCall depack(MotionEvent(t), args)
+    ## kivy/tests/common.py UnitTestTouch: a touch at a window position.
 
 proc newUnitTestTouch*(x, y: float): UnitTestTouch =
   ## A touch at window position (x, y).
   let win = Window
   result = UnitTestTouch()
-  result.initMotionEvent("UnitTestTouch", "99",
-    @[toValue(x / (win.width - 1.0)), toValue(y / (win.height - 1.0))],
-    isTouch = true, typeId = "touch")
-  result.profile = @["pos"]
+  result.initMotionEvent("UnitTestTouch", "99", x / (win.width - 1.0),
+    y / (win.height - 1.0), isTouch = true, typeId = "touch")
+  result.profile = {mpPos}
 
 proc touchDown*(t: UnitTestTouch) =
-  EventLoop.postDispatchInput("begin", t)
+  EventLoop.postDispatchInput(maBegin, t)
 
 proc touchMove*(t: UnitTestTouch; x, y: float) =
   let win = Window
-  t.move(@[toValue(x / (win.width - 1.0)), toValue(y / (win.height - 1.0))])
-  EventLoop.postDispatchInput("update", t)
+  t.move(x / (win.width - 1.0), y / (win.height - 1.0))
+  EventLoop.postDispatchInput(maUpdate, t)
 
 proc touchUp*(t: UnitTestTouch) =
-  EventLoop.postDispatchInput("end", t)
+  EventLoop.postDispatchInput(maEnd, t)

@@ -31,7 +31,13 @@ proc convert(unit: string; value: float): float =
 for unit in ["inch", "dp", "sp", "pt", "cm", "mm"]:
   block test_metrics_scale_factors:
     # kivy/tests/test_metrics.py::test_metrics_scale_factors
-    let ext = unit.substr(0, 1)
+    let ext = case unit
+      of "inch": unitIn
+      of "dp": unitDp
+      of "sp": unitSp
+      of "pt": unitPt
+      of "cm": unitCm
+      else: unitMm
     Metrics.density = 2
     Metrics.dpi = 101
     Metrics.fontscale = 3

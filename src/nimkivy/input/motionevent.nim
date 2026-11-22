@@ -1,9 +1,9 @@
 ## Motion events (touches): Kivy's `kivy/input/motionevent.py`, plus the
 ## provider base of `kivy/input/provider.py`.
 ##
-## A `MotionEvent` is one touch from its start ("begin") through its moves
-## ("update") to its end ("end"). The provider sets the normalized position
-## (`sx`, `sy`, from 0 to 1, y up); the window turns it into window
+## A `MotionEvent` is one touch from its start (`maBegin`) through its moves
+## (`maUpdate`) to its end (`maEnd`). The provider sets the normalized
+## position (`sx`, `sy`, from 0 to 1, y up); the window turns it into window
 ## coordinates (`x`, `y`, `pos`) with `scaleForScreen`, and widgets that
 ## work in local coordinates move it with `push`, `applyTransform2d` and
 ## `pop`. A widget that `grab`s the touch gets its later moves and its end
@@ -14,15 +14,23 @@
 ## `distance`, the double and triple tap attributes that the postproc modules
 ## set, `shape`, `z` values other than 0, and rotation.
 
-import std/[monotimes, strutils, syncio]
-import ../event
+import std/[monotimes, syncio]
 
 type
-  TouchUserData* = object
-    ## `ud`: a small table keyed by an object (compared by identity) or a
-    ## string, as Kivy's `touch.ud` dict is used.
-    keys: seq[Value]
-    values: seq[Value]
+  MotionAction* = enum
+    ## What a provider reports of a motion event (Kivy's `etype`).
+    maBegin = "begin", maUpdate = "update", maEnd = "end"
+
+  MotionProfile* = enum
+    ## What a motion event carries (Kivy's `profile` entries).
+    mpPos = "pos", mpButton = "button", mpPressure = "pressure",
+    mpMultitouchSim = "multitouch_sim"
+
+  MouseButton* = enum
+    ## The mouse button of a mouse touch (Kivy's `button` strings).
+    mbNone = "", mbLeft = "left", mbRight = "right", mbMiddle = "middle",
+    mbMouse4 = "mouse4", mbMouse5 = "mouse5", mbScrollUp = "scrollup",
+    mbScrollDown = "scrolldown", mbScrollLeft = "scrollleft", mbScrollRight = "scrollright"
 
   PushedAttrs = object
     # The default `push_attrs` of motionevent.py, saved by `push`.
@@ -31,15 +39,15 @@ type
     typeId: string
 
   MotionEvent* = ref object of RootObj
-    ## A touch or another motion event. Subtypes set `sx` and `sy` in
-    ## `depack` (Kivy's MouseMotionEvent, SDL2MotionEvent, UnitTestTouch).
+    ## A touch or another motion event. Subtypes may override `depack`
+    ## (Kivy's MouseMotionEvent, SDL2MotionEvent, UnitTestTouch).
     device*: string               ## the provider that made it
     id*: string                   ## its id within the provider
     uid*: int                     ## unique in the program
     isTouch*: bool                ## a touch (dispatched to on_touch_*)
     typeId*: string               ## "touch" or "hover"
-    profile*: seq[string]         ## what it carries: "pos", "button", ...
-    button*: string               ## "left", "right", "middle", "scrollup", ...; "" for none
+    profile*: set[MotionProfile]  ## what it carries
+    button*: MouseButton          ## the mouse button; `mbNone` for none
     sx*, sy*, sz*: float          ## the position, normalized (0 to 1)
     osx*, osy*, osz*: float       ## the first position, normalized
     psx*, psy*, psz*: float       ## the previous position, normalized
@@ -52,19 +60,21 @@ type
     timeStart*: float             ## when it began, in seconds
     timeUpdate*: float            ## when it last moved
     timeEnd*: float               ## when it ended; -1 before
-    ud*: TouchUserData            ## data widgets attach to it
-    grabList*: seq[EventDispatcher]   ## the widgets that grabbed it
-    grabExclusiveClass*: nil EventDispatcher
+    claimedBy*: seq[RootRef]
+      ## The objects that took the touch as theirs (Kivy's `touch.ud`, which
+      ## in scope only ButtonBehavior uses, with itself as the key).
+    grabList*: seq[RootRef]       ## the widgets that grabbed it
+    grabExclusiveClass*: nil RootRef
     grabState*: bool              ## true while dispatched to grabbing widgets
-    grabCurrent*: nil EventDispatcher ## the grabbing widget being dispatched to
+    grabCurrent*: nil RootRef     ## the grabbing widget being dispatched to
     syncWithDispatch*: bool
     pushAttrsStack: seq[PushedAttrs]
     hasOrigin: bool               # Kivy's `osx is not None`
     keepPrevPos: bool
     firstDispatchDone: bool
 
-  InputEvent* = (string, MotionEvent)
-    ## A provider's event: "begin", "update" or "end", and the motion event.
+  InputEvent* = (MotionAction, MotionEvent)
+    ## A provider's event: what happened, and the motion event.
 
   MotionEventProvider* = ref object of RootObj
     ## A source of motion events (kivy/input/provider.py). The event loop
@@ -81,61 +91,16 @@ proc time(): float =
   # Python's time.time() as Kivy uses it here: only differences matter.
   float(getMonoTime().ticks) / 1e9
 
-# ------------------------------------------------------------------ ud
-
-proc find(ud: TouchUserData; key: Value): int =
-  result = -1
-  for i in 0 ..< ud.keys.len:
-    if ud.keys[i] == key: return i
-
-proc contains*(ud: TouchUserData; key: Value): bool =
-  ## Whether `key` is in `ud` (Python's `key in touch.ud`).
-  ud.find(key) >= 0
-
-proc contains*(ud: TouchUserData; key: string): bool =
-  ## Whether the string `key` is in `ud`.
-  ud.contains(toValue(key))
-
-proc `[]=`*(ud: var TouchUserData; key, value: Value) =
-  ## Sets `ud[key]`.
-  let i = ud.find(key)
-  if i >= 0:
-    ud.values[i] = value
-  else:
-    ud.keys.add key
-    ud.values.add value
-
-proc `[]=`*(ud: var TouchUserData; key: string; value: Value) =
-  ## Sets `ud[key]` for a string key.
-  ud[toValue(key)] = value
-
-proc getOrDefault*(ud: TouchUserData; key: Value; default = noneValue()): Value =
-  ## `ud.get(key, default)`.
-  let i = ud.find(key)
-  result = if i >= 0: ud.values[i] else: default
-
-proc getOrDefault*(ud: TouchUserData; key: string; default = noneValue()): Value =
-  ## `ud.get(key, default)` for a string key.
-  ud.getOrDefault(toValue(key), default)
-
-proc del*(ud: var TouchUserData; key: Value) =
-  ## Removes `key`, if present.
-  let i = ud.find(key)
-  if i >= 0:
-    ud.keys.delete(i)
-    ud.values.delete(i)
-
-proc len*(ud: TouchUserData): int {.inline.} =
-  ## The number of entries.
-  ud.keys.len
-
 # ------------------------------------------------------------------ MotionEvent
 
-method depack*(me: MotionEvent; args: seq[Value]) {.base.} =
-  ## Takes the provider's arguments. Subtypes set `sx` and `sy` (and the
-  ## other normalized values), then call this base, which keeps the first
-  ## and previous positions and computes the last move.
-  ## motionevent.py MotionEvent.depack
+method depack*(me: MotionEvent; sx, sy: float) {.base.} =
+  ## Takes the provider's new normalized position, keeps the first and
+  ## previous positions and computes the last move. A subtype that carries
+  ## more (a mouse button) overrides it and calls this base.
+  ## motionevent.py MotionEvent.depack (the subtypes' depack set `sx` and
+  ## `sy` from their `args`)
+  me.sx = sx
+  me.sy = sy
   if not me.hasOrigin or me.syncWithDispatch and not me.firstDispatchDone:
     me.hasOrigin = true
     me.osx = me.sx
@@ -148,10 +113,10 @@ method depack*(me: MotionEvent; args: seq[Value]) {.base.} =
   me.dsy = me.sy - me.psy
   me.dsz = me.sz - me.psz
 
-proc initMotionEvent*(me: MotionEvent; device, id: string; args: seq[Value];
+proc initMotionEvent*(me: MotionEvent; device, id: string; sx, sy: float;
     isTouch = false; typeId = "") =
-  ## Sets up a new motion event of a subtype, built with `T()` first, and
-  ## depacks `args`. motionevent.py MotionEvent.__init__
+  ## Sets up a new motion event of a subtype, built with `T()` first, at the
+  ## normalized position (`sx`, `sy`). motionevent.py MotionEvent.__init__
   inc uniqId.value
   let now = time()
   me.isTouch = isTouch
@@ -163,11 +128,8 @@ proc initMotionEvent*(me: MotionEvent; device, id: string; args: seq[Value];
   me.grabExclusiveClass = nil
   me.grabState = false
   me.grabCurrent = nil
-  me.button = ""
-  me.profile = @[]
+  me.profile = {}
   me.id = id
-  me.sx = 0.0
-  me.sy = 0.0
   me.sz = 0.0
   me.hasOrigin = false
   me.x = 0.0
@@ -177,13 +139,13 @@ proc initMotionEvent*(me: MotionEvent; device, id: string; args: seq[Value];
   me.timeStart = now
   me.timeUpdate = now
   me.timeEnd = -1
-  me.ud = TouchUserData(keys: @[], values: @[])
+  me.claimedBy = @[]
   me.syncWithDispatch = true
   me.keepPrevPos = true
   me.firstDispatchDone = false
-  me.depack(args)
+  me.depack(sx, sy)
 
-proc grab*(me: MotionEvent; widget: EventDispatcher; exclusive = false) =
+proc grab*(me: MotionEvent; widget: RootRef; exclusive = false) =
   ## Grabs the event: `widget` gets its later moves and its end, with
   ## `grabCurrent` set to it. An exclusive grab cannot be joined; a second
   ## grab then stops the program, as Kivy raises.
@@ -191,12 +153,12 @@ proc grab*(me: MotionEvent; widget: EventDispatcher; exclusive = false) =
   # reference and drops a widget that is gone, because Nimony has no weak
   # references
   if me.grabExclusiveClass != nil:
-    quit "Exception: Event is exclusive and cannot be grabbed"
+    quit "the touch is grabbed exclusively and cannot be grabbed again"
   if exclusive:
     me.grabExclusiveClass = widget
   me.grabList.add widget
 
-proc ungrab*(me: MotionEvent; widget: EventDispatcher) =
+proc ungrab*(me: MotionEvent; widget: RootRef) =
   ## Removes `widget` from the grab list.
   if me.grabExclusiveClass == widget:
     me.grabExclusiveClass = nil
@@ -209,8 +171,8 @@ proc dispatchDone*(me: MotionEvent) =
   me.keepPrevPos = true
   me.firstDispatchDone = true
 
-proc move*(me: MotionEvent; args: seq[Value]) =
-  ## Moves to a new position from the provider's arguments.
+proc move*(me: MotionEvent; sx, sy: float) =
+  ## Moves to a new normalized position.
   if me.syncWithDispatch:
     if me.keepPrevPos:
       me.psx = me.sx
@@ -222,11 +184,12 @@ proc move*(me: MotionEvent; args: seq[Value]) =
     me.psy = me.sy
     me.psz = me.sz
   me.timeUpdate = time()
-  me.depack(args)
+  me.depack(sx, sy)
 
-proc scaleForScreen*(me: MotionEvent; w, h: float; smode = ""; kheight = 0.0) =
+proc scaleForScreen*(me: MotionEvent; w, h: float) =
   ## Turns the normalized positions into window coordinates, x from 0 to
-  ## `w` - 1 and y from 0 to `h` - 1. Rotation is out of scope (0).
+  ## `w` - 1 and y from 0 to `h` - 1. Rotation and the soft keyboard modes
+  ## (`smode`, `kheight`) are out of scope.
   ## motionevent.py MotionEvent.scale_for_screen
   let xMax = max(0.0, w - 1)
   let yMax = max(0.0, h - 1)
@@ -240,16 +203,6 @@ proc scaleForScreen*(me: MotionEvent; w, h: float; smode = ""; kheight = 0.0) =
   me.z = 0.0
   me.oz = 0.0
   me.pz = 0.0
-  if smode.len > 0:
-    if smode == "pan" or smode == "below_target":
-      me.y -= kheight
-      me.oy -= kheight
-      me.py -= kheight
-    elif smode == "scale":
-      let offset = kheight * (me.y - h) / (h - kheight)
-      me.y += offset
-      me.oy += offset
-      me.py += offset
   me.dx = me.x - me.px
   me.dy = me.y - me.py
   me.dz = me.z - me.pz
@@ -312,26 +265,13 @@ proc spos*(me: MotionEvent): (float, float) {.inline.} =
 
 proc isMouseScrolling*(me: MotionEvent): bool =
   ## Whether the event is a mouse wheel step.
-  "button" in me.profile and "scroll" in me.button
+  mpButton in me.profile and
+    me.button in {mbScrollUp, mbScrollDown, mbScrollLeft, mbScrollRight}
 
 proc `$`*(me: MotionEvent): string =
   ## `<MotionEvent spos=(sx, sy) pos=(x, y)>`.
   "<MotionEvent spos=(" & $me.sx & ", " & $me.sy & ") pos=(" & $me.pos[0] & ", " &
     $me.pos[1] & ")>"
-
-proc toValue*(me: MotionEvent): Value {.inline.} =
-  ## The event as an event argument.
-  toValue(RootRef(me))
-
-proc toMotionEvent*(v: Value): MotionEvent =
-  ## The motion event in an event argument; stops the program on another
-  ## value, which would be a bug.
-  if v.kind != vkObject:
-    quit "TypeError: not a MotionEvent"
-  let o = v.obj
-  if o == nil or not (o of MotionEvent):
-    quit "TypeError: not a MotionEvent"
-  result = MotionEvent(o)
 
 # ------------------------------------------------------------------ providers
 

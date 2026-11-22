@@ -48,8 +48,8 @@ proc load(c: Check; path, name: string): Sound =
 let clipA = if paramCount() >= 1: paramStr(1) else: "tests/assets/tone.wav"
 let clipB = if paramCount() >= 2: paramStr(2) else: clipA
 
-Config.set("graphics", "width", "320")
-Config.set("graphics", "height", "240")
+Config.graphics.width = 320
+Config.graphics.height = 240
 let c = Check(log: @[], start: time(), current: nil, last: nil, lengthB: "")
 
 discard Clock.scheduleOnce(proc (dt: float) {.closure.} =

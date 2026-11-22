@@ -1,89 +1,50 @@
 ## The configuration: Kivy's `kivy/config.py`, in memory only.
 ##
-## `Config` holds the keys nimkivy reads, with Kivy's defaults. Values are
-## strings, as in Kivy's ConfigParser; `getint`, `getfloat` and `getboolean`
-## convert them. There is no `config.ini` file (SCOPE.md).
-
-import std/[tables, strutils, parseutils, syncio]
+## `Config` holds the settings nimkivy reads, as typed fields grouped like
+## Kivy's sections, with Kivy's defaults: `Config.graphics.width = 1024`
+## where Kivy writes `Config.set('graphics', 'width', '1024')`. Set them
+## before the window opens. There is no `config.ini` file (SCOPE.md).
 
 type
-  ConfigParser* = ref object
-    ## Sections of string options.
-    values: Table[string, string]   # keyed by "section\0option"
+  MouseOption* = enum
+    ## The options of the mouse provider (Kivy's `[input] mouse = mouse,<options>`).
+    disableMultitouch     ## no multitouch simulation
+    multitouchOnDemand    ## simulation only on request (no effect: there is none)
+    disableOnActivity     ## other providers and hover are out of scope: no effect
+    disableHover          ## no effect, as above
 
-proc keyOf(section, option: string): string =
-  result = section & "\0" & option
+  KivySection* = object
+    ## Kivy's `[kivy]` section.
+    exitOnEscape*: bool          ## Escape (Android's Back) stops the app
 
-proc hasOption*(c: ConfigParser; section, option: string): bool =
-  ## Whether `option` is set in `section`.
-  c.values.hasKey(keyOf(section, option))
+  GraphicsSection* = object
+    ## Kivy's `[graphics]` section.
+    width*, height*: int         ## the window size at start
+    resizable*: bool             ## the user may resize the window
+    fullscreen*: bool            ## fullscreen at start (Kivy's `1` and `auto`)
+    maxfps*: int                 ## frames per second the event loop paces to; 0 does not wait
+    multisamples*: int           ## not used: SDL_Renderer has no MSAA (PORTING.md, Gaps)
+    minStateTime*: float         ## ButtonBehavior's shortest pressed state, in seconds
 
-proc set*(c: ConfigParser; section, option, value: string) =
-  ## Sets an option.
-  c.values[keyOf(section, option)] = value
+  InputSection* = object
+    ## Kivy's `[input]` section: only the mouse provider is in scope.
+    mouse*: bool                 ## the mouse makes touches
+    mouseOptions*: set[MouseOption]
 
-proc set*(c: ConfigParser; section, option: string; value: int) =
-  ## Sets an option to a number (stored as its text, as Kivy does).
-  c.set(section, option, $value)
+  Configuration* = ref object
+    ## The settings, by section.
+    kivy*: KivySection
+    graphics*: GraphicsSection
+    input*: InputSection
 
-proc setdefault*(c: ConfigParser; section, option, value: string) =
-  ## Sets an option unless it is already set.
-  if not c.hasOption(section, option): c.set(section, option, value)
+proc newConfiguration*(): Configuration =
+  ## Kivy's defaults for the settings in SCOPE.md (config.py, the upgrade
+  ## steps).
+  Configuration(
+    kivy: KivySection(exitOnEscape: true),
+    graphics: GraphicsSection(width: 800, height: 600, resizable: true, fullscreen: false,
+      maxfps: 60, multisamples: 2, minStateTime: 0.035),
+    input: InputSection(mouse: true, mouseOptions: {}))
 
-proc get*(c: ConfigParser; section, option: string): string =
-  ## The text of an option. A missing option stops the program, as Kivy's
-  ## NoOptionError does.
-  let k = keyOf(section, option)
-  if not c.values.hasKey(k):
-    quit "NoOptionError: No option '" & option & "' in section: '" & section & "'"
-  result = c.values.getOrDefault(k, "")
-
-proc getdefault*(c: ConfigParser; section, option, default: string): string =
-  ## The text of an option, or `default` when it is not set.
-  result = c.values.getOrDefault(keyOf(section, option), default)
-
-proc getint*(c: ConfigParser; section, option: string): int =
-  ## An option as an integer. A value that is not one stops the program.
-  let s = c.get(section, option).strip()
-  try:
-    result = parseInt(s)
-  except:
-    quit "ValueError: invalid literal for int() with base 10: '" & s & "'"
-
-proc getfloat*(c: ConfigParser; section, option: string): float =
-  ## An option as a float. A value that is not one stops the program.
-  let s = c.get(section, option).strip()
-  var x = 0.0
-  if s.len == 0 or parseFloat(s, x) != s.len:
-    quit "ValueError: could not convert string to float: '" & s & "'"
-  result = x
-
-proc getboolean*(c: ConfigParser; section, option: string): bool =
-  ## An option as a boolean: 1, yes, true, on or 0, no, false, off.
-  let s = c.get(section, option).toLowerAscii
-  case s
-  of "1", "yes", "true", "on": result = true
-  of "0", "no", "false", "off": result = false
-  else: quit "ValueError: Not a boolean: " & s
-
-proc newConfigParser*(): ConfigParser =
-  ## An empty configuration.
-  ConfigParser(values: initTable[string, string]())
-
-proc setKivyDefaults*(c: ConfigParser) =
-  ## Kivy's defaults for the keys in SCOPE.md (config.py, the upgrade steps).
-  c.setdefault("kivy", "exit_on_escape", "1")
-  c.setdefault("graphics", "width", "800")
-  c.setdefault("graphics", "height", "600")
-  c.setdefault("graphics", "resizable", "1")
-  c.setdefault("graphics", "maxfps", "60")
-  c.setdefault("graphics", "multisamples", "2")
-  c.setdefault("graphics", "min_state_time", ".035")
-  c.setdefault("input", "mouse", "mouse")
-
-proc newKivyConfig(): ConfigParser =
-  result = newConfigParser()
-  result.setKivyDefaults()
-
-let Config* = newKivyConfig()
-  ## The application's configuration. Set options before the window opens.
+let Config* = newConfiguration()
+  ## The application's configuration. Set it before the window opens.

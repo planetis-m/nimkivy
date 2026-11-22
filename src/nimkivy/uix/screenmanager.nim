@@ -583,7 +583,7 @@ proc screenNameChanged(sm: ScreenManager): PropertyCallback =
     if sm.currentScreen == Screen(d):
       sm.current = v.str
 
-method addWidget*(sm: ScreenManager; widget: WidgetBase; index = 0; canvas = "") =
+method addWidget*(sm: ScreenManager; widget: WidgetBase; index = 0; canvas = layerCanvas) =
   ## Manages a screen; the first one becomes `current`. Only screens that
   ## have no manager are accepted (else the program stops with Kivy's
   ## ScreenManagerException). ScreenManager.add_widget

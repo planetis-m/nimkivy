@@ -30,8 +30,6 @@ proc shotPath(): string =
   result = dir / "graphics.png"
   discard tryRemoveFile(path(dir / "graphics0001.png"))
 
-let GraphicsAppClass = newDispatcherClass("TestApp", AppClass)
-
 method build(a: GraphicsApp): nil WidgetBase =
   # test_app.py graphics_app
   let widget = newWidget()
@@ -53,8 +51,8 @@ proc rgbAt(s: ptr SDL_Surface; x, y: int): (int, int, int) =
 block test_graphics_app:
   # kivy/tests/test_app.py::test_graphics_app. Kivy draws the widget's
   # canvas into an Fbo; here the window's screenshot is read.
-  let a = GraphicsApp(cls: GraphicsAppClass, shot: "")
-  a.initApp()
+  let a = GraphicsApp(shot: "")
+  a.initApp("TestApp")
   a.run()
   assert a.shot.len > 0
   let img = IMG_Load(a.shot.toCString)
@@ -69,46 +67,44 @@ block test_graphics_app:
   SDL_DestroySurface(img)
   discard tryRemoveFile(path(a.shot))
 
-let LifecycleAppClass = newDispatcherClass("LifecycleApp", AppClass)
-
 method build(a: LifecycleApp): nil WidgetBase =
   inc a.builds
   a.log.add "build " & $Window.width & "x" & $Window.height
   discard Clock.scheduleOnce(proc (dt: float) {.closure.} = a.stop(), 0.1)
   result = newWidget()
 
-proc logEvent(a: LifecycleApp; name: string): EventCallback =
-  result = proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+proc logEvent(a: LifecycleApp; name: string): proc (): bool {.closure.} =
+  result = proc (): bool {.closure.} =
     a.log.add name
     result = false
 
 block app_lifecycle:
-  # App.run: build after the window opened, on_start, then stop() from a
-  # Clock callback: on_stop, and on_stop again when run returns, as Kivy's
+  # App.run: build after the window opened, start, then stop() from a
+  # Clock callback: stop, and stop again when run returns, as Kivy's
   # App.run calls _stop after runTouchApp (checked with Kivy 2.3.2).
-  let a = LifecycleApp(cls: LifecycleAppClass, log: @[], builds: 0)
-  a.initApp()
+  let a = LifecycleApp(log: @[], builds: 0)
+  a.initApp("LifecycleApp")
   assert getRunningApp() == App(a)
-  for name in ["on_start", "on_stop"]:
-    a.bind(name, a.logEvent(name))
+  discard a.bindStart(a.logEvent("start"))
+  discard a.bindStop(a.logEvent("stop"))
   a.run()
   assert a.builds == 1
-  assert a.log == @["build 800.0x600.0", "on_start", "on_stop", "on_stop"], $a.log
+  assert a.log == @["build 800.0x600.0", "start", "stop", "stop"], $a.log
   assert getRunningApp() == nil
   let root = a.root
   assert Window.children.len == 0 and root != nil and root.parent == nil
   assert a.getApplicationName() == "Lifecycle" and a.name == "lifecycle"
   # WindowSDL.set_title shows the title but leaves Window.title as it is.
-  assert Window.getProperty("title").str == "Kivy"
-  assert EventLoop.status == "closed"
+  assert Window.title == "Kivy"
+  assert EventLoop.status == loopClosed
 
 block app_on_pause_and_title:
-  # on_pause returns true by default (the app survives Android's pause);
+  # pause returns true by default (the app survives Android's pause);
   # an observer can refuse.
   let a = newApp()
-  assert a.dispatch("on_pause")
-  a.bind("on_pause", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} = false)
-  assert a.dispatch("on_pause")     # an observer's false does not stop the default
+  assert a.dispatchPause()
+  discard a.bindPause(proc (): bool {.closure.} = false)
+  assert a.dispatchPause()     # an observer's false does not stop the default
   assert a.getApplicationName() == ""
   a.title = "PHILOSYKOS"
-  assert a.title == "PHILOSYKOS" and a.getApplicationName() == "PHILOSYKOS"
+  assert a.title == some("PHILOSYKOS") and a.getApplicationName() == "PHILOSYKOS"

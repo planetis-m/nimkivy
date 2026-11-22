@@ -107,10 +107,10 @@ proc settled(s: Showcase; name: string): bool =
 
 let profileOut = getEnv("SHOWCASE_PROFILE")
 let verbose = getEnv("SHOWCASE_VERBOSE").len > 0   # prints each step's name
-Config.set("graphics", "width", "800")
-Config.set("graphics", "height", "600")
+Config.graphics.width = 800
+Config.graphics.height = 600
 if profileOut.len > 0:
-  Config.set("graphics", "maxfps", getEnv("SHOWCASE_MAXFPS", "0"))
+  Config.graphics.maxfps = try: parseInt(getEnv("SHOWCASE_MAXFPS", "0")) except: 0
 
 let kiosk = newShowcaseApp()
 kiosk.slideInterval = 1.5
@@ -252,9 +252,9 @@ proc runScript() =
       if sc.next < sc.steps.len:
         sc.due = now + sc.steps[sc.next].delay, 0)
 
-kiosk.bind("on_start", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+discard kiosk.bindStart(proc (): bool {.closure.} =
   build(kiosk)
-  Window.bind("on_flip", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+  discard Window.bindFlip(proc (): bool {.closure.} =
     sc.drew = true
     result = false)
   runScript()

@@ -9,8 +9,8 @@ import nimkivy/config
 import nimkivy/graphics/[context_instructions, vertex_instructions, stencil_instructions]
 import nimkivy/uix/image
 
-Config.set("graphics", "width", "800")
-Config.set("graphics", "height", "600")
+Config.graphics.width = 800
+Config.graphics.height = 600
 
 proc a(name: string): string = "tests/assets/" & name
 

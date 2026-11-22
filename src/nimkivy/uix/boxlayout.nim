@@ -29,7 +29,7 @@ type
     # (size, size_hint, pos_hint, size_hint_min, size_hint_max).
     w, h: float
     shw, shh: Opt[float]
-    posHint: seq[(string, Value)]
+    posHint: PosHint
     shwMin, shhMin, shwMax, shhMax: Opt[float]
 
   Placement = object
@@ -52,7 +52,12 @@ proc initBoxLayout*(b: BoxLayout) =
   ## Sets up a new box layout: the layout, then the trigger on its own
   ## properties. BoxLayout.__init__
   b.initLayout()
-  for name in ["spacing", "padding", "children", "orientation", "parent", "size", "pos"]:
+  for name in ["spacing", "padding"]:
+    discard b.bindTrigger(b, name)
+  discard b.bindChildren(proc (v: seq[WidgetBase]) {.closure.} = b.triggerNow())
+  discard b.bindTrigger(b, "orientation")
+  discard b.bindParent(proc (v: nil WidgetBase) {.closure.} = b.triggerNow())
+  for name in ["size", "pos"]:
     discard b.bindTrigger(b, name)
 
 proc newBoxLayout*(): BoxLayout =
@@ -211,12 +216,12 @@ proc iterateLayout(b: BoxLayout; sizes: seq[ChildSizes]): seq[Placement] =
         w = max(0.0, stretchSpace * sh.get(0) / stretchSum)
       if truthy(s.shh):
         h = max(0.0, s.shh.get(0) * sizeY)
-      for (key, value) in s.posHint:
-        if key == "y" or key == "top" or key == "center_y":
-          let posy = value.num * sizeY
-          if key == "y":
+      for e in s.posHint.entries:
+        if e.key in {phY, phTop, phCenterY}:
+          let posy = e.value * sizeY
+          if e.key == phY:
             cy += posy
-          elif key == "top":
+          elif e.key == phTop:
             cy += posy - h
           else:
             cy += posy - h / 2.0
@@ -236,12 +241,12 @@ proc iterateLayout(b: BoxLayout; sizes: seq[ChildSizes]): seq[Placement] =
         h = max(0.0, stretchSpace * sh.get(0) / stretchSum)
       if truthy(s.shw):
         w = max(0.0, s.shw.get(0) * sizeX)
-      for (key, value) in s.posHint:
-        if key == "x" or key == "right" or key == "center_x":
-          let posx = value.num * sizeX
-          if key == "x":
+      for e in s.posHint.entries:
+        if e.key in {phX, phRight, phCenterX}:
+          let posx = e.value * sizeX
+          if e.key == phX:
             cx += posx
-          elif key == "right":
+          elif e.key == phRight:
             cx += posx - w
           else:
             cx += posx - w / 2.0
@@ -274,8 +279,8 @@ method doLayout*(b: BoxLayout) =
     else:
       c.size = (p.w, p.h)
 
-method addWidget*(b: BoxLayout; widget: WidgetBase; index = 0; canvas = "") =
-  ## Binds the layout to the child's `pos_hint`, then adds it as Layout
+method addWidget*(b: BoxLayout; widget: WidgetBase; index = 0; canvas = layerCanvas) =
+  ## Binds the layout to the child's `posHint`, then adds it as Layout
   ## does. BoxLayout.add_widget
-  b.bindChild(widget, "pos_hint")
+  b.bindChildPosHint(widget)
   procCall addWidget(Layout(b), widget, index, canvas)

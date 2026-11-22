@@ -55,7 +55,7 @@ proc newClockBase*(): ClockBase =
   ## clock.py ClockBaseBehavior.__init__ and _clock.pyx CyClockBase.__init__
   let now = time()
   result = ClockBase(rootEvent: nil, lastEvent: nil, nextEvent: nil, capEvent: nil,
-    clockResolution: -1.0, maxFps: float(Config.getint("graphics", "maxfps")),
+    clockResolution: -1.0, maxFps: float(Config.graphics.maxfps),
     maxIteration: 20, hasStarted: false, hasEnded: false, startTick: now,
     lastTick: now, dt: 0.0001, frames: 0, framesDisplayed: 0, lastFpsTick: -1.0,
     fps: 0.0, rfps: 0, fpsCounter: 0, rfpsCounter: 0)

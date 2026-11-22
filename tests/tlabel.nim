@@ -9,8 +9,8 @@ import nimkivy/[app, clock, config]
 import nimkivy/graphics/[texture, context_instructions, vertex_instructions]
 import nimkivy/uix/label
 
-Config.set("graphics", "width", "800")
-Config.set("graphics", "height", "600")
+Config.graphics.width = 800
+Config.graphics.height = 600
 
 proc rendered(l: Label): (float, float) =
   # Runs the label's trigger, as the frame before drawing does.
@@ -160,8 +160,6 @@ block hinting:
 
 type BasicApp = ref object of App
 
-let BasicAppClass = newDispatcherClass("TestApp", AppClass)
-
 method build(a: BasicApp): nil WidgetBase =
   # test_app.py basic_app: `return Label(text='Hello, World!')`
   discard Clock.scheduleOnce(proc (dt: float) {.closure.} = a.stop(), 0.1)
@@ -169,8 +167,8 @@ method build(a: BasicApp): nil WidgetBase =
 
 block test_basic_app:
   # kivy/tests/test_app.py::test_basic_app
-  let a = BasicApp(cls: BasicAppClass)
-  a.initApp()
+  let a = BasicApp()
+  a.initApp("TestApp")
   a.run()
   let root = a.root
   assert root != nil and root of Label

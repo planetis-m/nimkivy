@@ -268,7 +268,7 @@ the block).
 |---|---|---|---|
 | 0 | **Standalone harness** (done, 2026-11-22): fixtures to `tests/fixtures`, Nim format, `tests/compare.nim`, `archive/`; trace and scene writers print Nim's format | all current tests, traces, scenes | `run_tests.sh` passes with no Python on the machine; `compare.nim` and `compare.py` agree on the current outputs (checked once) |
 | 1 | **Plugins and observers** (done, 2026-11-22; #336, #290, #175, #337 still open at Nimony `95afaa04`, which is master) in `src/nimkivy/props.nim`, `observers.nim`, `plugins/propsplug.nim`, `plugins/codegen.nim`: every kind above, observer order as phase 1 | `tproperties` and the `events`/`properties` cases rewritten on it; the prototype tests; `bad/` programs | every phase-1 property and event case passes typed; the old `event.nim`/`properties.nim` still build the rest |
-| 2 | **Layer 1 and 5 dispatchers**: metrics (aliases), clock, core/window (WindowBase, WidgetBase with typed hints, parent and children by hand: #337), input/motionevent (`claimedBy`), base, app, config typed | tclock, tmetrics, tmotionevent, twindow, tapp; traces `events`, `clock`, `touch` | no name lookups in these modules |
+| 2 | **Layer 1 and 5 dispatchers** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master): metrics (aliases), clock, core/window (WindowBase, WidgetBase with typed hints, parent and children by hand: #337), input/motionevent (`claimedBy`), base, app, config typed | tclock, tmetrics, tmotionevent, twindow, tapp; traces `events`, `clock`, `touch` | no name lookups in these modules |
 | 3 | **Layer 6**: widget, layout, the four layouts (typed triggers, `PosHint`, `CanvasLayer`) | twidget, tlayout, trelativelayout; trace `properties`; layout scenes | geometry exact, pixels as before |
 | 4 | **Layer 7**: label (typed font options), image, ButtonBehavior as an owned properties object, no closures | tlabel, timage, tbutton; traces `label`, `touch`; label and image scenes | as before |
 | 5 | **Layers 8-9**: animation (tracks), screenmanager, modalview, audio | tanimation, tscreenmanager, tmodalview, taudio; traces `animation`, `screens`, `modal`; fade and modal scenes | as before |
@@ -290,6 +290,25 @@ planetis-m/nimony-bugs-llms#338 (a proc literal in an `{.untyped.}` template
 crashes nimsem) and #339 (an object constructor of an inherited field in an
 `{.untyped.}` template gives invalid C); `tproperties` writes around both in
 an equivalent form.
+
+Step 2 notes: `WidgetBase` is written by hand (#337: `children: seq[WidgetBase]`)
+with typed `parent`, `children` and `touchDown`/`touchMove`/`touchUp`, and
+stays an `EventDispatcher` (with a property-less class) until step 3, so
+Widget's phase-1 properties keep working. The hints could not go on
+`WidgetBase` (it is outside a block), so they are on its subtype
+`HintedWidget` in core/window, Widget's new base; the window sizes a root
+widget only if it is one. `PosHint` (enum keys) and `CanvasLayer` came now,
+since core/window declares them. **Left for step 3:** the window still sets
+Widget's geometry (`size`, `width`, `height`, `x`, `right`, `y`, `top`,
+`center_x`, `center_y`) and binds its `size` and `pos` by name
+(`updateChildsize`, `addWidget`): the geometry is Widget's, phase 1, and
+core/window cannot see Widget. Step 3 should move the geometry into
+`HintedWidget` as typed properties (the window then reads and binds it
+typed); `WindowBase` cannot share them (its `size`, `width`, `height`,
+`center` are aliases of its own). The window's events, App's and the event
+loop's are typed (`dispatchKeyboard`, `bindStart`, ...); App takes its class
+name in `initApp` (#340). Bug found: planetis-m/nimony-bugs-llms#340
+(`$typeof(x)` of a ref object prints `ref T.Obj`).
 
 The kiosk (philosykos-website) is written once on the result, after step 7;
 its own parity harness and Python app leave its tree then (ROADMAP.md).

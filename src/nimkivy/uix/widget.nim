@@ -11,9 +11,8 @@
 ## `T(cls: TClass, canvas: newCanvas())` followed by `initWidget`. As in Kivy,
 ## creating a widget opens the window (`EventLoop.ensureWindow`).
 ##
-## `pos_hint` is stored as a list of `(key, value)` pairs in the order the
-## keys were given, as Python's dict keeps them; the value is a number, or a
-## pair of numbers for `pos` and `center`.
+## The size and position hints are typed properties of `HintedWidget`
+## (core/window), which the window reads too.
 ##
 ## Out of scope (SCOPE.md): `ids`, `cls`, `motion_filter` and `on_motion`,
 ## `on_kv_post`, `export_to_png` and `export_as_image`, `walk_reverse`,
@@ -26,7 +25,7 @@ import ../graphics/instructions
 export opt, base, instructions
 
 type
-  Widget* = ref object of WidgetBase
+  Widget* = ref object of HintedWidget
     ## The base of every widget. uix/widget.py Widget
     disabledCount: int            # _disabled_count: own and inherited
     disabledValue: bool           # _disabled_value: the value last set
@@ -35,29 +34,6 @@ type
 
 proc widgetOf(d: EventDispatcher): Widget {.inline.} =
   Widget(d)
-
-proc optNum(v: Value): Opt[float] =
-  # A NumericProperty with `allownone` as an Opt.
-  if v.kind == vkNumber: some(v.num) else: none[float]()
-
-proc toValue*(o: Opt[float]): Value =
-  ## A number, or None.
-  if o.isSome: toValue(o.get(0)) else: noneValue()
-
-proc posHintEqual(a, b: Value): bool =
-  # Python's dict equality: the same keys with equal values, in any order.
-  if a.kind != vkList or b.kind != vkList:
-    return a == b
-  if a.items.len != b.items.len:
-    return false
-  result = true
-  for pa in a.items:
-    var found = false
-    for pb in b.items:
-      if pb.items[0] == pa.items[0]:
-        found = pb.items[1] == pa.items[1]
-    if not found:
-      return false
 
 let WidgetClass* = newDispatcherClass("Widget", WidgetBaseClass)
   ## The class of `Widget`: subclass it with `newDispatcherClass`.
@@ -96,20 +72,6 @@ let pCenterX = WidgetClass.addAlias("center_x", getCenterX, setCenterX,
 let pCenterY = WidgetClass.addAlias("center_y", getCenterY, setCenterY,
   @["y", "height"], cache = true, watchBeforeUse = false)
 let pCenter = WidgetClass.addReferenceList("center", @[Property(pCenterX), pCenterY])
-let pSizeHintX = WidgetClass.addNumeric("size_hint_x", 1, allowNone = true)
-let pSizeHintY = WidgetClass.addNumeric("size_hint_y", 1, allowNone = true)
-let pSizeHint = WidgetClass.addReferenceList("size_hint",
-  @[Property(pSizeHintX), pSizeHintY])
-let pPosHint = WidgetClass.addObject("pos_hint", toValue(newSeq[Value]()),
-  comparator = posHintEqual)
-let pSizeHintMinX = WidgetClass.addNumericNone("size_hint_min_x")
-let pSizeHintMinY = WidgetClass.addNumericNone("size_hint_min_y")
-let pSizeHintMin = WidgetClass.addReferenceList("size_hint_min",
-  @[Property(pSizeHintMinX), pSizeHintMinY])
-let pSizeHintMaxX = WidgetClass.addNumericNone("size_hint_max_x")
-let pSizeHintMaxY = WidgetClass.addNumericNone("size_hint_max_y")
-let pSizeHintMax = WidgetClass.addReferenceList("size_hint_max",
-  @[Property(pSizeHintMaxX), pSizeHintMaxY])
 let pOpacity = WidgetClass.addNumeric("opacity", 1.0)
 
 proc getDisabled(d: EventDispatcher): Value =
@@ -156,7 +118,7 @@ proc initWidget*(w: Widget) =
   EventLoop.ensureWindow()
   w.disabledValue = false
   w.disabledCount = 0
-  w.initWidgetBase()
+  w.initHintedWidget()
 
 proc newWidget*(): Widget =
   ## A plain widget at (0, 0), 100 x 100.
@@ -237,116 +199,6 @@ proc `center=`*(w: Widget; c: (float, float)) =
   ## Moves the widget so that its centre is at `c`.
   discard pCenter.set(w, toValue([c[0], c[1]]))
 
-proc sizeHintX*(w: Widget): Opt[float] =
-  ## The width as a share of the parent's (default 1; none: `width` is kept).
-  optNum(pSizeHintX.get(w))
-proc `sizeHintX=`*(w: Widget; v: Opt[float]) =
-  ## Sets the width hint (none: no hint).
-  discard pSizeHintX.set(w, toValue(v))
-proc `sizeHintX=`*(w: Widget; v: float) =
-  ## Sets the width hint.
-  discard pSizeHintX.set(w, toValue(v))
-proc sizeHintY*(w: Widget): Opt[float] =
-  ## The height as a share of the parent's (default 1).
-  optNum(pSizeHintY.get(w))
-proc `sizeHintY=`*(w: Widget; v: Opt[float]) =
-  ## Sets the height hint (none: no hint).
-  discard pSizeHintY.set(w, toValue(v))
-proc `sizeHintY=`*(w: Widget; v: float) =
-  ## Sets the height hint.
-  discard pSizeHintY.set(w, toValue(v))
-proc sizeHint*(w: Widget): (Opt[float], Opt[float]) =
-  ## `(sizeHintX, sizeHintY)`.
-  let v = pSizeHint.get(w)
-  result = (optNum(v.items[0]), optNum(v.items[1]))
-proc `sizeHint=`*(w: Widget; h: (Opt[float], Opt[float])) =
-  ## Sets both hints (none: no hint).
-  discard pSizeHint.set(w, toValue(@[toValue(h[0]), toValue(h[1])]))
-proc `sizeHint=`*(w: Widget; h: (float, float)) =
-  ## Sets both hints.
-  discard pSizeHint.set(w, toValue([h[0], h[1]]))
-
-proc sizeHintMinX*(w: Widget): Opt[float] =
-  ## The smallest width the hint may give (default none).
-  optNum(pSizeHintMinX.get(w))
-proc `sizeHintMinX=`*(w: Widget; v: Opt[float]) =
-  ## Sets the smallest width the hint may give.
-  discard pSizeHintMinX.set(w, toValue(v))
-proc `sizeHintMinX=`*(w: Widget; v: float) =
-  ## Sets the smallest width the hint may give.
-  discard pSizeHintMinX.set(w, toValue(v))
-proc sizeHintMinY*(w: Widget): Opt[float] =
-  ## The smallest height the hint may give (default none).
-  optNum(pSizeHintMinY.get(w))
-proc `sizeHintMinY=`*(w: Widget; v: Opt[float]) =
-  ## Sets the smallest height the hint may give.
-  discard pSizeHintMinY.set(w, toValue(v))
-proc `sizeHintMinY=`*(w: Widget; v: float) =
-  ## Sets the smallest height the hint may give.
-  discard pSizeHintMinY.set(w, toValue(v))
-proc sizeHintMin*(w: Widget): (Opt[float], Opt[float]) =
-  ## `(sizeHintMinX, sizeHintMinY)`.
-  let v = pSizeHintMin.get(w)
-  result = (optNum(v.items[0]), optNum(v.items[1]))
-proc `sizeHintMin=`*(w: Widget; h: (float, float)) =
-  ## Sets both minimums.
-  discard pSizeHintMin.set(w, toValue([h[0], h[1]]))
-proc sizeHintMaxX*(w: Widget): Opt[float] =
-  ## The largest width the hint may give (default none).
-  optNum(pSizeHintMaxX.get(w))
-proc `sizeHintMaxX=`*(w: Widget; v: Opt[float]) =
-  ## Sets the largest width the hint may give.
-  discard pSizeHintMaxX.set(w, toValue(v))
-proc `sizeHintMaxX=`*(w: Widget; v: float) =
-  ## Sets the largest width the hint may give.
-  discard pSizeHintMaxX.set(w, toValue(v))
-proc sizeHintMaxY*(w: Widget): Opt[float] =
-  ## The largest height the hint may give (default none).
-  optNum(pSizeHintMaxY.get(w))
-proc `sizeHintMaxY=`*(w: Widget; v: Opt[float]) =
-  ## Sets the largest height the hint may give.
-  discard pSizeHintMaxY.set(w, toValue(v))
-proc `sizeHintMaxY=`*(w: Widget; v: float) =
-  ## Sets the largest height the hint may give.
-  discard pSizeHintMaxY.set(w, toValue(v))
-proc sizeHintMax*(w: Widget): (Opt[float], Opt[float]) =
-  ## `(sizeHintMaxX, sizeHintMaxY)`.
-  let v = pSizeHintMax.get(w)
-  result = (optNum(v.items[0]), optNum(v.items[1]))
-proc `sizeHintMax=`*(w: Widget; h: (float, float)) =
-  ## Sets both maximums.
-  discard pSizeHintMax.set(w, toValue([h[0], h[1]]))
-
-proc posHint*(w: Widget): seq[(string, Value)] =
-  ## The position hints in the order they were given: a number for `x`,
-  ## `right`, `center_x`, `y`, `top` and `center_y`, a list of two numbers
-  ## for `pos` and `center`.
-  result = @[]
-  for p in pPosHint.get(w).items:
-    result.add (p.items[0].str, p.items[1])
-
-proc setPosHint*(w: Widget; hints: openArray[(string, Value)]) =
-  ## Sets the position hints. A key given twice keeps its first place and
-  ## its last value, as in a Python dict literal.
-  var items: seq[Value] = @[]
-  for (key, value) in hints:
-    var i = 0
-    while i < items.len and items[i].items[0].str != key:
-      inc i
-    if i < items.len:
-      items[i] = toValue(@[toValue(key), value])
-    else:
-      items.add toValue(@[toValue(key), value])
-  discard pPosHint.set(w, toValue(items))
-
-proc `posHint=`*(w: Widget; hints: openArray[(string, float)]) =
-  ## Sets numeric position hints (`x`, `right`, `center_x`, `y`, `top`,
-  ## `center_y`), for example `w.posHint = {"top": 0.9}`.
-  var pairs: seq[(string, Value)] = @[]
-  for (key, value) in hints:
-    pairs.add (key, toValue(value))
-  w.setPosHint(pairs)
-
 proc opacity*(w: Widget): float {.inline.} =
   ## The opacity of the widget and its children (it multiplies down).
   pOpacity.getNumber(w)
@@ -411,7 +263,7 @@ method onTouchDown*(w: Widget; touch: MotionEvent): bool =
   if w.disabled and w.collidePoint(touch.pos[0], touch.pos[1]):
     return true
   for c in w.children:
-    if c.dispatch("on_touch_down", toValue(touch)):
+    if c.dispatchTouchDown(touch):
       return true
 
 method onTouchMove*(w: Widget; touch: MotionEvent): bool =
@@ -421,7 +273,7 @@ method onTouchMove*(w: Widget; touch: MotionEvent): bool =
   if w.disabled:
     return false
   for c in w.children:
-    if c.dispatch("on_touch_move", toValue(touch)):
+    if c.dispatchTouchMove(touch):
       return true
 
 method onTouchUp*(w: Widget; touch: MotionEvent): bool =
@@ -431,7 +283,7 @@ method onTouchUp*(w: Widget; touch: MotionEvent): bool =
   if w.disabled:
     return false
   for c in w.children:
-    if c.dispatch("on_touch_up", toValue(touch)):
+    if c.dispatchTouchUp(touch):
       return true
 
 # ------------------------------------------------------------------ tree
@@ -439,7 +291,7 @@ method onTouchUp*(w: Widget; touch: MotionEvent): bool =
 proc addChildCanvas(group: InstructionGroup; c: Canvas) =
   group.add(c)
 
-method addWidget*(w: Widget; widget: WidgetBase; index = 0; canvas = "") =
+method addWidget*(w: Widget; widget: WidgetBase; index = 0; canvas = layerCanvas) =
   ## Adds a child at `index` in `children` (0: on top). Its canvas goes
   ## after the canvas of the child it is placed above, into `canvas.before`
   ## or `canvas.after` when `canvas` says so and `index` is 0. Adding a
@@ -460,12 +312,10 @@ method addWidget*(w: Widget; widget: WidgetBase; index = 0; canvas = "") =
   if index == 0 or children.len == 0:
     children.insert([WidgetBase(child)], 0)
     w.children = children
-    if canvas == "before":
-      w.canvas.before.addChildCanvas(child.canvas)
-    elif canvas == "after":
-      w.canvas.after.addChildCanvas(child.canvas)
-    else:
-      w.canvas.add(child.canvas)
+    case canvas
+    of layerBefore: w.canvas.before.addChildCanvas(child.canvas)
+    of layerAfter: w.canvas.after.addChildCanvas(child.canvas)
+    of layerCanvas: w.canvas.add(child.canvas)
   else:
     # Kivy places the child in `self.canvas` here, whatever `canvas` says.
     let c = w.canvas

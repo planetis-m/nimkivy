@@ -44,13 +44,19 @@ proc save(log: Log; name: string) =
 proc logger(name: string): PropertyCallback =
   result = proc (d: EventDispatcher; v: Value) {.closure.} = log.emit(name, $v)
 
-proc hintText(pairs: seq[(string, Value)]): string =
-  # A pos_hint as a Nim seq of (key, number) pairs: @[(top, 0.9)]
+proc hintText(h: PosHint): string =
+  # A posHint as a Nim seq of (key, number) pairs: @[(top, 0.9)]
   result = "@["
-  for i, (k, v) in pairs:
+  for i, e in h.entries:
     if i > 0: result.add ", "
-    result.add "(" & k & ", " & $v.num & ")"
+    result.add "(" & $e.key & ", " & $e.value & ")"
   result.add "]"
+
+proc hintText(h: (Opt[float], Opt[float])): string =
+  # A size hint as the trace writes it: (1.000, none)
+  proc one(o: Opt[float]): string =
+    if o.isSome: formatFloat(o.get(0), ffDecimal, 3) else: "none"
+  result = "(" & one(h[0]) & ", " & one(h[1]) & ")"
 
 proc traceProperties() =
   let w = newWidget()
@@ -78,7 +84,7 @@ proc traceProperties() =
     b.setProperty("padding", v)
     log.emit("padding", text, "->", $b.getProperty("padding"))
   log.emit("defaults size", $newWidget().getProperty("size"), "sizeHint",
-    $newWidget().getProperty("size_hint"), "posHint", hintText(newWidget().posHint))
+    hintText(newWidget().sizeHint), "posHint", hintText(newWidget().posHint))
   let parent = newWidget()
   let child = newWidget()
   parent.addWidget(child)
@@ -338,7 +344,7 @@ proc r(p: (float, float)): string =
   # traces.py r(): numbers with 3 decimals.
   "(" & formatFloat(p[0], ffDecimal, 3) & ", " & formatFloat(p[1], ffDecimal, 3) & ")"
 
-proc tagOf(d: nil EventDispatcher): string =
+proc tagOf(d: nil RootRef): string =
   if d == nil: "nil"
   elif d of Btn: Btn(d).tag
   else: "?"
@@ -411,8 +417,8 @@ proc traceTouch() =
   for w in [a, b, c]:
     root.addWidget(w)
   win.addWidget(root)
-  win.bind("on_touch_down", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
-    log.emit("Window observer onTouchDown", r(toMotionEvent(args[0]).pos))
+  discard win.bindTouchDown(proc (t: MotionEvent): bool {.closure.} =
+    log.emit("Window observer onTouchDown", r(t.pos))
     result = false)
   tap(150, 150, "tap A only")
   tap(250, 250, "tap overlap: B is on top")
@@ -516,8 +522,7 @@ proc traceModal() =
   log.emit("isOpen", $(mv.isOpen), "in window", inWindow(mv))
   log.emit "# open again, escape key"
   mv.open(animation = false)
-  discard win.dispatch("on_keyboard", toValue(27), toValue(41), noneValue(),
-    toValue(newSeq[Value]()))
+  discard win.dispatchKeyboard(27, 41, "", {})
   log.emit("isOpen after escape (animated dismiss pending)", $(mv.isOpen))
   tickFor(0.3)
   log.emit("isOpen after animation", $(mv.isOpen))
@@ -531,9 +536,9 @@ proc traceModal() =
   log.save "modal"
 
 # traces.py sets Config before anything opens the window (a Widget does).
-Config.set("graphics", "width", "800")
-Config.set("graphics", "height", "600")
-Config.set("graphics", "resizable", "0")
+Config.graphics.width = 800
+Config.graphics.height = 600
+Config.graphics.resizable = false
 traceProperties()
 traceEvents()
 traceClock()

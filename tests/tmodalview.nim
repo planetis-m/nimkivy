@@ -81,8 +81,8 @@ proc touchDrag(x, y, tx, ty: float) =
   t.touchUp()
   waitFrames(1)
 
-Config.set("graphics", "width", "800")
-Config.set("graphics", "height", "600")
+Config.graphics.width = 800
+Config.graphics.height = 600
 EventLoop.ensureWindow()
 
 block testModalApp:
@@ -156,8 +156,7 @@ block events:
   keep = false
   # Escape dismisses with a fade (.1 s).
   m.open(animation = false)
-  assert Window.dispatch("on_keyboard", toValue(27), toValue(41), noneValue(),
-    toValue(newSeq[Value]()))
+  assert Window.dispatchKeyboard(27, 41, "", {})
   assert m.isOpen
   let t0 = time()
   while time() - t0 < 0.3:
@@ -170,8 +169,8 @@ block events:
   m.open(animation = false)
   let t = newUnitTestTouch(10, 10)
   t.scaleForScreen(Window.width, Window.height)
-  assert m.dispatch("on_touch_down", toValue(t))
-  assert m.dispatch("on_touch_up", toValue(t))
+  assert m.dispatchTouchDown(t)
+  assert m.dispatchTouchUp(t)
   assert m.isOpen
   m.dismiss(animation = false)
   assert not m.isOpen

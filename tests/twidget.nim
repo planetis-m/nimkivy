@@ -164,8 +164,8 @@ block add_widget_canvas_before_after:
   let root = newWidget()
   let a = newWidget()
   let b = newWidget()
-  root.addWidget(a, canvas = "before")
-  root.addWidget(b, canvas = "after")
+  root.addWidget(a, canvas = layerBefore)
+  root.addWidget(b, canvas = layerAfter)
   assert root.canvas.before.indexof(a.canvas) == 0
   assert root.canvas.after.indexof(b.canvas) == 0
   root.removeWidget(a)
@@ -215,19 +215,19 @@ block disabled_inherited_and_touches:
   parent.disabled = true
   let child = newWidget()
   var downs = 0
-  child.bind("on_touch_down", proc (d: EventDispatcher; a: seq[Value]): bool {.closure.} =
+  discard child.bindTouchDown(proc (t: MotionEvent): bool {.closure.} =
     inc downs
     result = false)
   parent.addWidget(child)
   assert child.disabled
   let t = newUnitTestTouch(10, 10)
-  assert parent.dispatch("on_touch_down", toValue(t))
+  assert parent.dispatchTouchDown(t)
   assert downs == 0
   parent.removeWidget(child)
   assert not child.disabled
   parent.disabled = false
   parent.addWidget(child)
-  assert not parent.dispatch("on_touch_down", toValue(t))
+  assert not parent.dispatchTouchDown(t)
   assert downs == 1
 
 block coordinates_not_relative:

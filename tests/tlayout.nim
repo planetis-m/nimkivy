@@ -98,7 +98,7 @@ block layout_trigger:
   Clock.tickDraw()
   assert c.size == (200.0, 100.0)
   c.sizeHint = (0.5, 0.5)
-  c.posHint = {"right": 1.0, "top": 1.0}
+  c.posHint = {phRight: 1.0, phTop: 1.0}
   assert c.size == (200.0, 100.0)
   Clock.tickDraw()
   assert c.size == (100.0, 50.0) and c.pos == (100.0, 50.0)

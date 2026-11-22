@@ -13,12 +13,14 @@ import widget
 export widget
 
 type
+  Unbind = proc () {.closure.}
+
   Layout* = ref object of Widget
     ## The base of the layouts. Build a subclass with
     ## `T(cls: TClass, canvas: newCanvas())`, then call its `init` proc,
     ## which calls `initLayout`. uix/layout.py Layout
     triggerLayout*: nil ClockEvent  ## runs `doLayout` before the next frame
-    childUids: seq[(WidgetBase, seq[(string, int)])]  # what each child is bound with
+    childUnbinds: seq[(WidgetBase, seq[Unbind])]  # undo what each child is bound with
 
 let LayoutClass* = newDispatcherClass("Layout", WidgetClass)
   ## The class of `Layout`, abstract: each layout has its own.
@@ -32,49 +34,73 @@ proc initLayout*(l: Layout) =
   ## Layout.__init__
   if l.cls == LayoutClass:
     quit "Exception: The Layout class is abstract and cannot be used directly."
-  l.childUids = @[]
+  l.childUnbinds = @[]
   l.triggerLayout = Clock.createTrigger(proc (dt: float) {.closure.} = l.doLayout(), -1)
   l.initWidget()
 
+proc triggerNow*(l: Layout) =
+  ## Triggers the layout (Kivy's `_trigger_layout()`): it runs before the
+  ## next frame.
+  let t = l.triggerLayout
+  if t != nil: t.trigger()
+
 proc layoutTrigger*(l: Layout): PropertyCallback =
   ## An observer that triggers the layout (Kivy binds `_trigger_layout`).
-  result = proc (d: EventDispatcher; v: Value) {.closure.} =
-    let t = l.triggerLayout
-    if t != nil: t.trigger()
+  result = proc (d: EventDispatcher; v: Value) {.closure.} = l.triggerNow()
 
 proc bindTrigger*(l: Layout; d: EventDispatcher; name: string): int =
   ## Binds the layout trigger to property `name` of `d` and returns the uid.
   result = d.fbind(name, l.layoutTrigger())
+
+proc keepUnbind*(l: Layout; child: WidgetBase; unbind: Unbind) =
+  ## Remembers how to undo a binding on a child; `removeWidget` does it.
+  var i = 0
+  while i < l.childUnbinds.len and l.childUnbinds[i][0] != child:
+    inc i
+  if i == l.childUnbinds.len:
+    l.childUnbinds.add (child, newSeq[Unbind]())
+  l.childUnbinds[i][1].add unbind
 
 proc bindChild*(l: Layout; child: WidgetBase; name: string) =
   ## Binds the layout trigger to property `name` of a child; `removeWidget`
   ## unbinds it.
   let uid = l.bindTrigger(child, name)
   if uid != 0:
-    var i = 0
-    while i < l.childUids.len and l.childUids[i][0] != child:
-      inc i
-    if i == l.childUids.len:
-      l.childUids.add (child, newSeq[(string, int)]())
-    l.childUids[i][1].add (name, uid)
+    l.keepUnbind(child, proc () {.closure.} = child.unbindUid(name, uid))
 
-method addWidget*(l: Layout; widget: WidgetBase; index = 0; canvas = "") =
-  ## Binds the layout to the child's size and hints, then adds it.
+proc bindChildPosHint*(l: Layout; child: WidgetBase) =
+  ## Binds the layout trigger to a child's `posHint`; `removeWidget`
+  ## unbinds it.
+  if child of HintedWidget:
+    let h = HintedWidget(child)
+    let b = h.bindPosHint(proc (v: PosHint) {.closure.} = l.triggerNow())
+    l.keepUnbind(child, proc () {.closure.} = h.unbindPosHint(b))
+
+method addWidget*(l: Layout; widget: WidgetBase; index = 0; canvas = layerCanvas) =
+  ## Binds the layout to the child's size and size hints, then adds it.
   ## Layout.add_widget
-  for name in ["size", "size_hint", "size_hint_max", "size_hint_min"]:
-    l.bindChild(widget, name)
+  l.bindChild(widget, "size")
+  if widget of HintedWidget:
+    let h = HintedWidget(widget)
+    let a = h.bindSizeHint(proc (v: (Opt[float], Opt[float])) {.closure.} = l.triggerNow())
+    let b = h.bindSizeHintMax(proc (v: (Opt[float], Opt[float])) {.closure.} = l.triggerNow())
+    let c = h.bindSizeHintMin(proc (v: (Opt[float], Opt[float])) {.closure.} = l.triggerNow())
+    l.keepUnbind(widget, proc () {.closure.} =
+      h.unbindSizeHint(a)
+      h.unbindSizeHintMax(b)
+      h.unbindSizeHintMin(c))
   procCall addWidget(Widget(l), widget, index, canvas)
 
 method removeWidget*(l: Layout; widget: WidgetBase) =
   ## Unbinds everything the layout bound on the child, then removes it.
   ## Layout.remove_widget
   var i = 0
-  while i < l.childUids.len:
-    if l.childUids[i][0] == widget:
-      let uids = l.childUids[i][1]
-      for (name, uid) in uids:
-        widget.unbindUid(name, uid)
-      l.childUids.delete(i)
+  while i < l.childUnbinds.len:
+    if l.childUnbinds[i][0] == widget:
+      let unbinds = l.childUnbinds[i][1]
+      for unbind in unbinds:
+        unbind()
+      l.childUnbinds.delete(i)
     else:
       inc i
   procCall removeWidget(Widget(l), widget)

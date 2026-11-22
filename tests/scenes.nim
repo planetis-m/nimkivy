@@ -250,15 +250,15 @@ proc boxlayoutHints(): Widget =
     w.width = 80))
   row.addWidget(boxed(0, 1, 0, proc (w: Widget) {.closure.} =
     w.sizeHint = (0.3, 0.5)
-    w.posHint = {"top": 1.0}))
+    w.posHint = {phTop: 1.0}))
   row.addWidget(boxed(0, 0, 1, proc (w: Widget) {.closure.} =
     w.sizeHint = (some(0.7), none[float]())
     w.height = 40
-    w.posHint = {"center_y": 0.5}))
+    w.posHint = {phCenterY: 0.5}))
   row.addWidget(boxed(1, 1, 0, proc (w: Widget) {.closure.} =
     w.sizeHint = (none[float](), none[float]())
     w.size = (50.0, 50.0)
-    w.posHint = {"y": 0.0}))
+    w.posHint = {phY: 0.0}))
   root.place(row, 10, 450, 780, 140)
 
   let bounds = newBoxLayout()
@@ -278,15 +278,15 @@ proc boxlayoutHints(): Widget =
   col.addWidget(boxed(1, 0, 0, proc (w: Widget) {.closure.} =
     w.sizeHint = (none[float](), none[float]())
     w.size = (100.0, 30.0)
-    w.posHint = {"center_x": 0.5}))
+    w.posHint = {phCenterX: 0.5}))
   col.addWidget(boxed(0, 1, 0, proc (w: Widget) {.closure.} =
     w.sizeHint = (0.5, 0.42)
-    w.posHint = {"right": 1.0}))
+    w.posHint = {phRight: 1.0}))
   col.addWidget(boxed(0, 0, 1, proc (w: Widget) {.closure.} = w.sizeHint = (1.0, 0.58)))
   col.addWidget(boxed(1, 0, 1, proc (w: Widget) {.closure.} =
     w.sizeHint = (some(0.3), none[float]())
     w.height = 20
-    w.posHint = {"x": 0.1}))
+    w.posHint = {phX: 0.1}))
   root.place(col, 10, 10, 380, 270)
 
   let squeeze = newBoxLayout()
@@ -318,21 +318,21 @@ proc floatlayoutHints(): Widget =
   let root = newFloatLayout()
   let inner = newFloatLayout()
   inner.sizeHint = (0.9, 0.9)
-  inner.posHint = {"center_x": 0.5, "center_y": 0.5}
+  inner.posHint = {phCenterX: 0.5, phCenterY: 0.5}
   frame(inner, Grey)
   inner.addWidget(boxed(1, 0, 0, proc (w: Widget) {.closure.} =
     w.sizeHint = (0.2, 0.2)
-    w.posHint = {"x": 0.0, "y": 0.0}))
+    w.posHint = {phX: 0.0, phY: 0.0}))
   inner.addWidget(boxed(0, 1, 0, proc (w: Widget) {.closure.} =
     w.sizeHint = (0.2, 0.2)
-    w.posHint = {"right": 1.0, "top": 1.0}))
+    w.posHint = {phRight: 1.0, phTop: 1.0}))
   inner.addWidget(boxed(0, 0, 1, proc (w: Widget) {.closure.} =
     w.sizeHint = (0.3, 0.1)
-    w.posHint = {"center_x": 0.5, "center_y": 0.5}))
+    w.posHint = {phCenterX: 0.5, phCenterY: 0.5}))
   inner.addWidget(boxed(1, 1, 0, proc (w: Widget) {.closure.} =
     w.sizeHint = (none[float](), none[float]())
     w.size = (60.0, 60.0)
-    w.posHint = {"x": 0.5, "top": 0.9}))
+    w.posHint = {phX: 0.5, phTop: 0.9}))
   inner.addWidget(boxed(0, 1, 1, proc (w: Widget) {.closure.} =
     w.sizeHint = (none[float](), none[float]())
     w.size = (80.0, 40.0)
@@ -340,11 +340,11 @@ proc floatlayoutHints(): Widget =
   inner.addWidget(boxed(1, 0, 1, proc (w: Widget) {.closure.} =
     w.sizeHint = (0.05, 0.05)
     w.sizeHintMin = (100.0, 50.0)
-    w.posHint = {"right": 0.95, "y": 0.05}))
+    w.posHint = {phRight: 0.95, phY: 0.05}))
   inner.addWidget(boxed(0.5, 0.5, 0, proc (w: Widget) {.closure.} =
     w.sizeHint = (0.9, 0.3)
     w.sizeHintMaxX = 150.0
-    w.posHint = {"center_x": 0.25, "top": 0.8}))
+    w.posHint = {phCenterX: 0.25, phTop: 0.8}))
   root.addWidget(inner)
   result = root
 
@@ -567,10 +567,10 @@ proc fadeHalf(): Widget =
   one.addWidget(boxed(0.9, 0.2, 0.2))
   one.addWidget(boxed(1, 1, 1, proc (w: Widget) {.closure.} =
     w.sizeHint = (0.4, 0.4)
-    w.posHint = {"x": 0.1, "y": 0.1}))
+    w.posHint = {phX: 0.1, phY: 0.1}))
   two.addWidget(boxed(0.2, 0.2, 0.9, proc (w: Widget) {.closure.} =
     w.sizeHint = (0.6, 0.6)
-    w.posHint = {"right": 0.9, "top": 0.9}))
+    w.posHint = {phRight: 0.9, phTop: 0.9}))
   sm.addWidget(one)
   sm.addWidget(two)
   late.action = proc () {.closure.} =
@@ -727,9 +727,9 @@ proc shoot(name: string) =
 proc main() =
   # scenes.py shoot's Config: 800 x 600, not resizable; multisamples do not
   # exist here (see the MSAA GAP).
-  Config.set("graphics", "width", "800")
-  Config.set("graphics", "height", "600")
-  Config.set("graphics", "resizable", "0")
+  Config.graphics.width = 800
+  Config.graphics.height = 600
+  Config.graphics.resizable = false
   EventLoop.ensureWindow()
   Window.clearcolor = [1.0, 1.0, 1.0, 1.0]
   for i in 1 .. paramCount():

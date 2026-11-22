@@ -38,7 +38,9 @@ proc initAnchorLayout*(a: AnchorLayout) =
   ## Sets up a new anchor layout: the layout, then the trigger on its own
   ## properties. AnchorLayout.__init__
   a.initLayout()
-  for name in ["children", "parent", "padding", "anchor_x", "anchor_y", "size", "pos"]:
+  discard a.bindChildren(proc (v: seq[WidgetBase]) {.closure.} = a.triggerNow())
+  discard a.bindParent(proc (v: nil WidgetBase) {.closure.} = a.triggerNow())
+  for name in ["padding", "anchor_x", "anchor_y", "size", "pos"]:
     discard a.bindTrigger(a, name)
 
 proc newAnchorLayout*(): AnchorLayout =

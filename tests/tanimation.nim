@@ -24,8 +24,8 @@ proc cleanup() =
   # The autouse fixture: Animation.cancel_all(None).
   cancelAll(nil)
 
-Config.set("graphics", "width", "800")
-Config.set("graphics", "height", "600")
+Config.graphics.width = 800
+Config.graphics.height = 600
 
 block testStartAnimation:
   cleanup()

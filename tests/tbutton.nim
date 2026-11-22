@@ -77,8 +77,8 @@ proc settle() =
   sleep(60)
   Clock.tick()
 
-Config.set("graphics", "width", "800")
-Config.set("graphics", "height", "600")
+Config.graphics.width = 800
+Config.graphics.height = 600
 EventLoop.ensureWindow()
 
 block defaults:
@@ -86,7 +86,7 @@ block defaults:
   let bb = b.bb
   assert bb.state == stateNormal and bb.lastTouch == nil
   assert not bb.alwaysRelease
-  assert bb.minStateTime == Config.getfloat("graphics", "min_state_time")
+  assert bb.minStateTime == Config.graphics.minStateTime
   assert bb.minStateTime == 0.035
   assert bb.widget == Widget(b)
   Window.removeWidget(b)
@@ -169,17 +169,17 @@ block scroll_and_ud:
   # event loop sets them.
   let wheel = newUnitTestTouch(150, 150)
   wheel.scaleForScreen(Window.width, Window.height)
-  wheel.profile.add "button"
-  wheel.button = "scrolldown"
-  assert not b.dispatch("on_touch_down", toValue(wheel))
+  wheel.profile.incl mpButton
+  wheel.button = mbScrollDown
+  assert not b.dispatchTouchDown(wheel)
   assert b.log.len == 0
   let t = newUnitTestTouch(150, 150)
   t.scaleForScreen(Window.width, Window.height)
-  assert b.dispatch("on_touch_down", toValue(t))
-  assert not b.dispatch("on_touch_down", toValue(t))
+  assert b.dispatchTouchDown(t)
+  assert not b.dispatchTouchDown(t)
   assert b.log == @["state down", "press"], $b.log
   # A move of the grabbed touch, or of one it pressed, is the button's.
-  assert b.dispatch("on_touch_move", toValue(t))
+  assert b.dispatchTouchMove(t)
   t.ungrab(b)
   Window.removeWidget(b)
 

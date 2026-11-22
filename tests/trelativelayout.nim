@@ -9,18 +9,16 @@ import nimkivy/clock
 import nimkivy/uix/relativelayout
 
 type UTMotionEvent = ref object of MotionEvent
-  # kivy/tests/__init__.py UTMotionEvent: args are the normalized x and y.
+  # kivy/tests/__init__.py UTMotionEvent: a touch at a normalized position.
 
-method depack(t: UTMotionEvent; args: seq[Value]) =
+method depack(t: UTMotionEvent; sx, sy: float) =
   t.isTouch = true
-  t.sx = args[0].num
-  t.sy = args[1].num
-  t.profile = @["pos"]
-  procCall depack(MotionEvent(t), args)
+  t.profile = {mpPos}
+  procCall depack(MotionEvent(t), sx, sy)
 
 proc newUTMotionEvent(device: string; id: int; x, y: float): UTMotionEvent =
   result = UTMotionEvent()
-  result.initMotionEvent(device, $id, @[toValue(x), toValue(y)])
+  result.initMotionEvent(device, $id, x, y)
 
 block test_relativelayout_on_touch_move:
   # kivy/tests/test_uix_relativelayout.py::test_relativelayout_on_touch_move
@@ -28,10 +26,10 @@ block test_relativelayout_on_touch_move:
   let rl = newRelativeLayout()
   Window.addWidget(rl)
   let touch = newUTMotionEvent("unittest", 1, 0.5, 0.5)
-  EventLoop.postDispatchInput("begin", touch)
-  touch.move(@[toValue(0.6), toValue(0.4)])
-  EventLoop.postDispatchInput("update", touch)
-  EventLoop.postDispatchInput("end", touch)
+  EventLoop.postDispatchInput(maBegin, touch)
+  touch.move(0.6, 0.4)
+  EventLoop.postDispatchInput(maUpdate, touch)
+  EventLoop.postDispatchInput(maEnd, touch)
   Window.removeWidget(rl)
 
 block test_relativelayout_coordinates:
@@ -98,13 +96,13 @@ block touches_in_local_coordinates:
   rl.pos = (100.0, 50.0)
   let child = newWidget()
   var seen: seq[(float, float)] = @[]
-  child.bind("on_touch_down", proc (d: EventDispatcher; a: seq[Value]): bool {.closure.} =
-    seen.add toMotionEvent(a[0]).pos
+  discard child.bindTouchDown(proc (t: MotionEvent): bool {.closure.} =
+    seen.add t.pos
     result = false)
   rl.addWidget(child)
   let t = newUTMotionEvent("unittest", 2, 0.5, 0.5)
   t.scaleForScreen(800, 600)
-  discard rl.dispatch("on_touch_down", toValue(t))
+  discard rl.dispatchTouchDown(t)
   assert seen.len == 1 and seen[0] == (t.x - 100.0, t.y - 50.0)
   # The canvas is translated by pos, and follows it.
   let tr = rl.translate
@@ -115,7 +113,7 @@ block touches_in_local_coordinates:
   assert rl.canvas.hasBefore and rl.canvas.hasAfter
   # Children are laid out in local coordinates, not again on a move.
   rl.size = (300.0, 200.0)
-  child.posHint = {"x": 0.5}
+  child.posHint = {phX: 0.5}
   Clock.tickDraw()
   assert child.pos == (150.0, 0.0) and child.size == (300.0, 200.0)
   rl.pos = (40.0, 40.0)

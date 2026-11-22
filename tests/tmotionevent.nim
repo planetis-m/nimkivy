@@ -1,45 +1,40 @@
 # Tests of input/motionevent (ACCEPTANCE.md, layer 5): grab and ungrab,
 # push, pop and apply_transform_2d on plain numbers, the normalized and
-# window positions, and `ud`. Kivy's test_motion_event.py tests rotation,
+# window positions, and `claimedBy` (Kivy's `ud`). Kivy's test_motion_event.py tests rotation,
 # which is out of scope.
 
 import std/assertions
-import nimkivy/event
 import nimkivy/input/motionevent
 
 type
   Touch = ref object of MotionEvent
-    # kivy/tests/common.py UnitTestTouch: args are (sx, sy).
-
-method depack(t: Touch; args: seq[Value]) =
-  t.sx = args[0].num
-  t.sy = args[1].num
-  procCall depack(MotionEvent(t), args)
+    # kivy/tests/common.py UnitTestTouch: a touch at (sx, sy).
+  Thing = ref object of RootObj
+    # Something that grabs or claims a touch.
 
 proc newTouch(sx, sy: float): Touch =
   result = Touch()
-  result.initMotionEvent("UnitTestTouch", "99", @[toValue(sx), toValue(sy)],
-    isTouch = true, typeId = "touch")
-  result.profile = @["pos"]
+  result.initMotionEvent("UnitTestTouch", "99", sx, sy, isTouch = true, typeId = "touch")
+  result.profile = {mpPos}
 
-proc newDispatcher(): EventDispatcher =
-  newEventDispatcher(newDispatcherClass("Widget"))
+proc newThing(): Thing =
+  Thing()
 
 block grab_and_ungrab:
   let t = newTouch(0.5, 0.5)
-  let a = newDispatcher()
-  let b = newDispatcher()
+  let a = newThing()
+  let b = newThing()
   t.grab(a)
   t.grab(b)
-  assert t.grabList.len == 2 and t.grabList[0] == a and t.grabList[1] == b
+  assert t.grabList.len == 2 and t.grabList[0] == RootRef(a) and t.grabList[1] == RootRef(b)
   t.ungrab(a)
-  assert t.grabList.len == 1 and t.grabList[0] == b
+  assert t.grabList.len == 1 and t.grabList[0] == RootRef(b)
   t.ungrab(a)                      # not grabbed: nothing happens
   assert t.grabList.len == 1
   t.ungrab(b)
   assert t.grabList.len == 0
   t.grab(a, exclusive = true)
-  assert t.grabExclusiveClass == a
+  assert t.grabExclusiveClass == RootRef(a)
   t.ungrab(a)
   assert t.grabExclusiveClass == nil and t.grabList.len == 0
 
@@ -50,18 +45,18 @@ block positions:
   assert t.pos == (200.0, 300.0)
   assert t.opos == (200.0, 300.0) and t.ppos == (200.0, 300.0) and t.dpos == (0.0, 0.0)
   t.dispatchDone()
-  t.move(@[toValue(0.5), toValue(0.75)])
+  t.move(0.5, 0.75)
   assert t.psx == 0.25 and t.osx == 0.25 and t.dsx == 0.25
   t.scaleForScreen(801, 601)
   assert t.pos == (400.0, 450.0)
   assert t.opos == (200.0, 300.0) and t.ppos == (200.0, 300.0) and t.dpos == (200.0, 150.0)
   # A second move before the dispatch keeps the previous position.
-  t.move(@[toValue(1.0), toValue(1.0)])
+  t.move(1.0, 1.0)
   assert t.psx == 0.25
   assert t.spos == (1.0, 1.0)
   assert not t.isMouseScrolling
-  t.profile.add "button"
-  t.button = "scrollup"
+  t.profile.incl mpButton
+  t.button = mbScrollUp
   assert t.isMouseScrolling
 
 block push_pop_apply_transform_2d:
@@ -87,21 +82,15 @@ block push_pop_apply_transform_2d:
   assert t.pos == (10.0, 20.0) and t.x == 10.0 and t.y == 20.0
   assert t.ppos == (5.0, 6.0) and t.opos == (1.0, 2.0)
 
-block user_data:
+block claimed_by:
   let t = newTouch(0.0, 0.0)
-  let w = newDispatcher()
-  assert toValue(RootRef(w)) notin t.ud
-  t.ud[toValue(RootRef(w))] = toValue(true)
-  assert toValue(RootRef(w)) in t.ud
-  assert toValue(RootRef(newDispatcher())) notin t.ud
-  t.ud["name"] = toValue("x")
-  assert "name" in t.ud and t.ud.getOrDefault("name").str == "x"
-  assert t.ud.len == 2
-  t.ud.del(toValue("name"))
-  assert "name" notin t.ud
+  let w = newThing()
+  assert RootRef(w) notin t.claimedBy
+  t.claimedBy.add w
+  assert RootRef(w) in t.claimedBy
+  assert RootRef(newThing()) notin t.claimedBy
 
 block unique_ids:
   let a = newTouch(0.0, 0.0)
   let b = newTouch(0.0, 0.0)
   assert b.uid == a.uid + 1
-  assert toMotionEvent(toValue(a)) == MotionEvent(a)
