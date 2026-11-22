@@ -19,8 +19,8 @@
 ## without `as name` that needs a name gets a generated symbol.
 
 import std/strutils
-import plugins, nimparser
-import codegen
+import plugins
+import trees
 
 const
   Widgets = ["widget", "boxLayout", "floatLayout", "anchorLayout",
@@ -40,7 +40,7 @@ const
 type
   Parent = object
     handle: NifCursor          # what a line is added to; empty at the top level
-    group: string              # "" (addWidget), "canvas", "canvas.before", ...
+    group: string              # "" (addWidget), "canvas", "before", "after"
 
 proc isPath(n: NifCursor): bool =
   # `name` or `a.b.c`.
@@ -64,7 +64,7 @@ proc handlerName(n: NifCursor): string =
     if s.len > 2 and s.startsWith("on") and s[2] in {'A' .. 'Z'}: result = s
 
 proc canvasGroup(n: NifCursor): string =
-  # "canvas", "canvas.before" or "canvas.after" for such a block, else "".
+  # "canvas", "before" or "after" for such a block, else "".
   result = ""
   if n.exprKind in {CallX, CmdX}:
     var c = firstChild(n)
@@ -74,17 +74,30 @@ proc canvasGroup(n: NifCursor): string =
       var d = firstChild(c)
       skip d
       if d.kind == Ident and d.identText in ["before", "after"]:
-        result = "canvas." & d.identText
+        result = d.identText
     skip c
     if result.len > 0 and not (c.hasMore and c.stmtKind == StmtsS): result = ""
 
 proc walk(dest: var NifBuilder; body: NifCursor; p: Parent)
 
 proc emitAdd(dest: var NifBuilder; p: Parent; h: NifCursor; info: LineInfo) =
+  # `parent.addWidget(h)`, `parent.canvas.add(h)` or
+  # `parent.canvas.before.add(h)` (`after`).
   if p.handle.hasMore:
-    let code = if p.group.len == 0: "OwnerV.addWidget(HandleV)\n"
-               else: "OwnerV." & p.group & ".add(HandleV)\n"
-    dest.emitStmts(code, Subst(trees: @[("OwnerV", p.handle), ("HandleV", h)]), info)
+    dest.withTree CallS, info:
+      if p.group.len == 0:
+        dest.addDot p.handle, "addWidget", info
+      elif p.group == "canvas":
+        dest.withTree DotX, info:
+          dest.addDot p.handle, "canvas", info
+          dest.addIdent "add"
+      else:
+        dest.withTree DotX, info:
+          dest.withTree DotX, info:
+            dest.addDot p.handle, "canvas", info
+            dest.addIdent p.group
+          dest.addIdent "add"
+      dest.addSubtree h
 
 proc emitChild(dest: var NifBuilder; n: NifCursor; p: Parent) =
   # A widget, a call, a name or a path; maybe `as name`, maybe a block.
@@ -119,32 +132,31 @@ proc emitChild(dest: var NifBuilder; n: NifCursor; p: Parent) =
     use = name
   else:
     let sym = genSym()
-    var u = handleTree(sym, n.info)
+    var u = createTree()
+    u.addSymUse sym, n.info
     use = snapshot(u)
     var d = createTree()
     d.addSymDef sym, n.info
     def = snapshot(d)
-  var s = Subst(trees: @[("NameV", def)])
   if listed:
-    # `newX(positional args)`: the call's head renamed.
-    var args = ""
-    var c = firstChild(value)
-    skip c
-    while c.hasMore:
-      args.add (if args.len > 0: ", " else: "") & "Arg" & $s.trees.len & "V"
-      s.trees.add ("Arg" & $s.trees.len & "V", c)
-      skip c
-    dest.emitStmts("let NameV = new" & capital(headText(e)) & "(" & args & ")\n", s, n.info)
+    # `let name = newX(positional args)`, then `name.p = v` for each `p = v`.
+    dest.withLet def, n.info:
+      dest.withCall "new" & capital(headText(e)), n.info:
+        var c = firstChild(value)
+        skip c                 # the head
+        while c.hasMore:
+          dest.takeTree c
     for c in e.children:
       if c.otherKind == VvU:
         var kv = firstChild(c)
-        let prop = kv.identText
-        skip kv
-        dest.emitStmts("HandleV." & prop & " = ValueV\n",
-          Subst(trees: @[("HandleV", use), ("ValueV", kv)]), c.info)
+        dest.withTree AsgnS, c.info:
+          dest.withTree DotX, c.info:
+            dest.addSubtree use
+            dest.takeTree kv   # the property's name
+          dest.takeTree kv     # its value
   else:
-    s.trees.add ("ExprV", value)
-    dest.emitStmts("let NameV = ExprV\n", s, n.info)
+    dest.withLet def, n.info:
+      dest.addSubtree value
   if body.hasMore:
     dest.walk(body, Parent(handle: use, group: ""))
   dest.emitAdd(p, use, n.info)
@@ -154,34 +166,33 @@ proc emitHandler(dest: var NifBuilder; n: NifCursor; owner: NifCursor) =
   # {.closure.} = body)`.
   let name = handlerName(n)
   let event = toLowerAscii(name[2]) & name.substr(3)
-  var lambda = createTree()
   var c = firstChild(n)
   skip c                       # the name
-  lambda.withTree ProcS, n.info:
-    lambda.addEmptyNode()
-    for i in 0 ..< 4:          # exported, pattern, type vars, params
-      lambda.takeTree c
-    let addBool = c.kind == DotToken and event in Events
-    if addBool:
-      lambda.addIdent "bool"
+  dest.withDiscardCall owner, "bind" & name.substr(2), n.info:
+    dest.withTree ProcS, n.info:
+      dest.addEmptyNode()
+      for i in 0 ..< 4:        # exported, pattern, type vars, params
+        dest.takeTree c
+      let addBool = c.kind == DotToken and event in Events
+      if addBool:
+        dest.addIdent "bool"
+        skip c
+      else:
+        dest.takeTree c
+      dest.withTree PragmasU, c.info:
+        if c.kind == TagLit:
+          for pragma in c.children: dest.addSubtree pragma
+        dest.addIdent "closure"
       skip c
-    else:
-      lambda.takeTree c
-    lambda.withTree PragmasU, c.info:
-      if c.kind == TagLit:
-        for pragma in c.children: lambda.addSubtree pragma
-      lambda.addIdent "closure"
-    skip c
-    lambda.takeTree c          # effects
-    if addBool:
-      lambda.withTree StmtsS, c.info:
-        var reset = parseStmt("result = false", c.info)
-        lambda.addSubtree firstChild(reset)
-        for line in c.children: lambda.addSubtree line
-    else:
-      lambda.takeTree c
-  dest.emitStmts("discard OwnerV.bind" & name.substr(2) & "(LambdaV)\n",
-    Subst(trees: @[("OwnerV", owner), ("LambdaV", snapshot(lambda))]), n.info)
+      dest.takeTree c          # effects
+      if addBool:
+        dest.withTree StmtsS, c.info:
+          dest.withTree AsgnS, c.info:
+            dest.addIdent "result"
+            dest.addIdent "false"
+          for line in c.children: dest.addSubtree line
+      else:
+        dest.takeTree c
 
 proc emitLine(dest: var NifBuilder; n: NifCursor; p: Parent)
 
