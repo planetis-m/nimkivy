@@ -128,7 +128,8 @@ proc graphicsSmooth(): Widget =
   c.add newSmoothQuad([360.0, 300, 480, 322, 470, 410, 350, 385])
   c.add newColor(0.3, 0.3, 0.3)
   c.add newSmoothEllipse((510.0, 300.0), (110.0, 110.0), segments = 7)
-  # Half alpha over a dark band: the line only outside the shape.
+  # Half alpha over a dark band: the line only outside the shape (Kivy's
+  # stencil); here no line, hard edges (PORTING.md, Gaps).
   c.add newColor(0.15, 0.15, 0.15)
   c.add newRectangle((640.0, 280.0), (150.0, 150.0))
   c.add newColor(0.9, 0.9, 0.2, 0.5)

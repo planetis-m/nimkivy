@@ -105,9 +105,9 @@ type
     ## The band drawn on the outline of a smooth shape: 2.5 px to each side,
     ## textured with Kivy's gradient (transparent, opaque, transparent). Its
     ## shape adds it to the canvas, never by itself. With a colour whose
-    ## alpha is below 1 the renderer draws it only outside `stencilMask`, the
-    ## shape, as Kivy does through a stencil. vertex_instructions.pyx
-    ## AntiAliasingLine (internal in Kivy)
+    ## alpha is below 1 Kivy draws it only outside `stencilMask`, the shape,
+    ## through a stencil; the renderer does not draw it then (PORTING.md,
+    ## Gaps). vertex_instructions.pyx AntiAliasingLine (internal in Kivy)
     points: seq[float]
     width: float32
     close: bool
