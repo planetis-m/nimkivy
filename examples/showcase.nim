@@ -125,7 +125,9 @@ proc pill(fill: Rgba): Pressable =
     newPressable() as p:
       canvas.before:
         color(rgba = fill)
-        rectangle(pos <- p.pos, size <- p.size)
+        rectangle(pos = p.pos, size = p.size) as bg
+      proc onPos(v: (float, float)) = bg.pos = v
+      proc onSize(v: (float, float)) = bg.size = v
   result = p
 
 proc panel(fill: Rgba): BoxLayout =
@@ -134,7 +136,9 @@ proc panel(fill: Rgba): BoxLayout =
     boxLayout() as b:
       canvas.before:
         color(rgba = fill)
-        rectangle(pos <- b.pos, size <- b.size)
+        rectangle(pos = b.pos, size = b.size) as bg
+      proc onPos(v: (float, float)) = bg.pos = v
+      proc onSize(v: (float, float)) = bg.size = v
   result = b
 
 proc tile(): Pressable =
@@ -151,7 +155,8 @@ proc caption(text = ""; fontSize: float; color: Rgba; bold = false;
   # The kiosk's label(): Source Sans 3, centred in its own box.
   buildUi:
     label(text, fontName = "SourceSans", fontSize = fontSize, color = color, bold = bold,
-        halign = halign, valign = valignMiddle, textSize <- l.size) as l
+        halign = halign, valign = valignMiddle, textSize = l.size) as l:
+      proc onSize(v: (float, float)) = l.textSize = v
   result = l
 
 proc paragraph(fontSize: float; color: Rgba; halign: Halign): Label =
@@ -354,7 +359,9 @@ proc newShowcase*(app: ShowcaseApp): Showcase =
             attractTitle.height = 120
             canvas.before:
               color(rgba = [0.0, 0, 0, 0.35])
-              rectangle(pos <- attractTitle.pos, size <- attractTitle.size)
+              rectangle(pos = attractTitle.pos, size = attractTitle.size) as shade
+            proc onPos(v: (float, float)) = shade.pos = v
+            proc onSize(v: (float, float)) = shade.size = v
 
   buildUi:
     screen("home") as home:

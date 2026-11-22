@@ -3,7 +3,7 @@
 # component called with its keyword arguments, a widget made before
 # (a bare name and a dot path) and a plain call added as written; canvas
 # instructions in canvas, canvas.before and canvas.after, following their
-# widget with `<-` and through a property handler; handlers of an event with and without
+# widget through property handlers; handlers of an event with and without
 # `: bool` (one that stops the dispatch), of an event not in the list, and
 # of a property; their order; code lines among the widgets; and control
 # flow (`if`, `case`, `for`, `when`, a handler and a canvas instruction
@@ -50,9 +50,11 @@ proc main() =
     boxLayout(orientation = orientationVertical) as root:
       canvas.before:
         color(rgba = [0.1, 0.2, 0.3, 1.0]) as paint
-        rectangle(pos <- root.pos, size <- root.size) as rect
+        rectangle(pos = root.pos, size = root.size) as rect
       canvas.after:
         line(width = 2) as edge
+      proc onPos(v: (float, float)) = rect.pos = v
+      proc onSize(v: (float, float)) = rect.size = v
       proc onSize(s: (float, float)) = edge.rectangle = [root.x, root.y, s[0], s[1]]
       header
       boxLayout(spacing = 4) as panel:
@@ -84,7 +86,7 @@ proc main() =
   assert title.text == "volume" and footer.halign == halignCenter and footer.bold
   assert labels == @[title] and built == 1
   # The canvas groups, each in order (a Rectangle comes with its
-  # BindTexture), following the widget (`<-` and a handler).
+  # BindTexture), following the widget (handlers).
   assert root.canvas.before.indexof(paint) == 0 and root.canvas.before.indexof(rect) == 2
   assert root.canvas.after.indexof(edge) >= 0 and edge.width == 2
   assert paint.rgba == [0.1, 0.2, 0.3, 1.0]

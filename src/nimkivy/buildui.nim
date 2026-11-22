@@ -1,13 +1,15 @@
 ## A widget tree as thin sugar over plain Nim, after Karax's `buildHtml`
-## (DSL.md). The tree is built once; nothing is rebuilt later, and only a
-## `p <- a.b` argument binds.
+## (DSL.md). The tree is built once; nothing is rebuilt later, and only the
+## `proc onX` handlers bind.
 ##
 ## .. code-block:: nim
 ##   buildUi:
 ##     boxLayout(sizeHintY = none[float](), height = sc(72)) as row:
 ##       canvas.before:
 ##         color(rgba = Linen)
-##         rectangle(pos <- row.pos, size <- row.size)
+##         rectangle(pos = row.pos, size = row.size) as bg
+##       proc onPos(v: (float, float)) = bg.pos = v
+##       proc onSize(v: (float, float)) = bg.size = v
 ##       label("a", bold = true)
 ##       pill(text, Olive, outline = some(Gold)) as home:
 ##         proc onRelease() = app.goHome()
@@ -21,9 +23,7 @@
 ## - `x(args) [as name] [: block]`, `x` one of nimkivy's widgets or canvas
 ##   instructions in lowercase (the plugin's `Widgets`): `let name =
 ##   newX(positional args)`, `name.p = v` for each named argument, the block,
-##   then the add. `p <- a.b` among the arguments (a dot path) is `name.p =
-##   a.b` and `discard a.bindB(proc (v: typeof(a.b)) {.closure.} = name.p =
-##   v)`: `p` follows `b` of `a`.
+##   then the add.
 ## - Any other call, a bare name or a dot path: added as written
 ##   (`row.addWidget(gap(16))`); with `as name` or a block, `let name = expr`
 ##   first.

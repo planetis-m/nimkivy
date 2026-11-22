@@ -42,8 +42,8 @@ is a root and is not added to anything.
 
 **3.1 A listed widget** — `x(args) [as name] [: block]` with `x` in
 `Widgets`: positional arguments go to `newX` (`x` capitalized), named
-arguments are property sets (Karax: attributes) and `prop <- a.b` follows a
-property (3.7), in order, then the block, then the add. Only a line of the
+arguments are property sets (Karax: attributes), in order, then the block,
+then the add. Only a line of the
 tree is a widget: `content.image(...)` in an argument is untouched.
 
 ```nim
@@ -106,30 +106,13 @@ Consequences, plainly:
   events (Kivy's shape; about 6 lines in the kiosk's PressBox/PressWidget),
   so `proc onRelease()` works on `pill`, `roundButton`, `photoTile`.
 
-**3.7 One property following another** — in a listed widget's arguments
-only, `prop <- a.b`, where the right side is a dot path of names: its last
-name is the followed property, the rest its object. It emits exactly
-
-```nim
-t.prop = a.b
-discard a.bindB(proc (v: typeof(a.b)) {.closure.} = t.prop = v)
-```
-
-with `t` the widget. There is no analysis and no other form: any other
-`<-` is left as written, and anything computed is a property handler (3.5).
-
-```nim
-rectangle(pos <- page.pos, size <- page.size)
-label(text, textSize <- l.size) as l
-```
-
 ## 4. No bindings; resize rebuilds
 
 There are no general bindings. Sizes are plain values computed at build time
-(`sc(72)`, the kiosk's scale helper read once). A value that follows exactly
-one property (a background's `pos` and `size`, a label's `textSize`) is
-`prop <- a.b` (3.7); anything computed from layout uses a property handler
-(3.5). The window resize (desktop only; the tablet is
+(`sc(72)`, the kiosk's scale helper read once). Anything computed from
+layout, also a value that follows exactly one property (a background's `pos`
+and `size`, a label's `textSize`), is set at build and kept by a property
+handler (3.5). The window resize (desktop only; the tablet is
 fullscreen with a fixed orientation) rebuilds the screens:
 
 ```nim
@@ -146,7 +129,7 @@ are added in `build`, once, so a rebuild does not add another.
 | Before | Instead |
 |---|---|
 | capital-letter guess, `Type` → `newType` for every capital call | the lowercase `Widgets` list; other calls untouched |
-| `prop <- expr` and its dependency walk | values at build time; `prop <- a.b` for one property (3.7); property handlers |
+| `prop <- expr` and its dependency walk | values at build time; property handlers |
 | `prop = value` lines in a block (implicit receiver), `self` | named arguments, `name.prop = value` |
 | `place expr` | a bare name or path, or any call |
 | `on [part.]name(params):` | `proc onName(params) =` |
@@ -218,9 +201,18 @@ textCol.addWidget(t1)
 
 ## 8. Backgrounds
 
-A background is a `rectangle` (or `smoothRoundedRectangle`) in `canvas.before`
-that follows its widget with `<-`: `rectangle(pos <- column.pos, size <-
-column.size)`. No helper.
+A background is a `rectangle` (or `smoothRoundedRectangle`) in `canvas.before`,
+named with `as`, that `proc onPos` and `proc onSize` handlers in its widget's
+block move and resize. No helper.
+
+```nim
+boxLayout(orientation = orientationVertical) as column:
+  canvas.before:
+    color(rgba = Ivory)
+    rectangle(pos = column.pos, size = column.size) as bg
+  proc onPos(v: (float, float)) = bg.pos = v
+  proc onSize(v: (float, float)) = bg.size = v
+```
 
 ## 9. Known gap
 

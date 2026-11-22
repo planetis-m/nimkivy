@@ -3,9 +3,8 @@
 ## caller's scope:
 ##
 ## - `x(args) [as name] [: block]` with `x` in `Widgets`: `let name =
-##   newX(positional args)`, `name.p = v` for each `p = v`, `name.p = a.b` and
-##   `discard a.bindB(proc (v: typeof(a.b)) {.closure.} = name.p = v)` for
-##   each `p <- a.b` (a dot path), the block, the add;
+##   newX(positional args)`, `name.p = v` for each `p = v`, the block, the
+##   add;
 ## - any other call, a bare name or a dot path `[as name] [: block]`: `let
 ##   name = expr`, the block, the add; without `as` and block only the add;
 ## - `canvas[.before|.after]:` in a block: its lines are added to that group;
@@ -57,16 +56,6 @@ proc headText(n: NifCursor): string =
   let h = firstChild(n)
   result = if h.kind == Ident: h.identText else: ""
 
-proc isFollow(n: NifCursor): bool =
-  # `prop <- a.b`: a property name and a dot path.
-  result = false
-  if n.exprKind == InfixX and headText(n) == "<-":
-    var c = firstChild(n)
-    skip c
-    result = c.kind == Ident
-    skip c
-    result = result and c.exprKind == DotX and isPath(c)
-
 proc handlerName(n: NifCursor): string =
   # `onX` of `proc onX(...)`, else "".
   result = ""
@@ -116,7 +105,7 @@ proc emitChild(dest: var NifBuilder; n: NifCursor; p: Parent) =
     expr.openTree(e.tag, e.info)
     for c in e.children:
       if c.stmtKind == StmtsS: body = c
-      elif not (listed and (c.otherKind == VvU or isFollow(c))): expr.addSubtree c
+      elif not (listed and c.otherKind == VvU): expr.addSubtree c
     expr.closeTree()
   else:
     expr.addSubtree e
@@ -153,19 +142,6 @@ proc emitChild(dest: var NifBuilder; n: NifCursor; p: Parent) =
         skip kv
         dest.emitStmts("HandleV." & prop & " = ValueV\n",
           Subst(trees: @[("HandleV", use), ("ValueV", kv)]), c.info)
-      elif isFollow(c):
-        # `prop <- a.b`: set now, then follow `b` of `a`.
-        var f = firstChild(c)
-        skip f
-        let prop = f.identText
-        skip f
-        let obj = firstChild(f)
-        var b = obj
-        skip b
-        dest.emitStmts("HandleV." & prop & " = PathV\n" &
-          "discard ObjV.bind" & capital(b.identText) &
-          "(proc (v: typeof(PathV)) {.closure.} =\n  HandleV." & prop & " = v)\n",
-          Subst(trees: @[("HandleV", use), ("PathV", f), ("ObjV", obj)]), c.info)
   else:
     s.trees.add ("ExprV", value)
     dest.emitStmts("let NameV = ExprV\n", s, n.info)
