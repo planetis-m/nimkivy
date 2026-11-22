@@ -3,7 +3,7 @@
 ##
 ## The override and the constructors are in the block: a method for
 ## FancyButton in another module fails in shoggoth
-## (planetis-m/nimony-bugs-llms#175), and a later signature in this module
+## (planetis-m/nimony-bugs-llms#345), and a later signature in this module
 ## cannot name FancyButton (#290).
 
 import propwidgets
