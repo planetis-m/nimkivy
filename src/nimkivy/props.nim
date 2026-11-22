@@ -83,8 +83,6 @@ type
 # GAP: procs and methods that name the block's types in their signatures go
 # inside the block, because a later signature in the same module cannot name
 # a type a module-level template declares (planetis-m/nimony-bugs-llms#290)
-# and a method outside its class's module fails
-# (planetis-m/nimony-bugs-llms#175)
 template properties*(body: untyped) {.plugin: "plugins/propsplug".}
   ## Declares types with properties and events; see the module doc.
 
