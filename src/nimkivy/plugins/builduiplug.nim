@@ -2,8 +2,10 @@
 ## pass over the untyped block, in source order, into plain Nim in the
 ## caller's scope:
 ##
-## - `X(args) [as name] [: block]` with `X` in `Widgets`: `let name =
-##   newX(positional args)`, `name.p = v` for each `p = v`, the block, the add;
+## - `x(args) [as name] [: block]` with `x` in `Widgets`: `let name =
+##   newX(positional args)`, `name.p = v` for each `p = v`, `name.p = a.b` and
+##   `discard a.bindB(proc (v: typeof(a.b)) {.closure.} = name.p = v)` for
+##   each `p <- a.b` (a dot path), the block, the add;
 ## - any other call, a bare name or a dot path `[as name] [: block]`: `let
 ##   name = expr`, the block, the add; without `as` and block only the add;
 ## - `canvas[.before|.after]:` in a block: its lines are added to that group;
@@ -22,13 +24,13 @@ import plugins, nimparser
 import codegen
 
 const
-  Widgets = ["Widget", "BoxLayout", "FloatLayout", "AnchorLayout",
-    "RelativeLayout", "Label", "Image", "Screen", "ScreenManager", "ModalView",
-    "InstructionGroup", "Color", "Rectangle", "RoundedRectangle", "Ellipse",
-    "Line", "Triangle", "Quad", "BorderImage", "SmoothRectangle",
-    "SmoothRoundedRectangle", "SmoothEllipse", "SmoothTriangle", "SmoothQuad",
-    "SmoothLine", "PushMatrix", "PopMatrix", "Translate",
-    "StencilPush", "StencilUse", "StencilUnUse", "StencilPop"]
+  Widgets = ["widget", "boxLayout", "floatLayout", "anchorLayout",
+    "relativeLayout", "label", "image", "screen", "screenManager", "modalView",
+    "instructionGroup", "color", "rectangle", "roundedRectangle", "ellipse",
+    "line", "triangle", "quad", "borderImage", "smoothRectangle",
+    "smoothRoundedRectangle", "smoothEllipse", "smoothTriangle", "smoothQuad",
+    "smoothLine", "pushMatrix", "popMatrix", "translate",
+    "stencilPush", "stencilUse", "stencilUnUse", "stencilPop"]
   Events = ["press", "release", "touchDown", "touchMove", "touchUp",
     "preEnter", "enter", "preLeave", "leave",
     "preOpen", "open", "preDismiss", "dismiss"]
@@ -57,6 +59,16 @@ proc headText(n: NifCursor): string =
   # The callee of a call, when it is a plain name.
   let h = firstChild(n)
   result = if h.kind == Ident: h.identText else: ""
+
+proc isFollow(n: NifCursor): bool =
+  # `prop <- a.b`: a property name and a dot path.
+  result = false
+  if isTag(n, ["infix"]) and headText(n) == "<-":
+    var c = firstChild(n)
+    skip c
+    result = c.kind == Ident
+    skip c
+    result = result and isTag(c, ["dot"]) and isPath(c)
 
 proc handlerName(n: NifCursor): string =
   # `onX` of `proc onX(...)`, else "".
@@ -103,11 +115,11 @@ proc emitChild(dest: var NifBuilder; n: NifCursor; p: Parent) =
     if c.hasMore: body = c
   let listed = isTag(e, ["call", "cmd"]) and headText(e) in Widgets
   var expr = createTree()      # the call without its block
-  if isTag(e, ["call", "cmd", "oconstr"]):
+  if isTag(e, ["call", "cmd"]):
     expr.openTree(e.tagText, e.info)
     for c in e.children:
       if c.stmtKind == StmtsS: body = c
-      elif not (listed and isTag(c, ["vv"])): expr.addSubtree c
+      elif not (listed and (isTag(c, ["vv"]) or isFollow(c))): expr.addSubtree c
     expr.closeTree()
   else:
     expr.addSubtree e
@@ -136,7 +148,7 @@ proc emitChild(dest: var NifBuilder; n: NifCursor; p: Parent) =
       args.add (if args.len > 0: ", " else: "") & "Arg" & $s.trees.len & "V"
       s.trees.add ("Arg" & $s.trees.len & "V", c)
       skip c
-    dest.emitStmts("let NameV = new" & headText(e) & "(" & args & ")\n", s, n.info)
+    dest.emitStmts("let NameV = new" & capital(headText(e)) & "(" & args & ")\n", s, n.info)
     for c in e.children:
       if isTag(c, ["vv"]):
         var kv = firstChild(c)
@@ -144,6 +156,19 @@ proc emitChild(dest: var NifBuilder; n: NifCursor; p: Parent) =
         skip kv
         dest.emitStmts("HandleV." & prop & " = ValueV\n",
           Subst(trees: @[("HandleV", use), ("ValueV", kv)]), c.info)
+      elif isFollow(c):
+        # `prop <- a.b`: set now, then follow `b` of `a`.
+        var f = firstChild(c)
+        skip f
+        let prop = f.identText
+        skip f
+        let obj = firstChild(f)
+        var b = obj
+        skip b
+        dest.emitStmts("HandleV." & prop & " = PathV\n" &
+          "discard ObjV.bind" & capital(b.identText) &
+          "(proc (v: typeof(PathV)) {.closure.} =\n  HandleV." & prop & " = v)\n",
+          Subst(trees: @[("HandleV", use), ("PathV", f), ("ObjV", obj)]), c.info)
   else:
     s.trees.add ("ExprV", value)
     dest.emitStmts("let NameV = ExprV\n", s, n.info)
@@ -213,7 +238,7 @@ proc emitLine(dest: var NifBuilder; n: NifCursor; p: Parent) =
     dest.emitHandler(n, p.handle)
   elif isTag(n, ["infix"]) and headText(n) == "as":
     dest.emitChild(n, p)
-  elif isTag(n, ["call", "cmd", "oconstr"]):
+  elif isTag(n, ["call", "cmd"]):
     if isTag(firstChild(n), ["dot"]) or headText(n) in StmtCalls:
       dest.addSubtree n        # a dot call, `inc`, `dec`, `echo`
     else: dest.emitChild(n, p)

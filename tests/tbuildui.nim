@@ -3,7 +3,7 @@
 # component called with its keyword arguments, a widget made before
 # (a bare name and a dot path) and a plain call added as written; canvas
 # instructions in canvas, canvas.before and canvas.after, following their
-# widget through property handlers; handlers of an event with and without
+# widget with `<-` and through a property handler; handlers of an event with and without
 # `: bool` (one that stops the dispatch), of an event not in the list, and
 # of a property; their order; code lines among the widgets; and control
 # flow (`if`, `case`, `for`, `when`, a handler and a canvas instruction
@@ -33,7 +33,7 @@ type
 proc caption(text: string; bold = false): Label =
   # A component: a Label whose text is laid out in its own box.
   buildUi:
-    Label(text, halign = halignCenter) as l:
+    label(text, halign = halignCenter) as l:
       l.bold = bold
       proc onSize(s: (float, float)) = l.textSize = s
   result = l
@@ -47,19 +47,16 @@ proc main() =
   let header = newLabel("header")
   let holder = Holder(box: newBoxLayout())
   buildUi:
-    BoxLayout(orientation = orientationVertical) as root:
+    boxLayout(orientation = orientationVertical) as root:
       canvas.before:
-        Color(rgba = [0.1, 0.2, 0.3, 1.0]) as paint
-        Rectangle() as rect
+        color(rgba = [0.1, 0.2, 0.3, 1.0]) as paint
+        rectangle(pos <- root.pos, size <- root.size) as rect
       canvas.after:
-        Line(width = 2) as edge
-      proc onPos(p: (float, float)) = rect.pos = p
-      proc onSize(s: (float, float)) =
-        rect.size = s
-        edge.rectangle = [root.x, root.y, s[0], s[1]]
+        line(width = 2) as edge
+      proc onSize(s: (float, float)) = edge.rectangle = [root.x, root.y, s[0], s[1]]
       header
-      BoxLayout(spacing = 4) as panel:
-        Label("volume") as title
+      boxLayout(spacing = 4) as panel:
+        label("volume") as title
         labels.add title
         newKnob() as go:
           proc onPress() =
@@ -74,7 +71,7 @@ proc main() =
       caption("", bold = true) as footer
       holder.box
       newLabel("plain")
-      Widget()
+      widget()
   # The tree: Kivy's children are newest first.
   assert root.children.len == 6
   assert root.children[5] == WidgetBase(header) and root.children[4] == WidgetBase(panel)
@@ -87,7 +84,7 @@ proc main() =
   assert title.text == "volume" and footer.halign == halignCenter and footer.bold
   assert labels == @[title] and built == 1
   # The canvas groups, each in order (a Rectangle comes with its
-  # BindTexture), following the widget through its handlers.
+  # BindTexture), following the widget (`<-` and a handler).
   assert root.canvas.before.indexof(paint) == 0 and root.canvas.before.indexof(rect) == 2
   assert root.canvas.after.indexof(edge) >= 0 and edge.width == 2
   assert paint.rgba == [0.1, 0.2, 0.3, 1.0]
@@ -112,29 +109,29 @@ proc conditional(home: bool; lang: int): BoxLayout =
   # handler and an instruction inside an `if`.
   var pressed = 0
   buildUi:
-    BoxLayout(spacing = 2) as box:
+    boxLayout(spacing = 2) as box:
       canvas.before:
-        Color(rgba = [1.0, 0, 0, 1]) as first
+        color(rgba = [1.0, 0, 0, 1]) as first
         if home:
-          Color(rgba = [0.5, 0, 0, 1])
-        Color(rgba = [0.0, 0, 1, 1]) as last
+          color(rgba = [0.5, 0, 0, 1])
+        color(rgba = [0.0, 0, 1, 1]) as last
       if home:
         newKnob() as homeButton:
           proc onPress() = inc pressed
         box.spacing = 8
         proc onSpacing(v: float) = inc pressed
-      Label("logo") as logo
+      label("logo") as logo
       case lang
       of 0:
-        Label("en")
+        label("en")
       of 1:
-        Label("el")
+        label("el")
         box.padding = [1.0, 1, 1, 1]
       else:
         for i in 0 ..< 2:
-          Widget()
+          widget()
       when false:
-        Label("never")
+        label("never")
   assert box.canvas.before.indexof(first) == 0
   assert box.canvas.before.indexof(last) == (if home: 2 else: 1)
   if home:

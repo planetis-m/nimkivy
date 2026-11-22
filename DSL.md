@@ -16,19 +16,21 @@ syntax, so the lists are constants in the plugin, as Karax's tag table is:
 
 ```nim
 const
-  Widgets = ["Widget", "BoxLayout", "FloatLayout", "AnchorLayout",
-    "RelativeLayout", "Label", "Image", "Screen", "ScreenManager", "ModalView",
-    "InstructionGroup", "Color", "Rectangle", "RoundedRectangle", "Ellipse",
-    "Line", "Triangle", "Quad", "BorderImage", "SmoothRectangle",
-    "SmoothRoundedRectangle", "SmoothEllipse", "SmoothTriangle", "SmoothQuad",
-    "SmoothLine", "PushMatrix", "PopMatrix", "Translate",
-    "StencilPush", "StencilUse", "StencilUnUse", "StencilPop"]
+  Widgets = ["widget", "boxLayout", "floatLayout", "anchorLayout",
+    "relativeLayout", "label", "image", "screen", "screenManager", "modalView",
+    "instructionGroup", "color", "rectangle", "roundedRectangle", "ellipse",
+    "line", "triangle", "quad", "borderImage", "smoothRectangle",
+    "smoothRoundedRectangle", "smoothEllipse", "smoothTriangle", "smoothQuad",
+    "smoothLine", "pushMatrix", "popMatrix", "translate",
+    "stencilPush", "stencilUse", "stencilUnUse", "stencilPop"]
   Events = ["press", "release", "touchDown", "touchMove", "touchUp",
     "preEnter", "enter", "preLeave", "leave",
     "preOpen", "open", "preDismiss", "dismiss"]
 ```
 
-`Widgets` are nimkivy's own types with a `newX` constructor (Karax: tags).
+`Widgets` are nimkivy's own types with a `newX` constructor, written in
+lowercase as Karax's tags: `boxLayout(...)` calls `newBoxLayout`. Types stay
+PascalCase.
 `Events` are the event names (Karax: `EventKind`); every other `onX` is a
 property. Apps register nothing.
 
@@ -38,14 +40,16 @@ property. Apps register nothing.
 every `let` it emits stays visible after the block. A line at the top level
 is a root and is not added to anything.
 
-**3.1 A listed widget** — `X(args) [as name] [: block]` with `X` in
-`Widgets`: positional arguments go to `newX`, named arguments are property
-sets (Karax: attributes), then the block, then the add.
+**3.1 A listed widget** — `x(args) [as name] [: block]` with `x` in
+`Widgets`: positional arguments go to `newX` (`x` capitalized), named
+arguments are property sets (Karax: attributes) and `prop <- a.b` follows a
+property (3.7), in order, then the block, then the add. Only a line of the
+tree is a widget: `content.image(...)` in an argument is untouched.
 
 ```nim
-BoxLayout(spacing = 8) as row:      # let row = newBoxLayout()
+boxLayout(spacing = 8) as row:      # let row = newBoxLayout()
                                     # row.spacing = 8
-  Label("a", bold = true)           # let t1 = newLabel("a"); t1.bold = true
+  label("a", bold = true)           # let t1 = newLabel("a"); t1.bold = true
                                     # row.addWidget(t1)
 ```
 
@@ -62,6 +66,11 @@ arguments:
 ```
 
 Without `as` and block, it is just `parent.addWidget(call)`.
+
+A component starts from its type's plain constructor, a call like any other:
+`newPill() as p:`, where `newPill` is `result = Pill(...fields...)`,
+`result.initProps()`, `result.initBoxLayout()`. An object constructor is
+not a line of the tree.
 
 **3.3 A bare name or dot path is a child** (Karax, same) — `header.box`
 becomes `parent.addWidget(header.box)`.
@@ -97,12 +106,30 @@ Consequences, plainly:
   events (Kivy's shape; about 6 lines in the kiosk's PressBox/PressWidget),
   so `proc onRelease()` works on `pill`, `roundButton`, `photoTile`.
 
+**3.7 One property following another** — in a listed widget's arguments
+only, `prop <- a.b`, where the right side is a dot path of names: its last
+name is the followed property, the rest its object. It emits exactly
+
+```nim
+t.prop = a.b
+discard a.bindB(proc (v: typeof(a.b)) {.closure.} = t.prop = v)
+```
+
+with `t` the widget. There is no analysis and no other form: any other
+`<-` is left as written, and anything computed is a property handler (3.5).
+
+```nim
+rectangle(pos <- page.pos, size <- page.size)
+label(text, textSize <- l.size) as l
+```
+
 ## 4. No bindings; resize rebuilds
 
-`prop <- expr` is removed. Sizes are plain values computed at build time
-(`sc(72)`, the kiosk's scale helper read once). Things that follow layout
-(a background following its widget, text size following width) use a
-property handler (3.5). The window resize (desktop only; the tablet is
+There are no general bindings. Sizes are plain values computed at build time
+(`sc(72)`, the kiosk's scale helper read once). A value that follows exactly
+one property (a background's `pos` and `size`, a label's `textSize`) is
+`prop <- a.b` (3.7); anything computed from layout uses a property handler
+(3.5). The window resize (desktop only; the tablet is
 fullscreen with a fixed orientation) rebuilds the screens:
 
 ```nim
@@ -118,15 +145,15 @@ the current screen without voice. The voice's `onChange` listener moves into
 
 | Today | Instead |
 |---|---|
-| capital-letter guess, `Type` → `newType` for every capital call | the `Widgets` list; other calls untouched |
-| `prop <- expr` and its dependency walk | values at build time; property handlers |
+| capital-letter guess, `Type` → `newType` for every capital call | the lowercase `Widgets` list; other calls untouched |
+| `prop <- expr` and its dependency walk | values at build time; `prop <- a.b` for one property (3.7); property handlers |
 | `prop = value` lines in a block (implicit receiver), `self` | named arguments, `name.prop = value` |
 | `place expr` | a bare name or path, or any call |
 | `on [part.]name(params):` | `proc onName(params) =` |
 | 3-pass emission; special `if` items | one pass; plain control flow |
 | `buildUi: unsupported syntax` and the bad_ui tests | none: unknown lines are code, errors come from the compiler |
 | propsplug's `handlerBinds` (two `bindP` overloads per property) | the `Events` list picks the signature |
-| the kiosk's fake constructors (`newPillBox`, `newRoundBox`, `newFlagBox`, `newTileBox`) and `newIconPill` | components are plain procs with keyword arguments |
+| the kiosk's fake constructors (`newPillBox`, `newRoundBox`, `newFlagBox`, `newTileBox`) and `newIconPill` | components are plain procs with keyword arguments, starting from one plain constructor per type (`newPill`, `newRoundButton`, `newFlagButton`, `newPhotoTile`) |
 
 Estimated plugin size: about 150 lines (today 564).
 
@@ -162,11 +189,11 @@ Before (ui.nim today):
 After:
 
 ```nim
-            BoxLayout(sizeHintY = none[float](), height = sc(72), spacing = sc(16)):
+            boxLayout(sizeHintY = none[float](), height = sc(72), spacing = sc(16)):
               roundButton(ikLeft, 68) as prev:
                 prev.posHint = {phCenterY: 0.5}
                 proc onRelease() = app.views.topic.go(-1)
-              Widget() as dots:
+              widget() as dots:
                 proc onPos(p: (float, float)) = app.views.topic.drawDots()
                 proc onSize(s: (float, float)) = app.views.topic.drawDots()
 ```

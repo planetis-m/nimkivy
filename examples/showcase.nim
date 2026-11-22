@@ -124,21 +124,17 @@ proc pill(fill: Rgba): Pressable =
   buildUi:
     newPressable() as p:
       canvas.before:
-        Color(rgba = fill)
-        Rectangle(pos = p.pos, size = p.size) as bg
-      proc onPos(v: (float, float)) = bg.pos = v
-      proc onSize(v: (float, float)) = bg.size = v
+        color(rgba = fill)
+        rectangle(pos <- p.pos, size <- p.size)
   result = p
 
 proc panel(fill: Rgba): BoxLayout =
   # A BoxLayout on a coloured background.
   buildUi:
-    BoxLayout() as b:
+    boxLayout() as b:
       canvas.before:
-        Color(rgba = fill)
-        Rectangle(pos = b.pos, size = b.size) as bg
-      proc onPos(v: (float, float)) = bg.pos = v
-      proc onSize(v: (float, float)) = bg.size = v
+        color(rgba = fill)
+        rectangle(pos <- b.pos, size <- b.size)
   result = b
 
 proc tile(): Pressable =
@@ -154,15 +150,14 @@ proc caption(text = ""; fontSize: float; color: Rgba; bold = false;
     halign = halignCenter): Label =
   # The kiosk's label(): Source Sans 3, centred in its own box.
   buildUi:
-    Label(text, fontName = "SourceSans", fontSize = fontSize, color = color, bold = bold,
-        halign = halign, valign = valignMiddle) as l:
-      proc onSize(v: (float, float)) = l.textSize = v
+    label(text, fontName = "SourceSans", fontSize = fontSize, color = color, bold = bold,
+        halign = halign, valign = valignMiddle, textSize <- l.size) as l
   result = l
 
 proc paragraph(fontSize: float; color: Rgba; halign: Halign): Label =
   # Source Sans 3 that wraps at the label's width and grows downwards.
   buildUi:
-    Label(fontName = "SourceSans", fontSize = fontSize, color = color, halign = halign,
+    label(fontName = "SourceSans", fontSize = fontSize, color = color, halign = halign,
         valign = valignMiddle) as l:
       proc onWidth(v: float) = l.textSize = (some(v), none[float]())
   result = l
@@ -332,7 +327,7 @@ proc choice(app: ShowcaseApp; lang, name: string): Pressable =
     pill(Linen) as p:
       p.orientation = orientationVertical
       proc onRelease() = app.show.setLanguage(lang)
-      Image(Assets & "flag.png")
+      image(Assets & "flag.png")
       caption(name, fontSize = 22, color = Charcoal) as c:
         c.sizeHintY = none[float]()
         c.height = 40
@@ -343,28 +338,26 @@ proc newShowcase*(app: ShowcaseApp): Showcase =
   let fade = newFadeTransition()
   fade.duration = 0.25
   buildUi:
-    Screen("attract") as attract:
+    screen("attract") as attract:
       # Two photos and a title; any touch goes home.
       proc onTouchDown(t: MotionEvent): bool =
         app.show.go("home")
         result = true
       proc onEnter() = app.show.startSlides()
       proc onLeave() = app.show.stopSlides()
-      FloatLayout():
-        Image(Assets & Photos[0], fitMode = fitCover) as slide0
-        Image(fitMode = fitCover, opacity = 0) as slide1
-        AnchorLayout(anchorY = anchorBottom, padding = [0.0, 0, 0, 40]):
+      floatLayout():
+        image(Assets & Photos[0], fitMode = fitCover) as slide0
+        image(fitMode = fitCover, opacity = 0) as slide1
+        anchorLayout(anchorY = anchorBottom, padding = [0.0, 0, 0, 40]):
           caption(fontSize = 56, color = Linen, bold = true) as attractTitle:
             attractTitle.sizeHintY = none[float]()
             attractTitle.height = 120
             canvas.before:
-              Color(rgba = [0.0, 0, 0, 0.35])
-              Rectangle(pos = attractTitle.pos, size = attractTitle.size) as shade
-            proc onPos(v: (float, float)) = shade.pos = v
-            proc onSize(v: (float, float)) = shade.size = v
+              color(rgba = [0.0, 0, 0, 0.35])
+              rectangle(pos <- attractTitle.pos, size <- attractTitle.size)
 
   buildUi:
-    Screen("home") as home:
+    screen("home") as home:
       panel(Sand) as homeBody:
         homeBody.orientation = orientationVertical
         panel(Linen) as homeHeader:
@@ -377,28 +370,28 @@ proc newShowcase*(app: ShowcaseApp): Showcase =
             langButton.width = 160
             proc onRelease() = app.show.picker.open()
             caption(fontSize = 22, color = Linen) as langLabel
-        BoxLayout(spacing = 16, padding = [16.0, 16, 16, 16]):
+        boxLayout(spacing = 16, padding = [16.0, 16, 16, 16]):
           tile() as tile0:
             proc onRelease() = app.show.openTopic(0)
-            Image(Assets & Photos[0], fitMode = fitCover) as tileImage0
+            image(Assets & Photos[0], fitMode = fitCover) as tileImage0
             caption(fontSize = 22, color = Fig, bold = true) as tileLabel0:
               tileLabel0.sizeHintY = none[float]()
               tileLabel0.height = 56
           tile() as tile1:
             proc onRelease() = app.show.openTopic(1)
-            Image(Assets & Photos[1], fitMode = fitCover) as tileImage1
+            image(Assets & Photos[1], fitMode = fitCover) as tileImage1
             caption(fontSize = 22, color = Fig, bold = true) as tileLabel1:
               tileLabel1.sizeHintY = none[float]()
               tileLabel1.height = 56
           tile() as tile2:
             proc onRelease() = app.show.openTopic(2)
-            Image(Assets & Photos[2], fitMode = fitCover) as tileImage2
+            image(Assets & Photos[2], fitMode = fitCover) as tileImage2
             caption(fontSize = 22, color = Fig, bold = true) as tileLabel2:
               tileLabel2.sizeHintY = none[float]()
               tileLabel2.height = 56
 
   buildUi:
-    Screen("topic") as topic:
+    screen("topic") as topic:
       # Header, then the card (photo | text and Listen), then prev, dots,
       # next.
       proc onLeave() = app.show.stopVoice()
@@ -414,13 +407,13 @@ proc newShowcase*(app: ShowcaseApp): Showcase =
             homeButton.width = 160
             proc onRelease() = app.show.go("home")
             caption(fontSize = 22, color = Linen) as homeLabel
-        RelativeLayout() as cardArea:
+        relativeLayout() as cardArea:
           proc onTouchUp(t: MotionEvent): bool = app.show.swipe(cardArea, t)
-          BoxLayout(padding = [24.0, 16, 24, 16], spacing = 24):
-            Image(fitMode = fitContain, sizeHintX = 0.45) as cardImage
-            BoxLayout(orientation = orientationVertical, spacing = 12):
+          boxLayout(padding = [24.0, 16, 24, 16], spacing = 24):
+            image(fitMode = fitContain, sizeHintX = 0.45) as cardImage
+            boxLayout(orientation = orientationVertical, spacing = 12):
               paragraph(24, Charcoal, halignLeft) as cardText
-              AnchorLayout(sizeHintY = none[float](), height = 64, anchorX = anchorLeft):
+              anchorLayout(sizeHintY = none[float](), height = 64, anchorX = anchorLeft):
                 pill(Leaf) as listen:
                   listen.sizeHintX = none[float]()
                   listen.width = 180
@@ -428,13 +421,13 @@ proc newShowcase*(app: ShowcaseApp): Showcase =
                   listen.height = 56
                   proc onRelease() = app.show.toggleListen()
                   caption(fontSize = 22, color = Linen, bold = true) as listenLabel
-        BoxLayout(sizeHintY = none[float](), height = 64, padding = [24.0, 4, 24, 4]):
+        boxLayout(sizeHintY = none[float](), height = 64, padding = [24.0, 4, 24, 4]):
           pill(Fig) as prev:
             prev.sizeHintX = none[float]()
             prev.width = 120
             proc onRelease() = app.show.showCard(app.show.card - 1)
             caption("<", fontSize = 30, color = Linen, bold = true)
-          Widget() as dots:
+          widget() as dots:
             proc onPos(v: (float, float)) = app.show.drawDots()
             proc onSize(v: (float, float)) = app.show.drawDots()
           pill(Fig) as next:
@@ -444,8 +437,8 @@ proc newShowcase*(app: ShowcaseApp): Showcase =
             caption(">", fontSize = 30, color = Linen, bold = true)
 
   buildUi:
-    ModalView(sizeHint = (0.7, 0.4), backgroundColor = Linen, animDuration = 0.1) as picker:
-      BoxLayout(padding = [16.0, 16, 16, 16], spacing = 16):
+    modalView(sizeHint = (0.7, 0.4), backgroundColor = Linen, animDuration = 0.1) as picker:
+      boxLayout(padding = [16.0, 16, 16, 16], spacing = 16):
         choice(app, "en", "English") as english
         choice(app, "el", "Ελληνικά") as greek
         choice(app, "de", "Deutsch") as german
