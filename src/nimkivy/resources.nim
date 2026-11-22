@@ -9,13 +9,21 @@
 ## directory too (SCOPE.md: a font is a path or a name in `data/fonts`).
 ## Kivy caches the results for 60 seconds; this lookup is not cached.
 ##
+## Files are looked up through SDL (`SDL_GetPathInfo`), which also reads the
+## files SDL opens: on the desktop the file system, on Android a relative
+## path in the APK's assets. The program's directory is SDL's base path
+## (on Android "./", the assets' root), and a path found stays as it was
+## given, normalised, not made absolute: an absolute path on Android would
+## leave the assets.
+##
 ## The data directory (nimkivy's `fonts/`) is, in this order:
 ## `KIVY_DATA_DIR` if it is set; the directory given to `setDataDir`; `data`
-## beside the executable (`getAppDir()`), if it exists; `data` under the
-## current directory. It is fixed when it is first used: by the first label,
-## font or resource lookup, so `setDataDir` goes before the first widget.
+## in the program's directory, if it exists; `data` under the current
+## directory. It is fixed when it is first used: by the first label, font or
+## resource lookup, so `setDataDir` goes before the first widget.
 
 import std/[assertions, os, envvars, sequtils]
+import sdl3/sdl
 
 type
   ResourcePaths = ref object
@@ -23,7 +31,25 @@ type
     dataDir: string            # "" until `setDataDir` or the first use
     fixed: bool                # the data directory is in use
 
-let resourcePaths = ResourcePaths(paths: @[".", getAppDir()], dataDir: "", fixed: false)
+proc basePath(): string =
+  # The program's directory, as SDL finds it, ending in a separator.
+  let p = SDL_GetBasePath()
+  result = if p != nil: fromCString(p) else: ""
+
+proc pathType(path: string): SDL_PathType =
+  # What `path` names, through SDL; 0 for nothing.
+  var info = default(SDL_PathInfo)
+  var p = path
+  result = SDL_PathType(0)
+  if SDL_GetPathInfo(p.toCString, addr info):
+    result = info.`type`
+
+proc isFile*(path: string): bool =
+  ## Whether `path` names a file, through SDL (on Android, a relative path
+  ## in the APK's assets). os.path.isfile
+  pathType(path) == SDL_PATHTYPE_FILE
+
+let resourcePaths = ResourcePaths(paths: @[".", basePath()], dataDir: "", fixed: false)
 
 proc setDataDir*(path: sink string) =
   ## Sets the data directory, for a program that does not run from the
@@ -43,12 +69,8 @@ proc fixDataDir() =
   var dir = getEnv("KIVY_DATA_DIR", "")
   if dir.len == 0: dir = resourcePaths.dataDir
   if dir.len == 0:
-    dir = getAppDir() / "data"
-    if not dirExists(dir): dir = "data"
-  try:
-    dir = absolutePath(dir)
-  except:
-    discard
+    dir = normalizedPath(basePath() / "data")
+    if pathType(dir) != SDL_PATHTYPE_DIRECTORY: dir = "data"
   resourcePaths.dataDir = dir
   resourcePaths.fixed = true
   # After `.` and the program's directory, before any added path.
@@ -61,30 +83,22 @@ proc dataDir*(): string =
 
 proc exists(path: string): bool =
   # os.path.exists: a file or a directory.
-  fileExists(path) or dirExists(path)
-
-proc abspath(path: string): string =
-  # os.path.abspath: absolute and normalised.
-  result = path
-  try:
-    result = absolutePath(path)
-  except:
-    discard
-  result = normalizedPath(result)
+  let t = pathType(path)
+  result = t == SDL_PATHTYPE_FILE or t == SDL_PATHTYPE_DIRECTORY
 
 proc resourceFind*(filename: string): string =
-  ## The absolute path of `filename`, searched as a path and then in the
-  ## resource paths, the last added first; "" if it is not found.
-  ## resources.py resource_find
+  ## The path of `filename` (normalised, not made absolute: see the module
+  ## doc), searched as a path and then in the resource paths, the last added
+  ## first; "" if it is not found. resources.py resource_find
   fixDataDir()
   result = ""
   if filename.len == 0:
     return ""
-  let direct = abspath(filename)
+  let direct = normalizedPath(filename)
   if exists(direct):
     return direct
   for i in countdown(resourcePaths.paths.high, 0):
-    let candidate = abspath(resourcePaths.paths[i] / filename)
+    let candidate = normalizedPath(resourcePaths.paths[i] / filename)
     if exists(candidate):
       return candidate
 

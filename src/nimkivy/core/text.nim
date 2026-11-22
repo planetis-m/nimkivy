@@ -124,7 +124,7 @@ proc resolveFontName*(l: LabelBase) =
       filename = resourceFind(fontname)
     if filename.len == 0:
       filename = dataDir() / fontname
-      if not fileExists(filename):
+      if not isFile(filename):
         logError "Label: File '" & fontname & "' not found"
         options.fontNameR = ""
         return

@@ -44,6 +44,7 @@ type
   SDL_MouseButtonFlags* = distinct uint32 ## Pressed mouse buttons.
   SDL_MouseWheelDirection* = distinct cint ## Whether the wheel is flipped.
   SDL_AudioFormat* = distinct uint32 ## A sample format.
+  SDL_PathType* = distinct cint ## What a path names.
 
   SDL_DisplayID* = uint32 ## A display.
   SDL_WindowID* = uint32 ## A window, in events.
@@ -52,6 +53,7 @@ type
   SDL_TouchID* = uint64 ## A touch device.
   SDL_FingerID* = uint64 ## A finger on a touch device.
   SDL_AudioDeviceID* = uint32 ## An audio device.
+  SDL_Time* = int64 ## Nanoseconds since 1970-01-01 UTC.
 
   SDL_Rect* {.importc, header: SdlHeader, bycopy.} = object
     ## A rectangle in integer pixels.
@@ -94,6 +96,14 @@ type
     format*: SDL_AudioFormat
     channels*: cint
     freq*: cint
+
+  SDL_PathInfo* {.importc, header: SdlHeader, bycopy.} = object
+    ## What `SDL_GetPathInfo` finds at a path.
+    `type`*: SDL_PathType
+    size*: uint64
+    create_time*: SDL_Time
+    modify_time*: SDL_Time
+    access_time*: SDL_Time
 
   SDL_AudioStreamCallback* = proc (userdata: nil pointer;
       stream: SDL_AudioStream; additional_amount, total_amount: cint) {.cdecl.}
@@ -218,6 +228,7 @@ proc `==`*(a, b: SDL_MouseButtonFlags): bool {.borrow.}
 proc `and`*(a, b: SDL_MouseButtonFlags): SDL_MouseButtonFlags {.borrow.}
 proc `==`*(a, b: SDL_MouseWheelDirection): bool {.borrow.}
 proc `==`*(a, b: SDL_AudioFormat): bool {.borrow.}
+proc `==`*(a, b: SDL_PathType): bool {.borrow.}
 
 const
   SDL_INIT_AUDIO* = SDL_InitFlags(0x00000010'u32)
@@ -394,6 +405,9 @@ const
   SDL_AUDIO_F32* = SDL_AudioFormat(0x8120'u32) ## Native byte order.
   SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK* = SDL_AudioDeviceID(0xFFFFFFFF'u32)
 
+  SDL_PATHTYPE_FILE* = SDL_PathType(1)
+  SDL_PATHTYPE_DIRECTORY* = SDL_PathType(2)
+
 {.push cdecl, importc, header: SdlHeader.}
 
 # Init, errors, hints, memory.
@@ -557,6 +571,18 @@ proc SDL_IOFromFile*(file, mode: cstring): nil SDL_IOStream
   ## A stream on a file opened in `mode` ("rb": read), or nil on failure.
 proc SDL_CloseIO*(context: SDL_IOStream): bool
   ## Closes a stream and frees it.
+proc SDL_LoadFile*(file: cstring; datasize: ptr csize_t): nil pointer
+  ## The whole of a file (with a 0 byte after it), its size in `datasize`;
+  ## nil on failure. Free it with `SDL_free`. A relative path is read from
+  ## the APK's assets on Android.
+
+# Filesystem.
+proc SDL_GetBasePath*(): nil cstring
+  ## The folder of the program, ending in a separator (on Android "./", the
+  ## root of the APK's assets); nil on failure. SDL owns it.
+proc SDL_GetPathInfo*(path: cstring; info: nil ptr SDL_PathInfo): bool
+  ## Fills `info` for what `path` names; false if nothing does. A relative
+  ## path is looked up in the APK's assets on Android.
 
 {.pop.}
 
