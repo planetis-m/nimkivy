@@ -128,13 +128,16 @@ proc. Source paths are relative to `upstream/kivy/kivy/`, Nimony paths to
 
 ## Build and tests
 
-- Never run two Nimony builds at once. Each build uses its own `--nimcache`.
+- Never run two Nimony builds at once. The builds of one mode share a
+  `--nimcache` (`nimcache/debug`, `nimcache/release`).
 - **Run everything:** `./run_tests.sh` (from anywhere). It builds every
   `tests/t*.nim` and `tests/traces.nim` in debug and in `-d:release` with
-  `nimony c --mm:orc --path:src --nimcache:nimcache/<name>-<mode> -o:bin/<name>-<mode>`,
+  `nimony c --mm:orc --path:src --nimcache:nimcache/<mode> -o:bin/<name>-<mode>`,
   runs them, and compares the traces and scenes with Kivy's through
-  `bin/compare-<mode>` (`tests/compare.nim`). `NIMONY` overrides the Nimony
-  checkout. No Python is needed.
+  `bin/compare-<mode>` (`tests/compare.nim`); the scenes in release only.
+  `./run_tests.sh [--debug | --release] [name ...]` runs one mode and the
+  named tests only (a `t*` name, `bad`, `traces`, `scenes`). `NIMONY`
+  overrides the Nimony checkout. No Python is needed.
 - Build:
   `nimony c --mm:orc --path:src --nimcache:nimcache/<name> -o:bin/<name> <file>.nim`.
   `--mm:orc` is needed because widgets and their closures form cycles (see
@@ -152,7 +155,7 @@ proc. Source paths are relative to `upstream/kivy/kivy/`, Nimony paths to
   `archive/reference/scenes.py`, into `tests/out/<scene>.png` and `.txt`,
   through the real Window. Then `bin/compare-<mode> tests/out <scene> ...`
   checks them against `tests/fixtures/scenes` (see ACCEPTANCE.md): the
-  geometry exactly, the pixels within budget. `run_tests.sh` runs the scenes on SDL's OpenGL renderer
+  geometry exactly, the pixels within budget. `run_tests.sh` runs the scenes (release only) on SDL's OpenGL renderer
   (`SDL_RENDER_DRIVER=opengl`, through the offscreen driver's EGL), which
   matches GL's rasterization and supports Kivy's blend mode; the tests stay
   on the software renderer (Gaps).

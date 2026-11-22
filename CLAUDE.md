@@ -13,3 +13,4 @@ Bugs: Nimony compiler/stdlib bugs are reported to `planetis-m/nimony-bugs-llms` 
 - No metric targets: measure and report numbers, never tune code to reach one.
 - When in doubt, delete rather than add. A change adding over ~150 lines needs a line-by-line reason.
 - Reports list separately anything added that the owner did not ask for.
+- While working, build and run only the tests your change touches (run_tests.sh with names and one mode); run the full suite once before committing.
