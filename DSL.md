@@ -171,7 +171,7 @@ After:
 
 ```nim
             boxLayout(sizeHintY = none[float](), height = sc(72), spacing = sc(16)):
-              roundButton(ikLeft, 68) as prev:
+              roundButton(ikLeft, 75) as prev:
                 prev.posHint = {phCenterY: 0.5}
                 proc onRelease() = app.views.topic.go(-1)
               widget() as dots:
@@ -186,7 +186,7 @@ let t1 = newBoxLayout()
 t1.sizeHintY = none[float]()
 t1.height = sc(72)
 t1.spacing = sc(16)
-let prev = roundButton(ikLeft, 68)
+let prev = roundButton(ikLeft, 75)
 prev.posHint = {phCenterY: 0.5}
 discard prev.bindRelease(proc (): bool {.closure.} =
   result = false

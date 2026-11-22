@@ -24,6 +24,9 @@ type
   SDL_AudioStreamObj {.importc: "SDL_AudioStream", header: SdlHeader,
       incompleteStruct.} = object
   SDL_AudioStream* = ptr SDL_AudioStreamObj ## An audio stream.
+  SDL_IOStreamObj {.importc: "SDL_IOStream", header: SdlHeader,
+      incompleteStruct.} = object
+  SDL_IOStream* = ptr SDL_IOStreamObj ## A stream to read or write data.
 
   SDL_InitFlags* = distinct uint32 ## Subsystems for `SDL_Init`.
   SDL_WindowFlags* = distinct uint64 ## Flags for `SDL_CreateWindow`.
@@ -548,6 +551,12 @@ proc SDL_SetAudioStreamGain*(stream: SDL_AudioStream; gain: cfloat): bool
   ## Sets the volume, 1 for unchanged.
 proc SDL_DestroyAudioStream*(stream: SDL_AudioStream)
   ## Closes a stream and the device it opened.
+
+# I/O streams.
+proc SDL_IOFromFile*(file, mode: cstring): nil SDL_IOStream
+  ## A stream on a file opened in `mode` ("rb": read), or nil on failure.
+proc SDL_CloseIO*(context: SDL_IOStream): bool
+  ## Closes a stream and frees it.
 
 {.pop.}
 

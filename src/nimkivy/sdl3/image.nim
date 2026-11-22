@@ -13,6 +13,10 @@ const ImgHeader = "<SDL3_image/SDL_image.h>"
 
 proc IMG_Load*(file: cstring): nil ptr SDL_Surface
   ## A new surface with the image in the file, or nil on failure.
+proc IMG_LoadSizedSVG_IO*(src: SDL_IOStream; width, height: cint): nil ptr SDL_Surface
+  ## A new surface with the SVG image drawn at most `width` x `height`
+  ## pixels in its own aspect ratio (0: that side from the other), or nil on
+  ## failure. Does not close `src`.
 proc IMG_SavePNG*(surface: ptr SDL_Surface; file: cstring): bool
   ## Writes a surface to a PNG file.
 

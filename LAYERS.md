@@ -75,7 +75,8 @@ A layer is done when:
   `TTF_GetFontHeight`, `TTF_GetFontAscent`, `TTF_GetFontDescent`,
   `TTF_GetStringSize`, `TTF_RenderText_Blended`. Later, for Arabic:
   `TTF_SetFontDirection` and `TTF_SetFontScript`.
-- **SDL3_image:** `IMG_Load`, `IMG_SavePNG`.
+- **SDL3_image:** `IMG_Load`, `IMG_SavePNG`; for the kiosk's image tool
+  `IMG_LoadSizedSVG_IO`, with SDL3's `SDL_IOFromFile` and `SDL_CloseIO`.
 - **Tests:** `tsdl3`. Check `sizeof` and field offsets of `SDL_Vertex`,
   `SDL_FColor`, `SDL_FRect`, `SDL_Rect` and the event structs against C. Run
   a smoke test under `SDL_VIDEO_DRIVER=offscreen`: create a window and a
