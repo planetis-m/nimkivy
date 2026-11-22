@@ -1,11 +1,13 @@
-# Android build notes (toolchain and libraries built; the app not yet)
+# Android build notes (toolchain and libraries built; the app blocked by two Nimony bugs)
 
 Phase 1 runs and is tested on the Linux desktop only (LAYERS.md, layer 10:
 "no tablet testing for now"). This file lists what the Android build of a
 nimkivy app (first the kiosk) needs. Phase A (2026-11-22) installed the
-toolchain, built the SDL libraries and assembled a template APK; no Nim code
-has been compiled for Android and nothing has run on a device. Every step is
-marked:
+toolchain, built the SDL libraries and assembled a template APK. Phase B
+(2026-11-22) moved all file access to SDL (section 5) and tried to compile
+the kiosk: Nimony stops in its own system module (section 3), so there is
+no `libmain.so` and no kiosk APK yet; nothing has run on a device. Every
+step is marked:
 
 - **known**: true on this machine or in the code today;
 - **untested**: what the SDL3, NDK and Nimony documentation or sources say
@@ -87,49 +89,74 @@ The host's CMake 4.3.0 and Ninja 1.13.2 build the libraries.
   2.13.2 and HarfBuzz 8.5.0. Text metrics may differ from the `label`
   trace; to compare on the first Android build.
 
-## 3. Compiling the Nim code (phase B)
+## 3. Compiling the Nim code (phase B: **blocked**)
 
-- **untested** Nimony cross-compiles with `--os:android --cpu:arm`
-  (`armeabi-v7a`). **known** from Nimony's source: `--cpu:arm` is an alias
-  of `arm32`, and naming the CPU sets `int` to its 32 bits
-  (`nifconfig.setTargetCPU`), so `--bits:32` is not needed; `lib/platform.nim`
-  knows `Android`. `defined(android)` selects nimkivy's Android branches
-  (**known**: the code compiles them only on Android, so they have never
-  been compiled). nimkivy uses `int` for sizes and `float` (64-bit) for
-  geometry, so nothing depends on 64-bit `int`.
-- **untested** The C compiler is the NDK's clang for the ABI and minSdk,
-  given with `--cc:`, the SDL headers with `--passC:` and the libraries with
-  `--passL:` (`--passC`/`--passL` exist in `src/nimony/nimony.nim`, not in
-  `--help`). The output is a shared library, `--app:lib -o:libmain.so`. For
-  the kiosk, from `kiosk/`:
+- **known** from Nimony's source: `--cpu:arm` is an alias of `arm32`, and
+  naming the CPU sets `int` to its 32 bits (`nifconfig.setTargetCPU`), so
+  `--bits:32` is not needed; `lib/platform.nim` knows `Android`.
+  `defined(android)` selects nimkivy's Android branches (never compiled
+  yet). nimkivy uses `int` for sizes and `float` (64-bit) for geometry, so
+  nothing depends on 64-bit `int`.
+- The command (Nimony `6ccc8bf8`, current master), from `kiosk/`, with its
+  own nimcache and its own Nimony stdlib cache (`XDG_CACHE_HOME`), release:
 
   ```sh
   NDK=~/Android/sdk/ndk/28.2.13676358
   SDLA=~/Android/build/install/armeabi-v7a
-  nimony c --mm:orc --os:android --cpu:arm --app:lib \
+  XDG_CACHE_HOME=~/Android/build/xdg-cache nimony c -d:release --mm:orc \
+    --os:android --cpu:arm --app:lib \
     --cc:$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi26-clang \
     --passC:-I$SDLA/include --passC:-fPIC --passL:-L$SDLA/lib \
     --path:$HOME/Projects/nimkivy/src --nimcache:nimcache/android-armeabi-v7a \
-    -o:libmain.so main.nim
-  cp libmain.so ~/Android/build/kiosk-android/app/src/main/jniLibs/armeabi-v7a/
+    main.nim
+  cp nimcache/android-armeabi-v7a/c/*/libmain.so \
+    ~/Android/build/kiosk-android/app/src/main/jniLibs/armeabi-v7a/
   ```
 
-  **known**: this clang (`armv7a-linux-androideabi26-clang -shared -fPIC
-  -I$SDLA/include ... -L$SDLA/lib -lSDL3`) builds the template's C stub
-  `YourSourceHere.c` into a `libmain.so` exporting `SDL_main`
+- **known, blocking**: it stops in `nimsem` on the system module, before
+  any C is compiled: with `--mm:orc` and a 32-bit CPU, `orc.nim` uses the
+  cell's `int64` `rootIdx` as an `int` (Type mismatch at `orc.nim` 188, 193,
+  208, 214, 215). A two-line program fails the same way with
+  `--cpu:arm` or `--cpu:i386`; the default memory management and
+  `--mm:arc` get through sem. The kiosk needs ORC (widgets and closures form
+  cycles). Filed: planetis-m/nimony-bugs-llms#354 (kiosk `bug-reports/04`,
+  GAP in kiosk `main.nim`).
+- **known**, `--app:lib` (checked with a host build, `nimony c --app:lib`,
+  and a C program linking the library):
+  - Exported procs are exported: an `{.exportc, cdecl.}` proc is a global
+    `T` symbol of the `.so`, so `SDL_main` is reachable by SDLActivity.
+    The link step makes a shared object (niflink); `-fPIC` is added by
+    Nimony itself for `--app:lib` (`deps.nim`), so `--passC:-fPIC` is
+    redundant.
+  - `-o:` is ignored for a library: it is written to
+    `<nimcache>/c/<module>/lib<module>.so` (`deps.nim`, `exeFile`, says so),
+    so `main.nim` gives `libmain.so` there.
+  - **Blocking**: module initialisation never runs. Each module's init
+    proc (its top-level code) is generated, but only the `main` that
+    `--app:console`/`gui` emits calls it; in a library nothing does, it is
+    removed as dead code, and no `NimMain` is exported. So the kiosk's
+    content, settings and every global of nimkivy would be zero when
+    SDL_main runs. Filed: planetis-m/nimony-bugs-llms#353 (upstream
+    nim-lang/nimony#2787, open; kiosk `bug-reports/03`, GAP in kiosk
+    `main.nim`).
+  - Also: an `{.exportc.}` proc may not touch a global `var` directly
+    ("unsynchronized access to global variable"); reading a `let` is
+    allowed. The kiosk's `SDL_main` only calls `newKioskApp().run()`.
+- The kiosk's entry (`kiosk/main.nim`): on Android it defines
+  `proc SDL_main(argc: cint; argv: ptr UncheckedArray[cstring]): cint
+  {.exportc, cdecl.}`, which runs `newKioskApp().run()`; on the desktop the
+  top level runs as before.
+- **known**: the NDK clang (`armv7a-linux-androideabi26-clang -shared
+  -fPIC -I$SDLA/include ... -L$SDLA/lib -lSDL3`) builds the template's C
+  stub `YourSourceHere.c` into a `libmain.so` exporting `SDL_main`
   (`~/Android/build/stub-main`).
-- **untested** SDLActivity loads `libmain.so` and calls its `SDL_main`. The
-  app module must export it: `proc SDL_main(argc: cint; argv: ptr UncheckedArray[cstring]): cint
-  {.exportc, cdecl.}`, which runs the module's top level (Nimony's
-  equivalent of `NimMain`; how a `--app:lib` build runs module
-  initialisation is not checked) and then `App.run`. On the desktop the
-  program's own `main` runs instead. Whether Nimony's linker step for
-  `--app:lib` passes `-shared` to clang is also not checked.
 - **known** Link flags: `sdl3/sdl.nim`, `sdl3/ttf.nim` and `sdl3/image.nim`
   pass `-lSDL3`, `-lSDL3_ttf`, `-lSDL3_image`. Android also needs `-llog`
   and `-landroid` if anything calls the NDK directly (nimkivy does not).
-- **untested** `--mm:orc` as on the desktop (widgets and closures form
-  cycles).
+- Once both bugs are fixed: build as above, then check the library with
+  the NDK's `llvm-readelf`: `-h` (ELF32, ARM, EABI5), `--dyn-syms` (`SDL_main`
+  defined, global), `-d` (NEEDED: `libSDL3.so`, `libSDL3_ttf.so`,
+  `libSDL3_image.so`, libc, libm, libdl, and nothing from the host).
 
 ## 4. The Android project (**known**: skeleton made, debug APK assembled)
 
@@ -182,36 +209,53 @@ The host's CMake 4.3.0 and Ninja 1.13.2 build the libraries.
   `gr.philosykos.philosykos_exhibition`, sdkVersion 26, targetSdkVersion
   34, `native-code: 'armeabi-v7a'`, launchable `KioskActivity`); the stub
   was then taken out of `jniLibs` again. Not installed on a device.
+- Phase B built no APK: there is no `libmain.so` (section 3).
+  `jniLibs/armeabi-v7a/` holds only the three SDL libraries, and
+  `app/build/outputs/apk/debug/app-debug.apk` is still phase A's, with the
+  stub.
+- **known**: the asset symlinks resolve to 139 files (`find -L
+  app/src/main/assets -type f`; phase A's APK holds 134: the logo
+  renderings came later). Once an APK is built, check it with
+  `unzip -l app-debug.apk | grep -c ' assets/'`, `unzip -l app-debug.apk
+  'lib/*'` (the four libraries, `armeabi-v7a` only) and
+  `$ANDROID_HOME/build-tools/34.0.0/aapt2 dump badging app-debug.apk`
+  (package, sdkVersion 26, `native-code: 'armeabi-v7a'`,
+  `launchable-activity`).
 
-## 5. Assets
+## 5. Assets (**known**: read through SDL, phase B)
 
-- **known** The kiosk's `assets/` (64 MB: photos, flags, fonts, WAV clips)
-  and `content/` (JSON) are packed into the APK under the same names:
+- The kiosk's `assets/` (64 MB: photos, flags, fonts, WAV clips) and
+  `content/` (JSON) are packed into the APK under the same names:
   `app/src/main/assets/assets` and `app/src/main/assets/content` are
   symlinks to `kiosk/assets` and `kiosk/content` in the website repo, so the
-  APK holds `assets/assets/...` and `assets/content/...` (134 files),
-  mirroring the `kiosk/` folder.
-- **known** nimkivy opens files by path: `IMG_Load` (core/image),
-  `TTF_OpenFont` (core/text/text_sdl3) and `SDL_LoadWAV` (core/audio).
-- **untested** On Android these SDL functions open a relative path through
-  `SDL_IOFromFile`, which reads it from the APK's `assets/` folder, read
-  through SDL's IOStream, not unpacked.
-- **known** Not everything goes through SDL: `resources.resourceFind`
-  checks that a file exists with `std/os` (`fileExists`, `dirExists`) and
-  returns an absolute path, and the font lookup checks `data/fonts` the same
-  way. Neither can see inside the APK. So with the assets left in the APK,
-  `Image.source` and fonts are "not found" and never reach SDL (uix/image
-  `setTextureFromResource`, core/text `resolveFontName`); only `loadSound`
-  falls back to the name as given, which SDL would then find in the assets.
-- **known** The kiosk finds its folders as `getAppDir().parentDir`
-  (`kiosk/app/content.nim`: `Root`, `Content`, `Assets`) and reads the JSON
-  with `std/json` `parseFile`. In an Android app `getAppDir` is not the
-  APK, and `parseFile` cannot read APK assets either.
-- So either the app copies its assets to its files directory on first
-  start (as python-for-android unpacks Kivy apps) and the paths point there,
-  or the lookups learn to ask SDL (SDL_GetPathInfo, or opening the file with
-  SDL_IOFromFile). To decide with the first Android build (phase B); a GAP
-  if the stdlib is what is missing.
+  APK holds `assets/assets/...` and `assets/content/...`, mirroring the
+  `kiosk/` folder.
+- Owner's decision (2026-11-22, option 1): every file the app reads, and
+  every existence check, goes through SDL, with paths relative to the assets
+  root on Android; desktop and Android share one code path. Nothing is
+  unpacked.
+  - nimkivy: `IMG_Load`, `TTF_OpenFont` and `SDL_LoadWAV` already open files
+    through `SDL_IOFromFile`. `resources` (`resourceFind`, the data
+    directory) and core/text's check of a name in `data/fonts` now ask
+    `SDL_GetPathInfo` instead of `std/os`; the program's directory is
+    `SDL_GetBasePath()`; a path found is returned normalised, not absolute.
+    `resources.isFile` is exported for apps (PORTING.md, Design
+    differences).
+  - The kiosk (`app/content.nim`): the JSON is read with `SDL_LoadFile` and
+    parsed with `parseJson`; the photo and language checks and
+    `app/voice.nim`'s clip checks use `isFile`. `Root` is "" on Android
+    (the assets' root) and the parent of `SDL_GetBasePath()` on the desktop
+    (`kiosk/bin/` -> `kiosk/`, as `getAppDir` was).
+- From SDL 3.4.20's source (`src/io/SDL_iostream.c`,
+  `src/filesystem/posix/SDL_sysfsops.c`, `src/core/android/SDL_android.c`):
+  on Android a relative path is tried in the app's internal storage
+  (`SDL_GetAndroidInternalStoragePath()`) first, then in the APK's assets
+  (`AAssetManager_open`); a leading `./` is dropped. `SDL_GetPathInfo` sees
+  files and directories inside the APK (SDL reads the APK's zip index,
+  `PrepareAPK`), so a missing asset is reported as missing, not only by a
+  failed open. `SDL_GetBasePath()` is `"./"` on Android. An absolute path
+  is opened with `fopen` only, never in the assets.
+- **untested** on a device: that the kiosk's files are found this way.
 
 ## 6. Behaviour on Android in the code today
 
@@ -251,15 +295,38 @@ The host's CMake 4.3.0 and Ninja 1.13.2 build the libraries.
   Android discards. To see them in `logcat` they would have to go through
   `SDL_Log` or `__android_log_write`.
 
-## 7. Checks for the first Android build
+## 7. Installing and checking on the tablet
 
-1. `adb shell getprop ro.product.cpu.abi` (section 0); build
-   `examples/showcase.nim` for `armeabi-v7a`.
-2. On the tablet: the attract crossfade, the fade between screens, a tap
-   and a swipe, the picker, the voice clip to its end (`on_stop`), Back.
-3. Home button and back: `on_pause` and `on_resume` in the log (the GAP
-   above: note when `on_pause` arrives).
-4. Rotation off, screen stays on for longer than the system timeout.
-5. Frame time on the tablet with the same scripted run (`tools/profile.sh`
+With USB debugging on (Settings -> About -> Software information, tap
+"Build number" 7 times; Developer options -> USB debugging), from this
+machine (`ADB=~/Android/sdk/platform-tools/adb`):
+
+1. `$ADB devices` lists the tablet; `$ADB shell getprop ro.product.cpu.abi`
+   prints `armeabi-v7a` (section 0; anything else: rebuild for that ABI).
+2. `$ADB install -r ~/Android/build/kiosk-android/app/build/outputs/apk/debug/app-debug.apk`,
+   then start PHILOSYKOS from the launcher, or
+   `$ADB shell am start -n gr.philosykos.philosykos_exhibition/.KioskActivity`.
+   `$ADB logcat -s SDL SDL/APP AndroidRuntime DEBUG` shows SDL's messages
+   and a crash (nimkivy's own log lines go to stderr, which Android drops:
+   section 6).
+3. Landscape: the app opens in landscape and stays there when the tablet
+   is turned (`SDL_ORIENTATIONS` = `LandscapeLeft`, section 4).
+4. Screen on: the screen stays on for longer than the system's screen
+   timeout while the app is in front (SDL's `FLAG_KEEP_SCREEN_ON`,
+   section 4).
+5. Window size stays fixed (kiosk README): full screen without system
+   bars, and the same size after the Home button and back, after the
+   notification shade is pulled down, and after the screen turns off and
+   on. A size change rebuilds the screens and interrupts the voice clip
+   (the kiosk's resize handling).
+6. The kiosk itself: the attract crossfade, the fade between screens, a tap
+   and a swipe, the picker, the voice clip to its end (`on_stop`), Back
+   going up one level and never closing the app; the photos, flags, fonts
+   and clips all found (section 5).
+7. Home button and back: `on_pause` and `on_resume` (the GAP in section 6:
+   note when `on_pause` arrives).
+8. Frame time on the tablet with the same scripted run (`tools/profile.sh`
    measures it on the desktop; on Android the frame times would need to go
    to a file in the app's directory).
+9. Then on the tablet: screen pinning, staying on while charging and the
+   media volume (kiosk README, "Android tablet").
