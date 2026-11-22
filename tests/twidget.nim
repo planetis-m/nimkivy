@@ -6,7 +6,7 @@
 # core/window), so test_invalid_add_widget runs this program again with a
 # case name and checks that it stopped with Kivy's message.
 
-import std/[assertions, cmdline, os, osproc, strutils, syncio]
+import std/[assertions, cmdline, os, osproc, sequtils, strutils, syncio]
 import nimkivy/uix/widget
 import stubs
 
@@ -192,10 +192,10 @@ block walk_order:
   root.addWidget(b)
   b.addWidget(b1)
   b.addWidget(b2)
-  assert root.walk() == @[root, a, a1, b, b1, b2]
-  assert a.walk() == @[a, a1, b, b1, b2]
-  assert a.walk(restrict = true) == @[a, a1]
-  assert b.walk(loopback = true) == @[b, b1, b2, root, a, a1]
+  assert toSeq(root.walk()) == @[root, a, a1, b, b1, b2]
+  assert toSeq(a.walk()) == @[a, a1, b, b1, b2]
+  assert toSeq(a.walk(restrict = true)) == @[a, a1]
+  assert toSeq(b.walk(loopback = true)) == @[b, b1, b2, root, a, a1]
 
 block opacity_and_collide_widget:
   let w = newWidget()

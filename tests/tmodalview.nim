@@ -50,6 +50,7 @@ method onTouchUp(b: ModalButton; t: MotionEvent): bool =
 
 proc newModalButton(): ModalButton =
   result = ModalButton(cls: ModalButtonClass, canvas: newCanvas(), button: nil, modal: nil)
+  result.initProps()
   result.initWidget()
   result.button = newButtonBehavior(result)
 

@@ -290,15 +290,16 @@ proc applyStyle(l: Label) =
   discard l.fbind("texture_size", proc (d: EventDispatcher; v: Value) {.closure.} =
     rect.size = (v.items[0].num, v.items[1].num)
     place(l, rect))
-  for name in ["center_x", "center_y"]:
-    discard l.fbind(name, proc (d: EventDispatcher; v: Value) {.closure.} =
-      place(l, rect))
+  discard l.bindCenterX(proc (v: float) {.closure.} = place(l, rect))
+  discard l.bindCenterY(proc (v: float) {.closure.} = place(l, rect))
 
 proc initLabel*(l: Label) =
   ## Sets up a new label: the widget, the style.kv canvas, the observers
   ## that schedule a render, the core label, and a first render before the
   ## next frame. Build it with `Label(cls: LabelClass, canvas: newCanvas())`
   ## (or a subclass's class). Label.__init__
+  # Phase 1 until step 4: the typed properties of the base types.
+  l.initProps()
   l.initWidget()
   l.triggerTexture = Clock.createTrigger(proc (dt: float) {.closure.} = l.textureUpdate(),
     -1)
@@ -306,7 +307,8 @@ proc initLabel*(l: Label) =
   # NumericProperty('15sp'): the unit is resolved when the instance is made,
   # once the window has set the metrics.
   l.fontSize = sp(15)
-  discard l.fbind("disabled", l.updateOn("disabled"))
+  discard l.bindDisabled(proc (v: bool) {.closure.} =
+    l.triggerTextureUpdate("disabled", toValue(v)))
   for name in fontProperties:
     discard l.fbind(name, l.updateOn(name))
   l.createLabel()

@@ -161,10 +161,8 @@ proc applyStyle(m: ModalView) =
     box.source = v.str)
   discard m.fbind("border", proc (d: EventDispatcher; v: Value) {.closure.} =
     box.border = v.toFloats)
-  discard m.fbind("pos", proc (d: EventDispatcher; v: Value) {.closure.} =
-    box.pos = (v.items[0].num, v.items[1].num))
-  discard m.fbind("size", proc (d: EventDispatcher; v: Value) {.closure.} =
-    box.size = (v.items[0].num, v.items[1].num))
+  discard m.bindPos(proc (v: (float, float)) {.closure.} = box.pos = v)
+  discard m.bindSize(proc (v: (float, float)) {.closure.} = box.size = v)
 
 # ------------------------------------------------------------------ construction
 
@@ -174,6 +172,8 @@ proc initModalView*(m: ModalView) =
   ## it. ModalView.__init__
   m.touchStartedInside = -1
   m.windowBindings = [Binding(0), Binding(0)]
+  # Phase 1 until step 5: the typed properties of the base types.
+  m.initProps()
   m.initAnchorLayout()
   m.applyStyle()
 
@@ -239,8 +239,8 @@ proc open*(m: ModalView; animation = true) =
       m.handleKeyboard(key))]
   m.center = win.center
   # Kivy binds these on every open and never unbinds them.
-  for name in ["center", "size"]:
-    discard m.fbind(name, proc (d: EventDispatcher; v: Value) {.closure.} = m.alignCenter())
+  discard m.bindCenter(proc (v: (float, float)) {.closure.} = m.alignCenter())
+  discard m.bindSize(proc (v: (float, float)) {.closure.} = m.alignCenter())
   if animation:
     let ani = newAnimation({"_anim_alpha": 1.0}, duration = m.animDuration)
     ani.bind("on_complete", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =

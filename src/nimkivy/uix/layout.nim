@@ -16,14 +16,15 @@ type
   Unbind = proc () {.closure.}
 
   Layout* = ref object of Widget
-    ## The base of the layouts. Build a subclass with
-    ## `T(cls: TClass, canvas: newCanvas())`, then call its `init` proc,
-    ## which calls `initLayout`. uix/layout.py Layout
+    ## The base of the layouts. A layout's constructor makes the object,
+    ## calls `initProps`, then its `init` proc, which calls `initLayout`.
+    ## uix/layout.py Layout
     triggerLayout*: nil ClockEvent  ## runs `doLayout` before the next frame
     childUnbinds: seq[(WidgetBase, seq[Unbind])]  # undo what each child is bound with
 
 let LayoutClass* = newDispatcherClass("Layout", WidgetClass)
-  ## The class of `Layout`, abstract: each layout has its own.
+  ## The class of `Layout`, abstract, a name only: the base of the layouts'
+  ## classes.
 
 method doLayout*(l: Layout) {.base.} =
   ## Places the children. Each layout overrides it. Layout.do_layout
@@ -44,14 +45,6 @@ proc triggerNow*(l: Layout) =
   let t = l.triggerLayout
   if t != nil: t.trigger()
 
-proc layoutTrigger*(l: Layout): PropertyCallback =
-  ## An observer that triggers the layout (Kivy binds `_trigger_layout`).
-  result = proc (d: EventDispatcher; v: Value) {.closure.} = l.triggerNow()
-
-proc bindTrigger*(l: Layout; d: EventDispatcher; name: string): int =
-  ## Binds the layout trigger to property `name` of `d` and returns the uid.
-  result = d.fbind(name, l.layoutTrigger())
-
 proc keepUnbind*(l: Layout; child: WidgetBase; unbind: Unbind) =
   ## Remembers how to undo a binding on a child; `removeWidget` does it.
   var i = 0
@@ -61,12 +54,12 @@ proc keepUnbind*(l: Layout; child: WidgetBase; unbind: Unbind) =
     l.childUnbinds.add (child, newSeq[Unbind]())
   l.childUnbinds[i][1].add unbind
 
-proc bindChild*(l: Layout; child: WidgetBase; name: string) =
-  ## Binds the layout trigger to property `name` of a child; `removeWidget`
-  ## unbinds it.
-  let uid = l.bindTrigger(child, name)
-  if uid != 0:
-    l.keepUnbind(child, proc () {.closure.} = child.unbindUid(name, uid))
+proc bindChildPos*(l: Layout; child: WidgetBase) =
+  ## Binds the layout trigger to a child's `pos`; `removeWidget` unbinds it.
+  if child of HintedWidget:
+    let h = HintedWidget(child)
+    let b = h.bindPos(proc (v: (float, float)) {.closure.} = l.triggerNow())
+    l.keepUnbind(child, proc () {.closure.} = h.unbindPos(b))
 
 proc bindChildPosHint*(l: Layout; child: WidgetBase) =
   ## Binds the layout trigger to a child's `posHint`; `removeWidget`
@@ -79,13 +72,14 @@ proc bindChildPosHint*(l: Layout; child: WidgetBase) =
 method addWidget*(l: Layout; widget: WidgetBase; index = 0; canvas = layerCanvas) =
   ## Binds the layout to the child's size and size hints, then adds it.
   ## Layout.add_widget
-  l.bindChild(widget, "size")
   if widget of HintedWidget:
     let h = HintedWidget(widget)
+    let s = h.bindSize(proc (v: (float, float)) {.closure.} = l.triggerNow())
     let a = h.bindSizeHint(proc (v: (Opt[float], Opt[float])) {.closure.} = l.triggerNow())
     let b = h.bindSizeHintMax(proc (v: (Opt[float], Opt[float])) {.closure.} = l.triggerNow())
     let c = h.bindSizeHintMin(proc (v: (Opt[float], Opt[float])) {.closure.} = l.triggerNow())
     l.keepUnbind(widget, proc () {.closure.} =
+      h.unbindSize(s)
       h.unbindSizeHint(a)
       h.unbindSizeHintMax(b)
       h.unbindSizeHintMin(c))

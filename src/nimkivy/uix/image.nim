@@ -53,8 +53,25 @@ let pImageRatio = ImageClass.addAlias("image_ratio", getImageRatio, nil, @["text
 let pColor = ImageClass.addColor("color", @[1.0, 1, 1, 1])
 let pFitMode = ImageClass.addOption("fit_mode", "scale-down",
   @["scale-down", "fill", "contain", "cover"])
-let pNormImageSize = ImageClass.addAlias("norm_image_size", getNormImageSize, nil,
-  @["texture", "size", "image_ratio", "fit_mode"], cache = true)
+
+type
+  NormImageSizeProperty = ref object of AliasProperty
+    # `norm_image_size`: a phase-1 alias that depends on Widget's typed
+    # `size` too (phase 1 until step 4).
+
+method linkDeps(p: NormImageSizeProperty; d: EventDispatcher) =
+  # Binds the trigger to `texture`, `image_ratio` and `fit_mode` by name and
+  # to the typed `size`; each in its own observer list, so the order is
+  # Kivy's (`bind=('texture', 'size', 'image_ratio', 'fit_mode')`).
+  procCall linkDeps(AliasProperty(p), d)
+  discard Image(d).bindSize(proc (v: (float, float)) {.closure.} =
+    p.triggerChange(d, noneValue()))
+
+let pNormImageSize = NormImageSizeProperty(name: "", index: 0, defaultValue: noneValue(),
+  allowNone: false, forceDispatch: false, comparator: nil, getter: getNormImageSize,
+  setter: nil, bindNames: @["texture", "image_ratio", "fit_mode"], useCache: true,
+  watchBeforeUse: true)
+ImageClass.addProperty("norm_image_size", pNormImageSize)
 
 proc logError(msg: string) =
   # Kivy's Logger.error, on stderr in Kivy's layout.
@@ -221,25 +238,26 @@ proc applyStyle(im: Image) =
   discard im.fbind("color", proc (d: EventDispatcher; v: Value) {.closure.} =
     let f = v.toFloats
     color.rgba = [f[0], f[1], f[2], f[3]])
-  discard im.fbind("pos", proc (d: EventDispatcher; v: Value) {.closure.} =
-    mask.pos = (v.items[0].num, v.items[1].num)
-    unmask.pos = (v.items[0].num, v.items[1].num))
-  discard im.fbind("size", proc (d: EventDispatcher; v: Value) {.closure.} =
-    mask.size = (v.items[0].num, v.items[1].num)
-    unmask.size = (v.items[0].num, v.items[1].num))
+  discard im.bindPos(proc (v: (float, float)) {.closure.} =
+    mask.pos = v
+    unmask.pos = v)
+  discard im.bindSize(proc (v: (float, float)) {.closure.} =
+    mask.size = v
+    unmask.size = v)
   discard im.fbind("texture", proc (d: EventDispatcher; v: Value) {.closure.} =
     picture.texture = toTexture(v))
   discard im.fbind("norm_image_size", proc (d: EventDispatcher; v: Value) {.closure.} =
     picture.size = (v.items[0].num, v.items[1].num)
     place(im, picture))
-  for name in ["center_x", "center_y"]:
-    discard im.fbind(name, proc (d: EventDispatcher; v: Value) {.closure.} =
-      place(im, picture))
+  discard im.bindCenterX(proc (v: float) {.closure.} = place(im, picture))
+  discard im.bindCenterY(proc (v: float) {.closure.} = place(im, picture))
 
 proc initImage*(im: Image) =
   ## Sets up a new image: the widget, a load whenever `source` changes, and
   ## the style.kv canvas. Build it with `Image(cls: ImageClass, canvas:
   ## newCanvas())` (or a subclass's class). Image.__init__
+  # Phase 1 until step 4: the typed properties of the base types.
+  im.initProps()
   im.initWidget()
   discard im.fbind("source", proc (d: EventDispatcher; v: Value) {.closure.} =
     im.textureUpdate())

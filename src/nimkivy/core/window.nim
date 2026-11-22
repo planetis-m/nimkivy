@@ -13,7 +13,9 @@
 ## the event loop need what Widget and Window have in common: the `parent`
 ## and `children` properties, a canvas, the touch events and the coordinate
 ## methods. Widget (layer 6) is a `HintedWidget`, a `WidgetBase` with the
-## size and position hints the window reads; the window is a `WidgetBase`,
+## box (`x`, `y`, `width`, `height`, `pos`, `size`, `right`, `top`,
+## `center`) and the size and position hints, which the window reads and
+## binds typed; the window is a `WidgetBase`,
 ## since a widget's parent can be the window (Python needs no common base
 ## for that).
 ##
@@ -73,8 +75,11 @@ type
     ## What every widget and the window have: `parent` and `children`
     ## properties, a canvas, the touch events `touchDown`, `touchMove` and
     ## `touchUp`, and coordinate methods. Build it with `T(cls: ...,
-    ## canvas: newCanvas())`, then call `initWidgetBase` (`cls` names the
-    ## class until Widget leaves the phase-1 properties).
+    ## canvas: newCanvas())`, then call `initWidgetBase`. It stays an
+    ## EventDispatcher (`cls` names the class) while widgets below it
+    ## still declare phase-1 properties on their classes (Label, Image,
+    ## ButtonBehavior until step 4; ScreenManager and ModalView until
+    ## step 5); step 6 makes it a `ref object of RootObj`.
     canvas*: Canvas
     parentStore: nil WidgetBase
     parentObs: Observers[proc (v: nil WidgetBase) {.closure.}]
@@ -91,8 +96,7 @@ type
   RootBindings = object
     # What the window bound on a root widget, to unbind it on removal.
     child: WidgetBase
-    hints: array[4, Binding]   # posHint, sizeHint, sizeHintMax, sizeHintMin
-    sizeUid, posUid: int       # phase 1: Widget's `size` and `pos`
+    bindings: array[6, Binding]  # posHint, sizeHint, sizeHintMax, sizeHintMin, size, pos
 
 let WidgetBaseClass* = newDispatcherClass("WidgetBase")
   ## The class of `WidgetBase`: its subclasses' classes derive from it.
@@ -287,9 +291,20 @@ proc toParentFn(w: WidgetBase): proc (x, y: float): (float, float) {.closure.} =
 properties:
   type
     HintedWidget* = ref object of WidgetBase
-      ## A widget with size and position hints: what the window and the
-      ## layouts size and place. Widget (layer 6) is one.
-      ## uix/widget.py Widget (its hint properties)
+      ## A widget's box and its size and position hints: what the window
+      ## and the layouts size and place. Widget (layer 6) is one.
+      ## uix/widget.py Widget (its geometry and hint properties)
+      x* {.prop.}: float = 0.0         ## the left edge
+      y* {.prop.}: float = 0.0         ## the bottom edge (y goes up)
+      width* {.prop.}: float = 100.0
+      height* {.prop.}: float = 100.0
+      pos* {.refs: (x, y).}: (float, float)
+      size* {.refs: (width, height).}: (float, float)
+      right* {.alias: (getRight, setRight), deps: (x, width), cache.}: float
+      top* {.alias: (getTop, setTop), deps: (y, height), cache.}: float
+      centerX* {.alias: (getCenterX, setCenterX), deps: (x, width), cache.}: float
+      centerY* {.alias: (getCenterY, setCenterY), deps: (y, height), cache.}: float
+      center* {.refs: (centerX, centerY).}: (float, float)
       sizeHintX* {.prop.}: Opt[float] = some(1.0)
       sizeHintY* {.prop.}: Opt[float] = some(1.0)
       sizeHint* {.refs: (sizeHintX, sizeHintY).}: (Opt[float], Opt[float])
@@ -343,6 +358,32 @@ properties:
       close* {.event.}: proc ()
       motion* {.event.}: proc (action: MotionAction; me: MotionEvent)
 
+  # The aliases of the box: Widget's right, top, center_x and center_y.
+
+  proc getRight(w: HintedWidget): float = w.x + w.width
+
+  proc setRight(w: HintedWidget; v: float): bool =
+    w.x = v - w.width
+    result = false
+
+  proc getTop(w: HintedWidget): float = w.y + w.height
+
+  proc setTop(w: HintedWidget; v: float): bool =
+    w.y = v - w.height
+    result = false
+
+  proc getCenterX(w: HintedWidget): float = w.x + w.width / 2.0
+
+  proc setCenterX(w: HintedWidget; v: float): bool =
+    w.x = v - w.width / 2.0
+    result = false
+
+  proc getCenterY(w: HintedWidget): float = w.y + w.height / 2.0
+
+  proc setCenterY(w: HintedWidget; v: float): bool =
+    w.y = v - w.height / 2.0
+    result = false
+
   # The hints' setters from plain numbers (none: no hint).
 
   proc `sizeHintX=`*(w: HintedWidget; v: float) =
@@ -384,11 +425,6 @@ properties:
   proc `posHint=`*(w: HintedWidget; hints: openArray[(PosKey, float)]) =
     ## Sets numeric position hints, for example `w.posHint = {phTop: 0.9}`.
     w.posHint = toPosHint(hints)
-
-  proc initHintedWidget*(w: HintedWidget) =
-    ## Sets up a new hinted widget: the widget base, then the hints.
-    w.initWidgetBase()
-    w.initProps()
 
   # ---------------------------------------------------------------- WindowBase
 
@@ -468,8 +504,6 @@ properties:
         let (shw, shh) = h.sizeHint
         let (shwMin, shhMin) = h.sizeHintMin
         let (shwMax, shhMax) = h.sizeHintMax
-        # Widget's geometry is still phase 1 (by name) until step 3 moves it
-        # here, typed.
         if shw.isSome and shh.isSome:
           var cw = shw.get(0) * width
           var ch = shh.get(0) * height
@@ -481,30 +515,30 @@ properties:
             ch = shhMin.get(0)
           elif shhMax.isSome and ch > shhMax.get(0):
             ch = shhMax.get(0)
-          c.setProperty("size", toValue([cw, ch]))
+          h.size = (cw, ch)
         elif shw.isSome:
           var cw = shw.get(0) * width
           if shwMin.isSome and cw < shwMin.get(0):
             cw = shwMin.get(0)
           elif shwMax.isSome and cw > shwMax.get(0):
             cw = shwMax.get(0)
-          c.setProperty("width", toValue(cw))
+          h.width = cw
         elif shh.isSome:
           var ch = shh.get(0) * height
           if shhMin.isSome and ch < shhMin.get(0):
             ch = shhMin.get(0)
           elif shhMax.isSome and ch > shhMax.get(0):
             ch = shhMax.get(0)
-          c.setProperty("height", toValue(ch))
+          h.height = ch
         # `phPos` and `phCenter` are ignored, as Kivy's window does.
         for e in h.posHint.entries:
           case e.key
-          of phX: c.setProperty("x", toValue(e.value * width))
-          of phRight: c.setProperty("right", toValue(e.value * width))
-          of phY: c.setProperty("y", toValue(e.value * height))
-          of phTop: c.setProperty("top", toValue(e.value * height))
-          of phCenterX: c.setProperty("center_x", toValue(e.value * width))
-          of phCenterY: c.setProperty("center_y", toValue(e.value * height))
+          of phX: h.x = e.value * width
+          of phRight: h.right = e.value * width
+          of phY: h.y = e.value * height
+          of phTop: h.top = e.value * height
+          of phCenterX: h.centerX = e.value * width
+          of phCenterY: h.centerY = e.value * height
           of phPos, phCenter: discard
 
   proc updateChildsize*(w: WindowBase) =
@@ -713,15 +747,13 @@ properties:
       let h = HintedWidget(widget)
       let update = proc () {.closure.} = w.updateChildsize(@[widget])
       var b = RootBindings(child: widget)
-      b.hints[0] = h.bindPosHint(proc (v: PosHint) {.closure.} = update())
-      b.hints[1] = h.bindSizeHint(proc (v: (Opt[float], Opt[float])) {.closure.} = update())
-      b.hints[2] = h.bindSizeHintMax(proc (v: (Opt[float], Opt[float])) {.closure.} = update())
-      b.hints[3] = h.bindSizeHintMin(proc (v: (Opt[float], Opt[float])) {.closure.} = update())
-      # Phase 1 until step 3: Widget's `size` and `pos`, by name.
-      b.sizeUid = widget.fbind("size", proc (d: EventDispatcher; v: Value) {.closure.} =
-        update())
-      b.posUid = widget.fbind("pos", proc (d: EventDispatcher; v: Value) {.closure.} =
-        update())
+      b.bindings = [
+        h.bindPosHint(proc (v: PosHint) {.closure.} = update()),
+        h.bindSizeHint(proc (v: (Opt[float], Opt[float])) {.closure.} = update()),
+        h.bindSizeHintMax(proc (v: (Opt[float], Opt[float])) {.closure.} = update()),
+        h.bindSizeHintMin(proc (v: (Opt[float], Opt[float])) {.closure.} = update()),
+        h.bindSize(proc (v: (float, float)) {.closure.} = update()),
+        h.bindPos(proc (v: (float, float)) {.closure.} = update())]
       w.rootBindings.add b
 
   method removeWidget*(w: WindowBase; widget: WidgetBase) =
@@ -744,12 +776,12 @@ properties:
       let b = w.rootBindings[k]
       if b.child == widget:
         let h = HintedWidget(widget)
-        h.unbindPosHint(b.hints[0])
-        h.unbindSizeHint(b.hints[1])
-        h.unbindSizeHintMax(b.hints[2])
-        h.unbindSizeHintMin(b.hints[3])
-        widget.unbindUid("size", b.sizeUid)
-        widget.unbindUid("pos", b.posUid)
+        h.unbindPosHint(b.bindings[0])
+        h.unbindSizeHint(b.bindings[1])
+        h.unbindSizeHintMax(b.bindings[2])
+        h.unbindSizeHintMin(b.bindings[3])
+        h.unbindSize(b.bindings[4])
+        h.unbindPos(b.bindings[5])
         w.rootBindings.delete(k)
       else:
         inc k

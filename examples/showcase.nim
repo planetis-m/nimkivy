@@ -111,20 +111,16 @@ proc paint(w: Widget; rgba: array[4, float]) =
   w.canvas.before.add newColor(rgba[0], rgba[1], rgba[2], rgba[3])
   let rect = newRectangle(w.pos, w.size)
   w.canvas.before.add rect
-  w.bind("pos", proc (d: EventDispatcher; v: Value) {.closure.} =
-    rect.pos = (v.items[0].num, v.items[1].num))
-  w.bind("size", proc (d: EventDispatcher; v: Value) {.closure.} =
-    rect.size = (v.items[0].num, v.items[1].num))
+  discard w.bindPos(proc (v: (float, float)) {.closure.} = rect.pos = v)
+  discard w.bindSize(proc (v: (float, float)) {.closure.} = rect.size = v)
 
 proc boxedText(l: Label) =
   # The text is wrapped and aligned in the label's own box.
-  l.bind("size", proc (d: EventDispatcher; v: Value) {.closure.} =
-    Label(d).textSize = (v.items[0].num, v.items[1].num))
+  discard l.bindSize(proc (v: (float, float)) {.closure.} = l.textSize = v)
 
 proc wrapText(l: Label) =
   # The text wraps at the label's width and grows downwards.
-  l.bind("width", proc (d: EventDispatcher; v: Value) {.closure.} =
-    Label(d).textSize = (some(v.num), none[float]()))
+  discard l.bindWidth(proc (v: float) {.closure.} = l.textSize = (some(v), none[float]()))
 
 proc label(text: string; size: float; color: array[4, float]; bold = false;
     halign = halignCenter; wrap = false): Label =
@@ -141,6 +137,7 @@ proc label(text: string; size: float; color: array[4, float]; bold = false;
 
 proc pressable(vertical = false): Pressable =
   result = Pressable(cls: PressableClass, canvas: newCanvas(), button: nil)
+  result.initProps()
   result.initBoxLayout()
   result.button = newButtonBehavior(result)
   if vertical: result.orientation = orientationVertical
@@ -474,8 +471,8 @@ proc newShowcase*(slideInterval = 6.0; fadeDuration = 1.6; idleTimeout = 60.0): 
   s.listen.onRelease(proc () {.closure.} = s.toggleListen())
   s.prev.onRelease(proc () {.closure.} = s.showCard(s.card - 1))
   s.next.onRelease(proc () {.closure.} = s.showCard(s.card + 1))
-  s.dots.bind("pos", proc (d: EventDispatcher; v: Value) {.closure.} = s.drawDots())
-  s.dots.bind("size", proc (d: EventDispatcher; v: Value) {.closure.} = s.drawDots())
+  discard s.dots.bindPos(proc (v: (float, float)) {.closure.} = s.drawDots())
+  discard s.dots.bindSize(proc (v: (float, float)) {.closure.} = s.drawDots())
   let snd = s.sound
   if snd != nil:
     snd.bind("on_play", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =

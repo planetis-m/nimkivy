@@ -7,7 +7,6 @@
 ## `canvas.after`), and touches are moved into its coordinates for the
 ## children. Moving the layout does not lay out the children again.
 
-import ../properties
 import ../graphics/context_instructions
 import floatlayout
 
@@ -19,7 +18,7 @@ type
     translate*: nil Translate  ## the canvas translation that follows `pos`
 
 let RelativeLayoutClass* = newDispatcherClass("RelativeLayout", FloatLayoutClass)
-  ## The class of `RelativeLayout`.
+  ## The class of `RelativeLayout`, a name only (see `WidgetClass`).
 
 proc applyStyle(r: RelativeLayout) =
   # data/style.kv <RelativeLayout>: canvas.before: PushMatrix, Translate
@@ -30,8 +29,7 @@ proc applyStyle(r: RelativeLayout) =
   r.canvas.before.add newPushMatrix()
   r.canvas.before.add t
   r.canvas.after.add newPopMatrix()
-  discard r.fbind("pos", proc (d: EventDispatcher; v: Value) {.closure.} =
-    t.xy = (v.items[0].num, v.items[1].num))
+  discard r.bindPos(proc (v: (float, float)) {.closure.} = t.xy = v)
 
 proc initRelativeLayout*(r: RelativeLayout) =
   ## Sets up a new relative layout: the float layout, its canvas rule, and
@@ -43,6 +41,7 @@ proc initRelativeLayout*(r: RelativeLayout) =
 proc newRelativeLayout*(): RelativeLayout =
   ## An empty relative layout.
   result = RelativeLayout(cls: RelativeLayoutClass, canvas: newCanvas(), translate: nil)
+  result.initProps()
   result.initRelativeLayout()
 
 method doLayout*(r: RelativeLayout) =

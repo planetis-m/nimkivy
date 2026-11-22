@@ -30,10 +30,8 @@ proc a(name: string): string =
 
 proc follow(w: Widget; rect: Rectangle) =
   # rect follows the widget's pos and size (scenes.py binds pos and size).
-  w.bind("pos", proc (d: EventDispatcher; v: Value) {.closure.} =
-    rect.pos = (v.items[0].num, v.items[1].num))
-  w.bind("size", proc (d: EventDispatcher; v: Value) {.closure.} =
-    rect.size = (v.items[0].num, v.items[1].num))
+  discard w.bindPos(proc (v: (float, float)) {.closure.} = rect.pos = v)
+  discard w.bindSize(proc (v: (float, float)) {.closure.} = rect.size = v)
 
 type Setup = proc (w: Widget) {.closure.}
   # Sets a widget's keyword arguments.
@@ -375,15 +373,13 @@ const Lorem = "Figs have been grown in Greece for thousands of years. The fruit 
 
 proc sizeToTextSize(l: Label) =
   # lb.bind(size=lambda w, v: setattr(w, "text_size", v))
-  l.bind("size", proc (d: EventDispatcher; v: Value) {.closure.} =
-    l.textSize = (v.items[0].num, v.items[1].num))
+  discard l.bindSize(proc (v: (float, float)) {.closure.} = l.textSize = v)
 
 proc fitHeight(l: Label) =
   # fit=True in the kiosk: as tall as its wrapped text.
   # lb.bind(width=lambda w, v: setattr(w, "text_size", (v, None)),
   #         texture_size=lambda w, v: setattr(w, "height", v[1]))
-  l.bind("width", proc (d: EventDispatcher; v: Value) {.closure.} =
-    l.textSize = (some(v.num), none[float]()))
+  discard l.bindWidth(proc (v: float) {.closure.} = l.textSize = (some(v), none[float]()))
   l.bind("texture_size", proc (d: EventDispatcher; v: Value) {.closure.} =
     l.height = v.items[1].num)
 

@@ -7,7 +7,6 @@
 ## size and position.
 
 import std/opt
-import ../properties
 import layout
 
 export layout
@@ -15,32 +14,33 @@ export layout
 type
   FloatLayout* = ref object of Layout
     ## uix/floatlayout.py FloatLayout
-    posUid: int              # its own `pos` binding (RelativeLayout drops it)
+    posBinding: Binding      # its own `pos` binding (RelativeLayout drops it)
     posHintBinding: Binding  # and its own `posHint` binding
 
 let FloatLayoutClass* = newDispatcherClass("FloatLayout", LayoutClass)
-  ## The class of `FloatLayout`.
+  ## The class of `FloatLayout`, a name only (see `WidgetClass`).
 
 proc initFloatLayout*(f: FloatLayout) =
   ## Sets up a new float layout: the layout, then the trigger on its own
   ## properties. FloatLayout.__init__
   f.initLayout()
   discard f.bindChildren(proc (v: seq[WidgetBase]) {.closure.} = f.triggerNow())
-  f.posUid = f.bindTrigger(f, "pos")
+  f.posBinding = f.bindPos(proc (v: (float, float)) {.closure.} = f.triggerNow())
   f.posHintBinding = f.bindPosHint(proc (v: PosHint) {.closure.} = f.triggerNow())
   discard f.bindSizeHint(proc (v: (Opt[float], Opt[float])) {.closure.} = f.triggerNow())
-  discard f.bindTrigger(f, "size")
+  discard f.bindSize(proc (v: (float, float)) {.closure.} = f.triggerNow())
 
 proc newFloatLayout*(): FloatLayout =
   ## An empty float layout.
-  result = FloatLayout(cls: FloatLayoutClass, canvas: newCanvas(), posUid: 0,
-    posHintBinding: Binding(0))
+  result = FloatLayout(cls: FloatLayoutClass, canvas: newCanvas(),
+    posBinding: Binding(0), posHintBinding: Binding(0))
+  result.initProps()
   result.initFloatLayout()
 
 proc unbindOwnPos*(f: FloatLayout) =
   ## Stops laying out when the layout's own `pos` or `posHint` changes
   ## (RelativeLayout.__init__ funbinds them).
-  f.unbindUid("pos", f.posUid)
+  f.unbindPos(f.posBinding)
   f.unbindPosHint(f.posHintBinding)
 
 proc layoutIn*(f: FloatLayout; size, pos: (float, float)) =
@@ -98,6 +98,6 @@ method doLayout*(f: FloatLayout) =
 method addWidget*(f: FloatLayout; widget: WidgetBase; index = 0; canvas = layerCanvas) =
   ## Binds the layout to the child's `pos` and `posHint`, then adds it as
   ## Layout does. FloatLayout.add_widget
-  f.bindChild(widget, "pos")
+  f.bindChildPos(widget)
   f.bindChildPosHint(widget)
   procCall addWidget(Layout(f), widget, index, canvas)

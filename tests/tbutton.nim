@@ -55,6 +55,7 @@ method onTouchDown(b: Blocker; t: MotionEvent): bool = b.collidePoint(t.x, t.y)
 proc newTButton(): TButton =
   # A 100 x 100 button at (100, 100), in the window.
   result = TButton(cls: TButtonClass, canvas: newCanvas(), button: nil, log: @[])
+  result.initProps()
   result.initWidget()
   result.button = newButtonBehavior(result)
   result.sizeHint = (none[float](), none[float]())
@@ -150,6 +151,7 @@ block children_first:
   # A child that takes the touch keeps the button from being pressed.
   let b = newTButton()
   let child = Blocker(cls: BlockerClass, canvas: newCanvas())
+  child.initProps()
   child.initWidget()
   child.pos = (100.0, 100.0)
   child.size = (50.0, 50.0)

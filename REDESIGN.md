@@ -269,7 +269,7 @@ the block).
 | 0 | **Standalone harness** (done, 2026-11-22): fixtures to `tests/fixtures`, Nim format, `tests/compare.nim`, `archive/`; trace and scene writers print Nim's format | all current tests, traces, scenes | `run_tests.sh` passes with no Python on the machine; `compare.nim` and `compare.py` agree on the current outputs (checked once) |
 | 1 | **Plugins and observers** (done, 2026-11-22; #336, #290, #175, #337 still open at Nimony `95afaa04`, which is master) in `src/nimkivy/props.nim`, `observers.nim`, `plugins/propsplug.nim`, `plugins/codegen.nim`: every kind above, observer order as phase 1 | `tproperties` and the `events`/`properties` cases rewritten on it; the prototype tests; `bad/` programs | every phase-1 property and event case passes typed; the old `event.nim`/`properties.nim` still build the rest |
 | 2 | **Layer 1 and 5 dispatchers** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master): metrics (aliases), clock, core/window (WindowBase, WidgetBase with typed hints, parent and children by hand: #337), input/motionevent (`claimedBy`), base, app, config typed | tclock, tmetrics, tmotionevent, twindow, tapp; traces `events`, `clock`, `touch` | no name lookups in these modules |
-| 3 | **Layer 6**: widget, layout, the four layouts (typed triggers, `PosHint`, `CanvasLayer`) | twidget, tlayout, trelativelayout; trace `properties`; layout scenes | geometry exact, pixels as before |
+| 3 | **Layer 6** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master): widget, layout, the four layouts (typed triggers, `PosHint`, `CanvasLayer`) | twidget, tlayout, trelativelayout; trace `properties`; layout scenes | geometry exact, pixels as before |
 | 4 | **Layer 7**: label (typed font options), image, ButtonBehavior as an owned properties object, no closures | tlabel, timage, tbutton; traces `label`, `touch`; label and image scenes | as before |
 | 5 | **Layers 8-9**: animation (tracks), screenmanager, modalview, audio | tanimation, tscreenmanager, tmodalview, taudio; traces `animation`, `screens`, `modal`; fade and modal scenes | as before |
 | 6 | **Cleanup**: remove `Value`, `DispatcherClass`, the name APIs and every helper in the table above; rename the Python-style helpers | everything | `grep` finds none of the phase-1 names; PORTING.md's decisions 3 and 4 rewritten |
@@ -309,6 +309,39 @@ typed); `WindowBase` cannot share them (its `size`, `width`, `height`,
 loop's are typed (`dispatchKeyboard`, `bindStart`, ...); App takes its class
 name in `initApp` (#340). Bug found: planetis-m/nimony-bugs-llms#340
 (`$typeof(x)` of a ref object prints `ref T.Obj`).
+
+Step 3 notes: Widget's box (`x`, `y`, `width`, `height`, `pos`, `size`,
+`right`, `top`, `centerX`, `centerY`, `center`) moved to `HintedWidget`
+(core/window) as typed properties, so the window sets and binds a root
+widget's geometry typed; Widget (`opacity` with its `onOpacityChanged`
+handler, `disabled`), BoxLayout and AnchorLayout are `properties:` blocks;
+Layout, FloatLayout and RelativeLayout have no properties of their own and
+bind everything typed (`bindChildPos`, `bindChildPosHint`; `bindTrigger`,
+`bindChild` and `layoutTrigger` are gone). **Construction:** the generated
+`initProps` is a proc chain resolved statically, so it is called once, by
+the constructor of the most-derived type, before its `init` proc
+(`newBoxLayout`: `initProps`, then `initBoxLayout`, which calls
+`initLayout` and `initWidget`); the `init` procs no longer set properties
+up. The phase-1 widgets (Label, Image, Screen, ScreenManager, ModalView)
+call `initProps` (their typed base's) at the start of their `init` proc
+until they get their own blocks; test widgets that call `initWidget` or
+`initBoxLayout` directly call `initProps` first. **WidgetBase stays an
+EventDispatcher** (with `cls`, and `WidgetClass`, `LayoutClass`,
+`BoxLayoutClass`, ... as property-less name classes) until steps 4 and 5
+migrate the widgets that still declare phase-1 properties on classes
+derived from them; step 6 makes it `ref object of RootObj` and drops the
+classes (the "already has a parent" messages print `cls.name`; Layout's
+abstract check compares `cls`). Bridges until those steps: Label and Image
+bind the typed `centerX`, `centerY`, `pos`, `size`, `disabled`; Image's
+phase-1 `norm_image_size` alias binds the typed `size` in its `linkDeps`;
+Animation reaches Widget's typed properties by their Kivy names in a
+`case` (step 5 replaces it with tracks). Nimony: a `seq` of a type declared
+in a `properties:` block, used in a proc of the same module, crashes
+shoggoth (#337, commented), so `widgetChildren` and `walk` are iterators
+(Kivy's `walk` is a generator; tests use `toSeq`); an iterator is
+side-effect free by default (`{.sideEffect.}`); `discard` of a call with
+side effects in a func or iterator crashes nimsem instead of reporting it
+(filed #341).
 
 The kiosk (philosykos-website) is written once on the result, after step 7;
 its own parity harness and Python app leave its tree then (ROADMAP.md).

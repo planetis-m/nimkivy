@@ -41,8 +41,10 @@ proc save(log: Log; name: string) =
 
 # ------------------------------------------------------------------ properties
 
-proc logger(name: string): PropertyCallback =
-  result = proc (d: EventDispatcher; v: Value) {.closure.} = log.emit(name, $v)
+proc fmt3(v: float): string =
+  # A number with 3 decimals, as the traces print them.
+  formatFloat(v, ffDecimal, 3)
+
 
 proc hintText(h: PosHint): string =
   # A posHint as a Nim seq of (key, number) pairs: @[(top, 0.9)]
@@ -58,37 +60,53 @@ proc hintText(h: (Opt[float], Opt[float])): string =
     if o.isSome: formatFloat(o.get(0), ffDecimal, 3) else: "none"
   result = "(" & one(h[0]) & ", " & one(h[1]) & ")"
 
+proc pairText(v: (float, float)): string =
+  "(" & fmt3(v[0]) & ", " & fmt3(v[1]) & ")"
+
 proc traceProperties() =
   let w = newWidget()
-  for name in ["x", "y", "pos", "right", "top", "center", "width", "size"]:
-    w.bind(name, logger(name))
+  discard w.bindX(proc (v: float) {.closure.} = log.emit("x", fmt3(v)))
+  discard w.bindY(proc (v: float) {.closure.} = log.emit("y", fmt3(v)))
+  discard w.bindPos(proc (v: (float, float)) {.closure.} = log.emit("pos", pairText(v)))
+  discard w.bindRight(proc (v: float) {.closure.} = log.emit("right", fmt3(v)))
+  discard w.bindTop(proc (v: float) {.closure.} = log.emit("top", fmt3(v)))
+  discard w.bindCenter(proc (v: (float, float)) {.closure.} =
+    log.emit("center", pairText(v)))
+  discard w.bindWidth(proc (v: float) {.closure.} = log.emit("width", fmt3(v)))
+  discard w.bindSize(proc (v: (float, float)) {.closure.} = log.emit("size", pairText(v)))
   log.emit "# pos = (1, 2)"
-  w.setProperty("pos", toValue([1.0, 2.0]))
+  w.pos = (1.0, 2.0)
   log.emit "# pos = (1, 2) again"
-  w.setProperty("pos", toValue([1.0, 2.0]))
+  w.pos = (1.0, 2.0)
   log.emit "# x = 5"
-  w.setProperty("x", toValue(5))
+  w.x = 5.0
   log.emit "# size = (50, 60)"
-  w.setProperty("size", toValue([50.0, 60.0]))
+  w.size = (50.0, 60.0)
   log.emit "# right = 300"
-  w.setProperty("right", toValue(300))
+  w.right = 300.0
   log.emit "# center = (0, 0)"
-  w.setProperty("center", toValue([0.0, 0.0]))
-  w.bind("x", logger("x second observer"))
+  w.center = (0.0, 0.0)
+  discard w.bindX(proc (v: float) {.closure.} = log.emit("x second observer", fmt3(v)))
   log.emit "# x = 6"
-  w.setProperty("x", toValue(6))
+  w.x = 6.0
   let b = newBoxLayout()
-  let forms = [("5", toValue(5)), ("(10, 20)", toValue([10.0, 20.0])),
-    ("(1, 2, 3, 4)", toValue([1.0, 2.0, 3.0, 4.0])), ("[7]", toValue([7.0]))]
-  for (text, v) in forms:
-    b.setProperty("padding", v)
-    log.emit("padding", text, "->", $b.getProperty("padding"))
-  log.emit("defaults size", $newWidget().getProperty("size"), "sizeHint",
+  proc padText(b: BoxLayout): string =
+    let p = b.padding
+    "(" & fmt3(p[0]) & ", " & fmt3(p[1]) & ", " & fmt3(p[2]) & ", " & fmt3(p[3]) & ")"
+  b.padding = 5.0
+  log.emit("padding", "5", "->", padText(b))
+  b.padding = [10.0, 20.0]
+  log.emit("padding", "(10, 20)", "->", padText(b))
+  b.padding = [1.0, 2.0, 3.0, 4.0]
+  log.emit("padding", "(1, 2, 3, 4)", "->", padText(b))
+  b.padding = [7.0]
+  log.emit("padding", "[7]", "->", padText(b))
+  log.emit("defaults size", pairText(newWidget().size), "sizeHint",
     hintText(newWidget().sizeHint), "posHint", hintText(newWidget().posHint))
   let parent = newWidget()
   let child = newWidget()
   parent.addWidget(child)
-  child.bind("disabled", proc (d: EventDispatcher; v: Value) {.closure.} =
+  discard child.bindDisabled(proc (v: bool) {.closure.} =
     log.emit("child disabled", $v))
   parent.disabled = true
   log.emit("parent", $parent.disabled, "child", $child.disabled)
@@ -176,10 +194,6 @@ proc traceClock() =
   log.save "clock"
 
 # ------------------------------------------------------------------ label
-
-proc fmt3(v: float): string =
-  # A number with 3 decimals, as the traces print them.
-  formatFloat(v, ffDecimal, 3)
 
 proc traceLabel() =
   # archive/reference/traces.py trace_label: Label(**kw), texture_update(),
@@ -362,6 +376,7 @@ BtnClass.setEventHandler("on_release", onRelease)
 
 proc newBtn(tag: string; x, y, w, h: float): Btn =
   result = Btn(cls: BtnClass, canvas: newCanvas(), tag: tag, button: nil)
+  result.initProps()
   result.initWidget()
   result.button = newButtonBehavior(result)
   result.sizeHint = (none[float](), none[float]())

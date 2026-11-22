@@ -87,6 +87,8 @@ for ev in ["on_pre_enter", "on_enter", "on_pre_leave", "on_leave"]:
 proc initScreen*(s: Screen) =
   ## Sets up a new screen: the relative layout. Build a subclass with
   ## `T(cls: TClass, canvas: newCanvas())`, then call it.
+  # Phase 1 until step 5: the typed properties of the base types.
+  s.initProps()
   s.initRelativeLayout()
 
 proc newScreen*(): Screen =
@@ -459,14 +461,14 @@ proc applyStyle(sm: ScreenManager) =
   sm.canvas.after.add newStencilUnUse()
   sm.canvas.after.add unmask
   sm.canvas.after.add newStencilPop()
-  discard sm.fbind("pos", proc (d: EventDispatcher; v: Value) {.closure.} =
-    mask.pos = (v.items[0].num, v.items[1].num)
-    unmask.pos = (v.items[0].num, v.items[1].num))
-  discard sm.fbind("size", proc (d: EventDispatcher; v: Value) {.closure.} =
-    mask.size = (v.items[0].num, v.items[1].num)
-    unmask.size = (v.items[0].num, v.items[1].num))
+  discard sm.bindPos(proc (v: (float, float)) {.closure.} =
+    mask.pos = v
+    unmask.pos = v)
+  discard sm.bindSize(proc (v: (float, float)) {.closure.} =
+    mask.size = v
+    unmask.size = v)
 
-proc updatePos(sm: ScreenManager; value: Value) =
+proc updatePos(sm: ScreenManager; value: (float, float)) =
   # ScreenManager._update_pos: the children follow the manager, except the
   # screens of a running transition.
   let t = sm.transition
@@ -476,19 +478,20 @@ proc updatePos(sm: ScreenManager; value: Value) =
     let inTransition = (sIn != nil and child == Widget(sIn)) or
       (sOut != nil and child == Widget(sOut))
     if not (t.isActive and inTransition):
-      child.pos = (value.items[0].num, value.items[1].num)
+      child.pos = value
 
 proc initScreenManager*(sm: ScreenManager) =
   ## Sets up a new manager: a NoTransition (Kivy's default, SlideTransition,
   ## is out of scope), the float layout, its style.kv canvas, and the
   ## children following `pos`. ScreenManager.__init__
   sm.nameUids = @[]
+  # Phase 1 until step 5: the typed properties of the base types.
+  sm.initProps()
   sm.initFloatLayout()
   # Kivy sets it before Widget.__init__; here the properties exist only after.
   sm.transition = newNoTransition()
   sm.applyStyle()
-  discard sm.fbind("pos", proc (d: EventDispatcher; v: Value) {.closure.} =
-    sm.updatePos(v))
+  discard sm.bindPos(proc (v: (float, float)) {.closure.} = sm.updatePos(v))
 
 proc newScreenManager*(): ScreenManager =
   ## A manager without screens, with a NoTransition.

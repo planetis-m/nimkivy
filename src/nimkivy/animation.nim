@@ -19,6 +19,7 @@
 import std/[math, syncio]
 import ./[properties, clock]
 import graphics/[instructions, context_instructions]
+import uix/widget
 
 type
   AnimationTransitionFunc* = proc (progress: float): float {.nimcall.}
@@ -306,13 +307,36 @@ proc floats(v: Value): array[4, float] =
   let f = v.toFloats
   result = [f[0], f[1], f[2], f[3]]
 
+const widgetProperties = ["x", "y", "width", "height", "pos", "size", "right", "top",
+  "center_x", "center_y", "center", "opacity"]
+  # Widget's typed properties that an Animation reaches by name (phase 1
+  # until step 5 gives Animation typed tracks).
+
+proc pair(v: Value): (float, float) {.inline.} =
+  (v.items[0].num, v.items[1].num)
+
 proc getAttr(target: RootRef; name: string): Value =
   # Python's getattr(widget, key): a property of a dispatcher, or an
   # attribute of an instruction.
   # GAP: of the instructions only Color (r, g, b, a, rgb, rgba) and
   # Translate (x, y, xy) can be animated, where Kivy reaches any attribute
   # of any instruction, because Nim has no getattr/setattr by name
-  if target of EventDispatcher:
+  if target of Widget and name in widgetProperties:
+    let w = Widget(target)
+    case name
+    of "x": result = toValue(w.x)
+    of "y": result = toValue(w.y)
+    of "width": result = toValue(w.width)
+    of "height": result = toValue(w.height)
+    of "pos": result = toValue([w.pos[0], w.pos[1]])
+    of "size": result = toValue([w.size[0], w.size[1]])
+    of "right": result = toValue(w.right)
+    of "top": result = toValue(w.top)
+    of "center_x": result = toValue(w.centerX)
+    of "center_y": result = toValue(w.centerY)
+    of "center": result = toValue([w.center[0], w.center[1]])
+    else: result = toValue(w.opacity)
+  elif target of EventDispatcher:
     result = EventDispatcher(target).getProperty(name)
   elif target of Color:
     let c = Color(target)
@@ -336,7 +360,22 @@ proc getAttr(target: RootRef; name: string): Value =
 
 proc setAttr(target: RootRef; name: string; v: Value) =
   # Python's setattr(widget, key, value).
-  if target of EventDispatcher:
+  if target of Widget and name in widgetProperties:
+    let w = Widget(target)
+    case name
+    of "x": w.x = v.num
+    of "y": w.y = v.num
+    of "width": w.width = v.num
+    of "height": w.height = v.num
+    of "pos": w.pos = pair(v)
+    of "size": w.size = pair(v)
+    of "right": w.right = v.num
+    of "top": w.top = v.num
+    of "center_x": w.centerX = v.num
+    of "center_y": w.centerY = v.num
+    of "center": w.center = pair(v)
+    else: w.opacity = v.num
+  elif target of EventDispatcher:
     EventDispatcher(target).setProperty(name, v)
   elif target of Color:
     let c = Color(target)
@@ -355,7 +394,7 @@ proc setAttr(target: RootRef; name: string; v: Value) =
     case name
     of "x": t.x = v.num
     of "y": t.y = v.num
-    of "xy": t.xy = (v.items[0].num, v.items[1].num)
+    of "xy": t.xy = pair(v)
     else: quit "AttributeError: Translate has no attribute '" & name & "'"
   else:
     quit "AttributeError: the target has no attribute '" & name & "'"
