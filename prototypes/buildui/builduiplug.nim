@@ -24,7 +24,7 @@
 
 import std/strutils
 import plugins, nimparser
-import ../codegen
+import ../../src/nimkivy/plugins/codegen
 
 type
   Item = object

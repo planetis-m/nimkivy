@@ -1,12 +1,8 @@
-## The property declarations of the prototype's Widget and Button.
-##
-## Only the `properties:` block lives here: a type that a module-level
-## template plugin declares cannot be named in a later proc signature of the
-## same module (planetis-m/nimony-bugs-llms#290), so the procs that name these
-## types are in `widgets`.
+## The Widget and Button of tprops (the prototype's test types), declared
+## with `properties:`. The constructors are in the block: a later signature
+## in this module cannot name these types (planetis-m/nimony-bugs-llms#290).
 
-import std/syncio
-import props
+import nimkivy/props
 
 export props
 
@@ -24,3 +20,10 @@ properties:
       press* {.event.}: proc ()
       touch* {.event.}: proc (x, y: float)
 
+  proc newWidget*(name = ""): Widget =
+    result = Widget(name: name)
+    result.initProps()
+
+  proc newButton*(name = ""): Button =
+    result = Button(name: name)
+    result.initProps()

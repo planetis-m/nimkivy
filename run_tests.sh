@@ -18,6 +18,29 @@ build() {
   "$nimony" c $flag --mm:orc --path:src --nimcache:"nimcache/$1-$2" -o:"bin/$1-$2" "$3"
 }
 
+# The programs in tests/bad must not build (each must fail with the text
+# given here), except bad_bounds, which must stop with exit code 1.
+bad() { # <program> <text the error contains>
+  if "$nimony" c --mm:orc --path:src --nimcache:"nimcache/$1" -o:"bin/$1" \
+      "tests/bad/$1.nim" > "tests/out/$1.log" 2>&1; then
+    echo "tests/bad/$1.nim: built, expected an error"; exit 1
+  fi
+  grep -q "$2" "tests/out/$1.log" ||
+    { echo "tests/bad/$1.nim: failed without '$2'"; tail -5 "tests/out/$1.log"; exit 1; }
+  echo "tests/bad/$1.nim: rejected"
+}
+bad bad_name "undeclared field: 'opacty='"
+bad bad_bind "undeclared identifier: 'bindOpacty'"
+bad bad_bind "bad_bind.nim(6, 22) Error: Type mismatch"
+bad bad_default "undeclared identifier: 'initOpacty'"
+bad bad_refs "undeclared field: 'h'"
+bad bad_readonly "undeclared field: 'half='"
+bad bad_pragma "unknown property pragma"
+"$nimony" c --mm:orc --path:src --nimcache:nimcache/bad_bounds -o:bin/bad_bounds \
+  tests/bad/bad_bounds.nim
+if ./bin/bad_bounds; then echo "bad_bounds: ran, expected exit code 1"; exit 1; fi
+echo "tests/bad/bad_bounds.nim: stopped"
+
 for mode in debug release; do
   for f in tests/t*.nim; do
     t=$(basename "$f" .nim)

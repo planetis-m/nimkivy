@@ -8,11 +8,11 @@ mkdir -p $BIN
 fail=0
 for mode in debug release; do
   flag=""; [ $mode = release ] && flag="-d:release"
-  $NIMONY c --mm:orc $flag --nimcache:$NC/tbuildui-$mode -o:$BIN/tbuildui-$mode tbuildui.nim > $BIN/tbuildui-$mode.log 2>&1 &&
+  $NIMONY c --mm:orc $flag --path:../../src --nimcache:$NC/tbuildui-$mode -o:$BIN/tbuildui-$mode tbuildui.nim > $BIN/tbuildui-$mode.log 2>&1 &&
     $BIN/tbuildui-$mode || { echo "tbuildui $mode: FAILED"; tail -5 $BIN/tbuildui-$mode.log; fail=1; }
 done
 check_compile_error() { # file, text the error must contain
-  if $NIMONY c --mm:orc --nimcache:$NC/$(basename $1 .nim) -o:$BIN/bad $1 > $BIN/bad.log 2>&1; then
+  if $NIMONY c --mm:orc --path:../../src --nimcache:$NC/$(basename $1 .nim) -o:$BIN/bad $1 > $BIN/bad.log 2>&1; then
     echo "$1: compiled, expected an error"; fail=1
   elif grep -q "$2" $BIN/bad.log; then
     echo "$1: rejected: $(grep -m1 "$2" $BIN/bad.log)"

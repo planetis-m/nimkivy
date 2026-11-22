@@ -1,371 +1,551 @@
-# Ports kivy/tests/test_properties.py (the tests listed in ACCEPTANCE.md).
+# Ports kivy/tests/test_properties.py (the tests listed in ACCEPTANCE.md) to
+# the typed properties of `nimkivy/props`, and checks the kinds and the
+# observer order phase 1 had: the first 44 lines of the `properties` trace
+# (Widget's x, y, pos, right, top, center, width, size and BoxLayout's
+# padding) replayed on a typed copy of those properties.
 #
-# Kivy attaches each property to one shared dispatcher, either with
-# `set_name` + `link_eagerly` or with `link` + `link_deps`. Here each test
-# declares its properties on a fresh class and instance, then links them
-# both ways in turn (`setName`). The type-rejection halves are dropped: Nim's
-# types make them compile errors.
+# Each Kivy test declares its property on a class of its own; here each is a
+# type in the block below. Kivy attaches each property two ways (`set_name` +
+# `link_eagerly`, or `link` + `link_deps`); typed properties have one way,
+# `initProps`, so those loops are gone. The alias tests still run with and
+# without `watch_before_use` (`eager`), on two types. The type-rejection
+# halves are dropped: Nim's types make them compile errors (tests/bad).
 
-import std/assertions
-import nimkivy/properties
+import std/[assertions, formatfloat, strutils, syncio]
+import nimkivy/props
 
-proc linkFor(p: Property; d: EventDispatcher; setName: bool) =
-  # The two ways the Kivy tests attach a property.
-  if setName:
-    p.linkEagerly(d)
-  else:
-    discard p.link(d)
-    p.linkDeps(d)
+properties:
+  type
+    BaseTest = ref object of RootObj
+      a {.prop.}: int = -1
+    ObjectTest = ref object of RootObj
+      a {.prop.}: bool = false
+    StringTest = ref object of RootObj
+      a {.prop.}: string = ""
+    NumericTest = ref object of RootObj
+      a {.prop.}: float = 0.0
+    ListTest = ref object of RootObj
+      a {.prop.}: seq[float] = @[]
+    NoneTest = ref object of RootObj
+      a {.prop.}: Opt[float] = some(0.0)
+    ReferenceTest = ref object of RootObj
+      x {.prop.}: float = 0.0
+      y {.prop.}: float = 0.0
+      pos {.refs: (x, y).}: (float, float)
+    ColorTest = ref object of RootObj
+      color {.color.}: Rgba = [1.0, 1, 1, 1]
+      color2 {.color.}: Rgba = [1.0, 1, 1, 1]
 
-proc fresh(cls: DispatcherClass): EventDispatcher =
-  result = EventDispatcher(cls: cls)
-  result.initEventDispatcher()
+    # The alias tests' classes: the counters Kivy keeps as plain attributes.
+    Counted = ref object of RootObj
+      getterCalled: int
+      setterCalled: int
+      callbackCalled: int
+    ReadOnlyEager = ref object of Counted
+      prop {.alias: getFive, eager.}: int
+    ReadOnlyLazy = ref object of Counted
+      prop {.alias: getFive.}: int
+    AliasEager = ref object of Counted
+      prop {.alias: (getNone, setFalse), eager.}: Opt[int]
+    AliasLazy = ref object of Counted
+      prop {.alias: (getNone, setFalse).}: Opt[int]
+    CachedEager = ref object of Counted
+      prop {.alias: (getFive, setTrue), cache, eager.}: int
+    CachedLazy = ref object of Counted
+      prop {.alias: (getFive, setTrue), cache.}: int
+    XWidth = ref object of Counted
+      x {.prop.}: float = 0.0
+      width {.prop.}: float = 100.0
+    RightEager = ref object of XWidth
+      right {.alias: (getRight, setRight), deps: (x, width), eager.}: float
+    RightLazy = ref object of XWidth
+      right {.alias: (getRight, setRight), deps: (x, width).}: float
+    ForcedEager = ref object of Counted
+      prop {.alias: (getNone, setFalse), always, eager.}: Opt[int]
+    ForcedLazy = ref object of Counted
+      prop {.alias: (getNone, setFalse), always.}: Opt[int]
+    Doubled = ref object of Counted
+      baseValue {.prop.}: float = 1.0
+    DoubledEager = ref object of Doubled
+      prop {.alias: (getDouble, setHalf), deps: baseValue, cache, eager.}: float
+    DoubledLazy = ref object of Doubled
+      prop {.alias: (getDouble, setHalf), deps: baseValue, cache.}: float
+    PlainDoubled = ref object of Counted
+      baseValue: float
+    PlainDoubledEager = ref object of PlainDoubled
+      prop {.alias: (getPlainDouble, setPlainHalf), cache, always, eager.}: float
+    PlainDoubledLazy = ref object of PlainDoubled
+      prop {.alias: (getPlainDouble, setPlainHalf), cache, always.}: float
 
-proc nums(xs: openArray[float]): Value = toValue(xs)
+    Event = ref object of RootObj
+      a {.prop.}: string = "hello"
+    Event2 = ref object of Event
+      b {.prop.}: string = "hello2"
 
-for setName in [true, false]:
-  block test_base:
-    # kivy/tests/test_properties.py::test_base
-    let cls = newDispatcherClass("_TestProperty", EventDispatcherClass)
-    let a = newProperty(toValue(-1))
-    cls.addProperty("a", a)
-    let wid = fresh(cls)
-    a.linkFor(wid, setName)
-    assert a.get(wid) == toValue(-1)
-    discard a.set(wid, toValue(0))
-    assert a.get(wid) == toValue(0)
-    discard a.set(wid, toValue(1))
-    assert a.get(wid) == toValue(1)
+    # The kinds that test_properties.py does not reach.
+    Kinds = ref object of RootObj
+      level {.bounds: 0 .. 10, handler.}: int = 0
+      doubled {.alias: getDoubled, deps: level, eager.}: int
+      lazyDoubled {.alias: getDoubled, deps: level.}: int
+      spacing {.varlist: 2.}: array[2, float]
+      every {.prop, always.}: int = 0
+      log: seq[string]
+    KindsSub = ref object of Kinds
 
-  block test_observer:
-    # kivy/tests/test_properties.py::test_observer
-    let cls = newDispatcherClass("_TestProperty", EventDispatcherClass)
-    let a = newProperty(toValue(-1))
-    cls.addProperty("a", a)
-    let wid = fresh(cls)
-    a.linkFor(wid, setName)
-    assert a.get(wid) == toValue(-1)
-    var observeCalled = 0
-    a.bind(wid, proc (d: EventDispatcher; v: Value) {.closure.} = observeCalled = 1)
-    discard a.set(wid, toValue(0))
-    assert a.get(wid) == toValue(0)
-    assert observeCalled == 1
-    observeCalled = 0
-    discard a.set(wid, toValue(0))
-    assert a.get(wid) == toValue(0)
-    assert observeCalled == 0
-    discard a.set(wid, toValue(1))
-    assert a.get(wid) == toValue(1)
-    assert observeCalled == 1
+    # Widget's geometry and BoxLayout's padding, as phase 1 declares them.
+    TraceWidget = ref object of RootObj
+      x {.prop.}: float = 0.0
+      y {.prop.}: float = 0.0
+      width {.prop.}: float = 100.0
+      height {.prop.}: float = 100.0
+      pos {.refs: (x, y).}: (float, float)
+      size {.refs: (width, height).}: (float, float)
+      right {.alias: (getRight, setRight), deps: (x, width), cache.}: float
+      top {.alias: (getTop, setTop), deps: (y, height), cache.}: float
+      centerX {.alias: (getCenterX, setCenterX), deps: (x, width), cache.}: float
+      centerY {.alias: (getCenterY, setCenterY), deps: (y, height), cache.}: float
+      center {.refs: (centerX, centerY).}: (float, float)
+    TraceBox = ref object of TraceWidget
+      padding {.varlist: 4.}: array[4, float]
 
-  block test_objectcheck:
-    # kivy/tests/test_properties.py::test_objectcheck
-    let cls = newDispatcherClass("_TestProperty", EventDispatcherClass)
-    let a = newObjectProperty(toValue(false))
-    cls.addProperty("a", a)
-    let wid = fresh(cls)
-    a.linkFor(wid, setName)
-    assert a.get(wid) == toValue(false)
-    discard a.set(wid, toValue(true))
-    assert a.get(wid) == toValue(true)
+  # def _get_prop(self): self.getter_called += 1; return 5
+  proc getFive(w: Counted): int =
+    inc w.getterCalled
+    result = 5
 
-  block test_stringcheck:
-    # kivy/tests/test_properties.py::test_stringcheck (without the number)
-    let cls = newDispatcherClass("_TestProperty", EventDispatcherClass)
-    let a = newStringProperty()
-    cls.addProperty("a", a)
-    let wid = fresh(cls)
-    a.linkFor(wid, setName)
-    assert a.get(wid) == toValue("")
-    discard a.set(wid, toValue("hello"))
-    assert a.get(wid) == toValue("hello")
+  proc getNone(w: Counted): Opt[int] =
+    inc w.getterCalled
+    result = none[int]()
 
-  block test_numericcheck:
-    # kivy/tests/test_properties.py::test_numericcheck
-    let cls = newDispatcherClass("_TestProperty", EventDispatcherClass)
-    let a = newNumericProperty()
-    cls.addProperty("a", a)
-    let wid = fresh(cls)
-    a.linkFor(wid, setName)
-    assert a.get(wid) == toValue(0)
-    discard a.set(wid, toValue(99))
-    assert a.get(wid) == toValue(99)
+  proc setFalse(w: Counted; v: Opt[int]): bool =
+    inc w.setterCalled
+    result = false
 
-  block test_listcheck:
-    # kivy/tests/test_properties.py::test_listcheck
-    let cls = newDispatcherClass("_TestProperty", EventDispatcherClass)
-    let a = newListProperty()
-    cls.addProperty("a", a)
-    let wid = fresh(cls)
-    a.linkFor(wid, setName)
-    assert a.get(wid) == toValue(newSeq[Value]())
-    discard a.set(wid, nums([1.0, 2, 3]))
-    assert a.get(wid) == nums([1.0, 2, 3])
+  proc setTrue(w: Counted; v: int): bool =
+    inc w.setterCalled
+    result = true
 
-  block test_propertynone:
-    # kivy/tests/test_properties.py::test_propertynone
-    let cls = newDispatcherClass("_TestProperty", EventDispatcherClass)
-    let a = newNumericProperty(0, allowNone = true)
-    cls.addProperty("a", a)
-    let wid = fresh(cls)
-    a.linkFor(wid, setName)
-    assert a.get(wid) == toValue(0)
-    discard a.set(wid, noneValue())
-    assert a.get(wid).isNone
-    discard a.set(wid, toValue(1))
-    assert a.get(wid) == toValue(1)
+  # def callback(widget, value): widget.callback_called += 1. A proc, not a
+  # literal in the test templates: a proc literal in an {.untyped.} template
+  # crashes nimsem (planetis-m/nimony-bugs-llms#338).
+  proc countCalls[T](w: Counted): proc (v: T) {.closure.} =
+    result = proc (v: T) {.closure.} = inc w.callbackCalled
 
-  block test_reference:
-    # kivy/tests/test_properties.py::test_reference
-    let cls = newDispatcherClass("_TestProperty", EventDispatcherClass)
-    let x = newNumericProperty(0)
-    let y = newNumericProperty(0)
-    let pos = newReferenceListProperty(@[Property(x), y])
-    cls.addProperty("x", x)
-    cls.addProperty("y", y)
-    cls.addProperty("pos", pos)
-    let wid = fresh(cls)
-    x.linkFor(wid, setName)
-    y.linkFor(wid, setName)
-    pos.linkFor(wid, setName)
-    assert x.get(wid) == toValue(0)
-    assert y.get(wid) == toValue(0)
-    assert pos.get(wid) == nums([0.0, 0])
-    discard x.set(wid, toValue(50))
-    assert pos.get(wid) == nums([50.0, 0])
-    discard y.set(wid, toValue(50))
-    assert pos.get(wid) == nums([50.0, 50])
-    discard pos.set(wid, nums([0.0, 0]))
-    assert pos.get(wid) == nums([0.0, 0])
-    assert x.get(wid) == toValue(0)
-    assert y.get(wid) == toValue(0)
-    var observeCalled = 0
-    pos.bind(wid, proc (d: EventDispatcher; v: Value) {.closure.} = observeCalled = 1)
-    assert observeCalled == 0
-    discard x.set(wid, toValue(99))
-    assert observeCalled == 1
+  proc getRight(w: XWidth): float = w.x + w.width
 
-  block test_color_property:
-    # kivy/tests/test_properties.py::test_color_property: the list and tuple
-    # forms. Colour names, hex strings and in-place item assignment are out
-    # of scope, so the shared value is set as a whole.
-    let cls = newDispatcherClass("_TestProperty", EventDispatcherClass)
-    let color = newColorProperty()
-    let color2 = newColorProperty()
-    cls.addProperty("color", color)
-    cls.addProperty("color2", color2)
-    let wid = fresh(cls)
-    color.linkFor(wid, setName)
-    assert color.get(wid) == nums([1.0, 1, 1, 1])
-    color2.linkFor(wid, setName)
-    assert color2.get(wid) == nums([1.0, 1, 1, 1])
-    discard color.set(wid, nums([1.0, 1, 0]))
-    assert color.get(wid) == nums([1.0, 1, 0, 1])
-    discard color.set(wid, nums([1.0, 1, 0, 0]))
-    assert color.get(wid) == nums([1.0, 1, 0, 0])
-    discard color.set(wid, nums([0.5, 1, 1, 1]))
-    assert color.get(wid) == nums([0.5, 1, 1, 1])
-    assert color2.get(wid) == nums([1.0, 1, 1, 1])
-    discard color2.set(wid, color.get(wid))
-    assert color2.get(wid) == nums([0.5, 1, 1, 1])
+  proc setRight(w: XWidth; v: float): bool =
+    w.x = v - w.width
+    result = false
+
+  proc getDouble(w: Doubled): float =
+    inc w.getterCalled
+    result = w.baseValue * 2
+
+  proc setHalf(w: Doubled; v: float): bool =
+    w.baseValue = v / 2
+    result = false
+
+  proc getPlainDouble(w: PlainDoubled): float =
+    inc w.getterCalled
+    result = w.baseValue * 2
+
+  proc setPlainHalf(w: PlainDoubled; v: float): bool =
+    inc w.setterCalled
+    w.baseValue = v / 2
+    result = true
+
+  proc getDoubled(w: Kinds): int = 2 * w.level
+
+  method onLevelChanged(w: Kinds; v: int) {.base.} =
+    w.log.add "handler " & $v
+
+  method onLevelChanged(w: KindsSub; v: int) =
+    w.log.add "subclass handler " & $v
+
+  proc getRight(w: TraceWidget): float = w.x + w.width
+
+  proc setRight(w: TraceWidget; v: float): bool =
+    w.x = v - w.width
+    result = false
+
+  proc getTop(w: TraceWidget): float = w.y + w.height
+
+  proc setTop(w: TraceWidget; v: float): bool =
+    w.y = v - w.height
+    result = false
+
+  proc getCenterX(w: TraceWidget): float = w.x + w.width / 2.0
+
+  proc setCenterX(w: TraceWidget; v: float): bool =
+    w.x = v - w.width / 2.0
+    result = false
+
+  proc getCenterY(w: TraceWidget): float = w.y + w.height / 2.0
+
+  proc setCenterY(w: TraceWidget; v: float): bool =
+    w.y = v - w.height / 2.0
+    result = false
+
+block test_base:
+  # kivy/tests/test_properties.py::test_base
+  let wid = BaseTest()
+  wid.initProps()
+  assert wid.a == -1
+  wid.a = 0
+  assert wid.a == 0
+  wid.a = 1
+  assert wid.a == 1
+
+block test_observer:
+  # kivy/tests/test_properties.py::test_observer
+  let wid = BaseTest()
+  wid.initProps()
+  assert wid.a == -1
+  var observeCalled = 0
+  discard wid.bindA(proc (v: int) {.closure.} = observeCalled = 1)
+  wid.a = 0
+  assert wid.a == 0
+  assert observeCalled == 1
+  observeCalled = 0
+  wid.a = 0
+  assert wid.a == 0
+  assert observeCalled == 0
+  wid.a = 1
+  assert wid.a == 1
+  assert observeCalled == 1
+
+block test_objectcheck:
+  # kivy/tests/test_properties.py::test_objectcheck
+  let wid = ObjectTest()
+  wid.initProps()
+  assert wid.a == false
+  wid.a = true
+  assert wid.a == true
+
+block test_stringcheck:
+  # kivy/tests/test_properties.py::test_stringcheck (without the number)
+  let wid = StringTest()
+  wid.initProps()
+  assert wid.a == ""
+  wid.a = "hello"
+  assert wid.a == "hello"
+
+block test_numericcheck:
+  # kivy/tests/test_properties.py::test_numericcheck
+  let wid = NumericTest()
+  wid.initProps()
+  assert wid.a == 0.0
+  wid.a = 99.0
+  assert wid.a == 99.0
+
+block test_listcheck:
+  # kivy/tests/test_properties.py::test_listcheck
+  let wid = ListTest()
+  wid.initProps()
+  assert wid.a == newSeq[float]()
+  wid.a = @[1.0, 2, 3]
+  assert wid.a == @[1.0, 2, 3]
+
+block test_propertynone:
+  # kivy/tests/test_properties.py::test_propertynone
+  let wid = NoneTest()
+  wid.initProps()
+  assert wid.a == some(0.0)
+  wid.a = none[float]()
+  assert wid.a.isNone
+  wid.a = some(1.0)
+  assert wid.a == some(1.0)
+
+block test_reference:
+  # kivy/tests/test_properties.py::test_reference
+  let wid = ReferenceTest()
+  wid.initProps()
+  assert wid.x == 0.0
+  assert wid.y == 0.0
+  assert wid.pos == (0.0, 0.0)
+  wid.x = 50.0
+  assert wid.pos == (50.0, 0.0)
+  wid.y = 50.0
+  assert wid.pos == (50.0, 50.0)
+  wid.pos = (0.0, 0.0)
+  assert wid.pos == (0.0, 0.0)
+  assert wid.x == 0.0
+  assert wid.y == 0.0
+  var observeCalled = 0
+  discard wid.bindPos(proc (v: (float, float)) {.closure.} = observeCalled = 1)
+  assert observeCalled == 0
+  wid.x = 99.0
+  assert observeCalled == 1
+
+block test_color_property:
+  # kivy/tests/test_properties.py::test_color_property: the list and tuple
+  # forms. Colour names, hex strings and in-place item assignment are out
+  # of scope, so the shared value is set as a whole.
+  let wid = ColorTest()
+  wid.initProps()
+  assert wid.color == [1.0, 1, 1, 1]
+  assert wid.color2 == [1.0, 1, 1, 1]
+  wid.color = [1.0, 1, 0]
+  assert wid.color == [1.0, 1, 0, 1]
+  wid.color = [1.0, 1, 0, 0]
+  assert wid.color == [1.0, 1, 0, 0]
+  wid.color = [0.5, 1, 1, 1]
+  assert wid.color == [0.5, 1, 1, 1]
+  assert wid.color2 == [1.0, 1, 1, 1]
+  wid.color2 = wid.color
+  assert wid.color2 == [0.5, 1, 1, 1]
 
 # ------------------------------------------------------------------ alias
+# Each test runs on a type with `eager` (Kivy's watch_before_use=True) and
+# on one without. The templates are {.untyped.}: each is used with two types.
 
-type CustomAlias = ref object of EventDispatcher
-  # The counters the Kivy test classes keep as plain attributes.
-  getterCalled, setterCalled, callbackCalled: int
-  baseValue: float
+template aliasWithoutSetter(T: untyped) {.untyped.} =
+  # kivy/tests/test_properties.py::test_alias_property_without_setter (the
+  # getter half; setting a read-only alias is a compile error, tests/bad)
+  let wid = T()
+  wid.initProps()
+  assert wid.getterCalled == 0
+  assert wid.prop == 5
+  assert wid.getterCalled == 1
 
-proc newCustomAlias(cls: DispatcherClass): CustomAlias =
-  result = CustomAlias(cls: cls, getterCalled: 0, setterCalled: 0,
-    callbackCalled: 0, baseValue: 1)
-  result.initEventDispatcher()
+template aliasProperty(T: untyped) {.untyped.} =
+  # kivy/tests/test_properties.py::test_alias_property
+  let wid = T()
+  wid.initProps()
+  discard wid.bindProp(countCalls[Opt[int]](wid))
+  assert wid.getterCalled == 0 and wid.setterCalled == 0 and wid.callbackCalled == 0
+  wid.prop = some(1)
+  assert wid.getterCalled == 0 and wid.setterCalled == 1 and wid.callbackCalled == 0
+  wid.prop = some(1)
+  assert wid.getterCalled == 0 and wid.setterCalled == 2 and wid.callbackCalled == 0
+  assert wid.prop.isNone
+  assert wid.getterCalled == 1 and wid.setterCalled == 2 and wid.callbackCalled == 0
 
-proc countCallback(): PropertyCallback =
-  # def callback(widget, value): widget.callback_called += 1
-  result = proc (d: EventDispatcher; v: Value) {.closure.} = inc CustomAlias(d).callbackCalled
+template aliasCacheTrue(T: untyped) {.untyped.} =
+  # kivy/tests/test_properties.py::test_alias_property_cache_true
+  let wid = T()
+  wid.initProps()
+  assert wid.getterCalled == 0 and wid.setterCalled == 0
+  assert wid.prop == 5
+  assert wid.getterCalled == 1 and wid.setterCalled == 0
+  assert wid.prop == 5
+  assert wid.getterCalled == 1 and wid.setterCalled == 0
+  wid.prop = 10
+  assert wid.prop == 5
+  assert wid.setterCalled == 1 and wid.getterCalled == 2
 
-for watchBeforeUse in [true, false]:
-  block test_alias_property_without_setter:
-    # kivy/tests/test_properties.py::test_alias_property_without_setter
-    # (the getter half; setting a read-only alias stops the program)
-    let cls = newDispatcherClass("CustomAlias", EventDispatcherClass)
-    let prop = cls.addAlias("prop",
-      proc (d: EventDispatcher): Value =
-        inc CustomAlias(d).getterCalled
-        result = toValue(5),
-      nil, watchBeforeUse = watchBeforeUse)
-    let wid = newCustomAlias(cls)
-    assert wid.getterCalled == 0
-    assert prop.get(wid) == toValue(5)
-    assert wid.getterCalled == 1
+template aliasWithBind(T: untyped) {.untyped.} =
+  # kivy/tests/test_properties.py::test_alias_property_with_bind
+  let wid = T()
+  wid.initProps()
+  assert wid.right == 100.0
+  wid.x = 500.0
+  assert wid.right == 600.0
+  wid.width = 50.0
+  assert wid.right == 550.0
+  wid.right = 100.0
+  assert wid.width == 50.0
+  assert wid.x == 50.0
+  discard wid.bindRight(countCalls[float](wid))
+  wid.x = 100.0
+  assert wid.callbackCalled == 1
+  wid.x = 100.0
+  assert wid.callbackCalled == 1
+  wid.width = 900.0
+  assert wid.callbackCalled == 2
+  wid.right = 700.0
+  assert wid.callbackCalled == 3
+  wid.right = 700.0
+  assert wid.callbackCalled == 3
 
-  block test_alias_property:
-    # kivy/tests/test_properties.py::test_alias_property
-    let cls = newDispatcherClass("CustomAlias", EventDispatcherClass)
-    let prop = cls.addAlias("prop",
-      proc (d: EventDispatcher): Value =
-        inc CustomAlias(d).getterCalled
-        result = noneValue(),
-      proc (d: EventDispatcher; v: Value): bool =
-        inc CustomAlias(d).setterCalled
-        result = false,
-      watchBeforeUse = watchBeforeUse)
-    let wid = newCustomAlias(cls)
-    wid.bind("prop", countCallback())
-    assert wid.getterCalled == 0 and wid.setterCalled == 0 and wid.callbackCalled == 0
-    discard prop.set(wid, toValue(1))
-    assert wid.getterCalled == 0 and wid.setterCalled == 1 and wid.callbackCalled == 0
-    discard prop.set(wid, toValue(1))
-    assert wid.getterCalled == 0 and wid.setterCalled == 2 and wid.callbackCalled == 0
-    assert prop.get(wid).isNone
-    assert wid.getterCalled == 1 and wid.setterCalled == 2 and wid.callbackCalled == 0
+template aliasForceDispatchTrue(T: untyped) {.untyped.} =
+  # kivy/tests/test_properties.py::test_alias_property_with_force_dispatch_true
+  let wid = T()
+  wid.initProps()
+  discard wid.bindProp(countCalls[Opt[int]](wid))
+  assert wid.getterCalled == 0 and wid.setterCalled == 0 and wid.callbackCalled == 0
+  wid.prop = some(1)
+  assert wid.getterCalled == 1 and wid.setterCalled == 1 and wid.callbackCalled == 1
+  wid.prop = some(1)
+  assert wid.getterCalled == 2 and wid.setterCalled == 2 and wid.callbackCalled == 2
 
-  block test_alias_property_cache_true:
-    # kivy/tests/test_properties.py::test_alias_property_cache_true
-    let cls = newDispatcherClass("CustomAlias", EventDispatcherClass)
-    let prop = cls.addAlias("prop",
-      proc (d: EventDispatcher): Value =
-        inc CustomAlias(d).getterCalled
-        result = toValue(5),
-      proc (d: EventDispatcher; v: Value): bool =
-        inc CustomAlias(d).setterCalled
-        result = true,
-      cache = true, watchBeforeUse = watchBeforeUse)
-    let wid = newCustomAlias(cls)
-    assert wid.getterCalled == 0 and wid.setterCalled == 0
-    assert prop.get(wid) == toValue(5)
-    assert wid.getterCalled == 1 and wid.setterCalled == 0
-    assert prop.get(wid) == toValue(5)
-    assert wid.getterCalled == 1 and wid.setterCalled == 0
-    discard prop.set(wid, toValue(10))
-    assert prop.get(wid) == toValue(5)
-    assert wid.setterCalled == 1 and wid.getterCalled == 2
+template aliasCacheTrueWithBind(T: untyped; eager: bool) {.untyped.} =
+  # kivy/tests/test_properties.py::test_alias_property_cache_true_with_bind
+  let wid = T()
+  wid.initProps()
+  assert wid.getterCalled == 0
+  assert wid.baseValue == 1.0
+  assert wid.getterCalled == 0
+  wid.baseValue = 4.0
+  assert wid.getterCalled == ord(eager)
+  assert wid.prop == 8.0
+  assert wid.getterCalled == 1
+  wid.prop = 4.0
+  assert wid.getterCalled == 2
+  assert wid.baseValue == 2.0
+  assert wid.prop == 4.0
+  assert wid.getterCalled == 2
 
-  block test_alias_property_with_bind:
-    # kivy/tests/test_properties.py::test_alias_property_with_bind
-    let cls = newDispatcherClass("CustomAlias", EventDispatcherClass)
-    let x = cls.addNumeric("x", 0)
-    let width = cls.addNumeric("width", 100)
-    let right = cls.addAlias("right",
-      proc (d: EventDispatcher): Value =
-        toValue(d.getProperty("x").num + d.getProperty("width").num),
-      proc (d: EventDispatcher; v: Value): bool =
-        d.setProperty("x", toValue(v.num - d.getProperty("width").num))
-        result = false,
-      @["x", "width"], watchBeforeUse = watchBeforeUse)
-    let wid = newCustomAlias(cls)
-    assert right.get(wid) == toValue(100)
-    x.setNumber(wid, 500)
-    assert right.get(wid) == toValue(600)
-    width.setNumber(wid, 50)
-    assert right.get(wid) == toValue(550)
-    discard right.set(wid, toValue(100))
-    assert width.getNumber(wid) == 50
-    assert x.getNumber(wid) == 50
-    wid.bind("right", countCallback())
-    x.setNumber(wid, 100)
-    assert wid.callbackCalled == 1
-    x.setNumber(wid, 100)
-    assert wid.callbackCalled == 1
-    width.setNumber(wid, 900)
-    assert wid.callbackCalled == 2
-    discard right.set(wid, toValue(700))
-    assert wid.callbackCalled == 3
-    discard right.set(wid, toValue(700))
-    assert wid.callbackCalled == 3
+template aliasCacheTrueForceDispatchTrue(T: untyped) {.untyped.} =
+  # kivy/tests/test_properties.py::test_alias_property_cache_true_force_dispatch_true
+  # Set after the constructor: `T(baseValue: 1.0)` here gives invalid C, as
+  # Doubled has a `baseValue` accessor (planetis-m/nimony-bugs-llms#339).
+  let wid = T()
+  wid.baseValue = 1.0
+  wid.initProps()
+  discard wid.bindProp(countCalls[float](wid))
+  assert wid.baseValue == 1.0
+  assert wid.getterCalled == 0 and wid.setterCalled == 0 and wid.callbackCalled == 0
+  wid.prop = 16.0
+  assert wid.baseValue == 8.0
+  assert wid.getterCalled == 1 and wid.setterCalled == 1 and wid.callbackCalled == 1
+  wid.prop = 16.0
+  assert wid.baseValue == 8.0
+  assert wid.getterCalled == 2 and wid.setterCalled == 2 and wid.callbackCalled == 2
+  assert wid.prop == 16.0
+  assert wid.getterCalled == 2 and wid.setterCalled == 2 and wid.callbackCalled == 2
 
-  block test_alias_property_with_force_dispatch_true:
-    # kivy/tests/test_properties.py::test_alias_property_with_force_dispatch_true
-    let cls = newDispatcherClass("CustomAlias", EventDispatcherClass)
-    let prop = cls.addAlias("prop",
-      proc (d: EventDispatcher): Value =
-        inc CustomAlias(d).getterCalled
-        result = noneValue(),
-      proc (d: EventDispatcher; v: Value): bool =
-        inc CustomAlias(d).setterCalled
-        result = false,
-      forceDispatch = true, watchBeforeUse = watchBeforeUse)
-    let wid = newCustomAlias(cls)
-    wid.bind("prop", countCallback())
-    assert wid.getterCalled == 0 and wid.setterCalled == 0 and wid.callbackCalled == 0
-    discard prop.set(wid, toValue(1))
-    assert wid.getterCalled == 1 and wid.setterCalled == 1 and wid.callbackCalled == 1
-    discard prop.set(wid, toValue(1))
-    assert wid.getterCalled == 2 and wid.setterCalled == 2 and wid.callbackCalled == 2
+block test_alias_property_without_setter:
+  aliasWithoutSetter(ReadOnlyEager)
+  aliasWithoutSetter(ReadOnlyLazy)
 
-  block test_alias_property_cache_true_with_bind:
-    # kivy/tests/test_properties.py::test_alias_property_cache_true_with_bind
-    let cls = newDispatcherClass("CustomAlias", EventDispatcherClass)
-    let baseValue = cls.addNumeric("base_value", 1)
-    let prop = cls.addAlias("prop",
-      proc (d: EventDispatcher): Value =
-        inc CustomAlias(d).getterCalled
-        result = toValue(d.getProperty("base_value").num * 2),
-      proc (d: EventDispatcher; v: Value): bool =
-        d.setProperty("base_value", toValue(v.num / 2))
-        result = false,
-      @["base_value"], cache = true, watchBeforeUse = watchBeforeUse)
-    let wid = newCustomAlias(cls)
-    assert wid.getterCalled == 0
-    assert baseValue.getNumber(wid) == 1
-    assert wid.getterCalled == 0
-    baseValue.setNumber(wid, 4)
-    assert wid.getterCalled == ord(watchBeforeUse)
-    assert prop.get(wid) == toValue(8)
-    assert wid.getterCalled == 1
-    discard prop.set(wid, toValue(4))
-    assert wid.getterCalled == 2
-    assert baseValue.getNumber(wid) == 2
-    assert prop.get(wid) == toValue(4)
-    assert wid.getterCalled == 2
+block test_alias_property:
+  aliasProperty(AliasEager)
+  aliasProperty(AliasLazy)
 
-  block test_alias_property_cache_true_force_dispatch_true:
-    # kivy/tests/test_properties.py::test_alias_property_cache_true_force_dispatch_true
-    let cls = newDispatcherClass("CustomAlias", EventDispatcherClass)
-    let prop = cls.addAlias("prop",
-      proc (d: EventDispatcher): Value =
-        let w = CustomAlias(d)
-        inc w.getterCalled
-        result = toValue(w.baseValue * 2),
-      proc (d: EventDispatcher; v: Value): bool =
-        let w = CustomAlias(d)
-        inc w.setterCalled
-        w.baseValue = v.num / 2
-        result = true,
-      cache = true, forceDispatch = true, watchBeforeUse = watchBeforeUse)
-    let wid = newCustomAlias(cls)
-    wid.bind("prop", countCallback())
-    assert wid.baseValue == 1
-    assert wid.getterCalled == 0 and wid.setterCalled == 0 and wid.callbackCalled == 0
-    discard prop.set(wid, toValue(16))
-    assert wid.baseValue == 8
-    assert wid.getterCalled == 1 and wid.setterCalled == 1 and wid.callbackCalled == 1
-    discard prop.set(wid, toValue(16))
-    assert wid.baseValue == 8
-    assert wid.getterCalled == 2 and wid.setterCalled == 2 and wid.callbackCalled == 2
-    assert prop.get(wid) == toValue(16)
-    assert wid.getterCalled == 2 and wid.setterCalled == 2 and wid.callbackCalled == 2
+block test_alias_property_cache_true:
+  aliasCacheTrue(CachedEager)
+  aliasCacheTrue(CachedLazy)
+
+block test_alias_property_with_bind:
+  aliasWithBind(RightEager)
+  aliasWithBind(RightLazy)
+
+block test_alias_property_with_force_dispatch_true:
+  aliasForceDispatchTrue(ForcedEager)
+  aliasForceDispatchTrue(ForcedLazy)
+
+block test_alias_property_cache_true_with_bind:
+  aliasCacheTrueWithBind(DoubledEager, true)
+  aliasCacheTrueWithBind(DoubledLazy, false)
+
+block test_alias_property_cache_true_force_dispatch_true:
+  aliasCacheTrueForceDispatchTrue(PlainDoubledEager)
+  aliasCacheTrueForceDispatchTrue(PlainDoubledLazy)
 
 block test_inherit_property:
-  # kivy/tests/test_properties.py::test_inherit_property
-  let eventClass = newDispatcherClass("Event", EventDispatcherClass)
-  discard eventClass.addString("a", "hello")
-  let event2Class = newDispatcherClass("Event2", eventClass)
-  discard event2Class.addString("b", "hello2")
-  let event = fresh(event2Class)
-  var argsObj: nil EventDispatcher = nil
-  var argsVal = noneValue()
-  let callback = proc (d: EventDispatcher; v: Value) {.closure.} =
-    argsObj = d
-    argsVal = v
-  discard event.fbind("a", callback)
-  discard event.fbind("b", callback)
-  assert event.getProperty("a") == toValue("hello")
-  assert event.getProperty("b") == toValue("hello2")
-  event.setProperty("a", toValue("bye"))
-  assert event.getProperty("a") == toValue("bye")
-  assert argsObj == event and argsVal == toValue("bye")
-  event.setProperty("b", toValue("goodbye"))
-  assert event.getProperty("b") == toValue("goodbye")
-  assert argsObj == event and argsVal == toValue("goodbye")
+  # kivy/tests/test_properties.py::test_inherit_property. A callback gets
+  # the value, not the instance (REDESIGN.md, Binding): the closure knows it.
+  let event = Event2()
+  event.initProps()
+  var args: seq[(string, string)] = @[]
+  discard event.bindA(proc (v: string) {.closure.} = args.add ("a", v))
+  discard event.bindB(proc (v: string) {.closure.} = args.add ("b", v))
+  assert event.a == "hello"
+  assert event.b == "hello2"
+  event.a = "bye"
+  assert event.a == "bye"
+  assert args == @[("a", "bye")]
+  event.b = "goodbye"
+  assert event.b == "goodbye"
+  assert args == @[("a", "bye"), ("b", "goodbye")]
+
+# ------------------------------------------------------------------ the other kinds
+
+block bounds_varlist_always_dispatch:
+  let k = Kinds()
+  k.initProps()
+  k.level = 10                       # in bounds (tests/bad/bad_bounds: outside)
+  assert k.level == 10
+  k.spacing = 3.0
+  assert k.spacing == [3.0, 3.0]
+  k.spacing = [1.0]
+  assert k.spacing == [1.0, 1.0]
+  k.spacing = [1.0, 2.0]
+  assert k.spacing == [1.0, 2.0]
+  var every = 0
+  discard k.bindEvery(proc (v: int) {.closure.} = inc every)
+  k.every = 0                        # unchanged, but `always`
+  k.every = 0
+  assert every == 2
+  var level = 0
+  discard k.bindLevel(proc (v: int) {.closure.} = inc level)
+  k.dispatchLevel()                  # Kivy's `property('level').dispatch(k)`
+  assert level == 1 and k.log == @["handler 10", "handler 10"]
+
+block handler_and_eager_order:
+  # Phase 1's initEventDispatcher order: the eager alias links first, then
+  # the class's handler, so the handler runs after the alias trigger and
+  # before any later observer; a lazy alias links when it is first bound.
+  let k = Kinds()
+  k.initProps()
+  discard k.bindDoubled(proc (v: int) {.closure.} = k.log.add "doubled " & $v)
+  discard k.bindLevel(proc (v: int) {.closure.} = k.log.add "observer " & $v)
+  discard k.bindLazyDoubled(proc (v: int) {.closure.} = k.log.add "lazyDoubled " & $v)
+  k.level = 2
+  assert k.log == @["doubled 4", "handler 2", "observer 2", "lazyDoubled 4"]
+  let s = KindsSub()
+  s.initProps()
+  s.level = 3                        # the subclass's handler method
+  assert s.log == @["subclass handler 3"]
+
+# ------------------------------------------------------------------ the properties trace
+
+proc fmt3(v: float): string = formatFloat(v, ffDecimal, 3)
+
+proc pair(v: (float, float)): string = "(" & fmt3(v[0]) & ", " & fmt3(v[1]) & ")"
+
+proc quad(v: array[4, float]): string =
+  "(" & fmt3(v[0]) & ", " & fmt3(v[1]) & ", " & fmt3(v[2]) & ", " & fmt3(v[3]) & ")"
+
+block properties_trace:
+  # The first 44 lines of tests/fixtures/traces/properties.txt, which Kivy
+  # wrote: the order of the observers of x, y, pos, right, top, center,
+  # width and size, with the links of the reference lists and the aliases,
+  # and padding from 1, 2, 4 and 1 numbers. tests/traces.nim writes the
+  # whole trace through the real Widget and BoxLayout.
+  var log: seq[string] = @[]
+  let w = TraceWidget()
+  w.initProps()
+  discard w.bindX(proc (v: float) {.closure.} = log.add "x " & fmt3(v))
+  discard w.bindY(proc (v: float) {.closure.} = log.add "y " & fmt3(v))
+  discard w.bindPos(proc (v: (float, float)) {.closure.} = log.add "pos " & pair(v))
+  discard w.bindRight(proc (v: float) {.closure.} = log.add "right " & fmt3(v))
+  discard w.bindTop(proc (v: float) {.closure.} = log.add "top " & fmt3(v))
+  discard w.bindCenter(proc (v: (float, float)) {.closure.} = log.add "center " & pair(v))
+  discard w.bindWidth(proc (v: float) {.closure.} = log.add "width " & fmt3(v))
+  discard w.bindSize(proc (v: (float, float)) {.closure.} = log.add "size " & pair(v))
+  log.add "# pos = (1, 2)"
+  w.pos = (1.0, 2.0)
+  log.add "# pos = (1, 2) again"
+  w.pos = (1.0, 2.0)
+  log.add "# x = 5"
+  w.x = 5.0
+  log.add "# size = (50, 60)"
+  w.size = (50.0, 60.0)
+  log.add "# right = 300"
+  w.right = 300.0
+  log.add "# center = (0, 0)"
+  w.center = (0.0, 0.0)
+  discard w.bindX(proc (v: float) {.closure.} = log.add "x second observer " & fmt3(v))
+  log.add "# x = 6"
+  w.x = 6.0
+  let b = TraceBox()
+  b.initProps()
+  b.padding = 5.0
+  log.add "padding 5 -> " & quad(b.padding)
+  b.padding = [10.0, 20.0]
+  log.add "padding (10, 20) -> " & quad(b.padding)
+  b.padding = [1.0, 2.0, 3.0, 4.0]
+  log.add "padding (1, 2, 3, 4) -> " & quad(b.padding)
+  b.padding = [7.0]
+  log.add "padding [7] -> " & quad(b.padding)
+  var kivy: seq[string] = @[]
+  try:
+    kivy = readFile("tests/fixtures/traces/properties.txt").splitLines()
+  except:
+    quit "cannot read tests/fixtures/traces/properties.txt"
+  assert log.len == 44
+  for i in 0 ..< log.len:
+    if log[i] != kivy[i]:
+      quit "properties trace line " & $(i + 1) & ": " & log[i] & ", Kivy: " & kivy[i]

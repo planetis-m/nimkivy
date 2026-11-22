@@ -1,4 +1,4 @@
-## Typed observer lists: the run-time half of the property prototype.
+## Typed observer lists: the run-time half of the typed properties (`props`).
 ##
 ## `Observers[F]` keeps the callbacks of one property or event of one object,
 ## in bind order. `F` is the callback's proc type, so every callback is typed:
@@ -15,6 +15,12 @@ type
     ## What `bind<Prop>` returns and `unbind<Prop>` takes (Kivy's `fbind`
     ## uid). 0 is never a binding.
 
+  # GAP: a callback is held strongly, where Kivy's `bind` holds a WeakMethod,
+  # so an object that is dropped while still bound is not collected and its
+  # callbacks still run, because Nimony has no weak references
+  # GAP: a callback cannot raise, so no exception reaches the dispatcher's
+  # caller as in Kivy, because of Nimony's error model (no unwinding through
+  # closures)
   Observer[F] = object
     uid: int                 # 0 once unbound
     cb: F

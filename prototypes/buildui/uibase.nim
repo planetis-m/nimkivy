@@ -12,7 +12,3 @@ type
 proc addWidget*(w, child: WidgetBase) =
   ## Adds `child` last.
   w.children.add child
-
-proc initProps*(w: WidgetBase) =
-  ## Nothing: the generated `initProps` of a subclass calls its base's.
-  discard

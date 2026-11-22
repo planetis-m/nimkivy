@@ -10,7 +10,7 @@ release); what they showed decides the mechanism below.
 | Route | Result |
 |---|---|
 | **Type plugin** (`type Widget {.plugin.}`) that adds accessors to the declaring module | **Broken.** A proc the plugin adds cannot read the type's fields ("undeclared field"); one without a field access is written without a module suffix and a call from another module crashes nimsem. Filed: planetis-m/nimony-bugs-llms#336 (`bug-reports/09`). Repro: `prototypes/typeplugin/`. Also: a type plugin runs only in modules that *name* the type (`let w = newWidget()` does not trigger it), so a plugin that rewrites uses would miss modules. |
-| **Template plugin** `properties:` over a `type` section | **Works**, debug and release: typed fields, typed observer lists, change-only setters, bounds, a list, a reference list with Kivy's observer order, events with default handlers as base methods, subclass default overrides, compile errors for wrong names. `prototypes/props/` (tests `tprops.nim`, 5 rejected programs in `bad/`). |
+| **Template plugin** `properties:` over a `type` section | **Works**, debug and release: typed fields, typed observer lists, change-only setters, bounds, a list, a reference list with Kivy's observer order, events with default handlers as base methods, subclass default overrides, compile errors for wrong names. `prototypes/props/` (tests `tprops.nim`, 5 rejected programs in `bad/`; moved to `src/` and `tests/` in step 1). |
 | **Template plugin** `buildUi:` | **Works**, debug and release: a 3-level tree, `as` handles, bindings to another object's and to a sibling's property, handlers with and without arguments, built once and kept current. `prototypes/buildui/` (`tbuildui.nim`, 3 rejected programs). |
 
 Three Nimony limits shape the layout of a module that uses `properties:`:
@@ -69,10 +69,12 @@ Kind by pragma: `prop` (Numeric, String, Boolean, Object, List, Option: the
 Nim type says which), `bounds: lo .. hi`, `refs: (a, b)`, `alias: (get, set)`
 with `deps`, `cache`, `eager` (Kivy's `watch_before_use`), `color`,
 `varlist: 2|4`, `always` (Kivy's `force_dispatch`), `handler` (the class's
-`on_<prop>`), `event`. A field without a pragma is a plain field. Prototyped:
-`prop`, `bounds`, `refs`, `event`, `defaults`, methods in the block; the
-other kinds follow the same pattern (alias linking is the refs mechanism with
-a getter) and are written in step 1.
+`on_<prop>`), `event`. A field without a pragma is a plain field. All are in
+`src/nimkivy/props.nim` (step 1); `refs` and `deps` may name properties of a
+base type. A block that declares `method onE*(w: Owner; ...): bool {.base.}`
+or `method onPChanged*(w: Owner; v: T) {.base.}` itself gives the class its
+own default handler (Kivy's `on_e` and `on_p` methods); otherwise the
+generated one returns false or does nothing.
 
 ### What the plugin generates, per property `p: T` of `Owner`
 
@@ -82,9 +84,9 @@ a getter) and are written in step 1.
 | `p(w): T` | a field read (refs and alias: refresh first, as Kivy's `get`) |
 | `` `p=`(w; v: T) `` | bounds check (stops the program with the message, as phase 1 stops on Kivy's ValueError), change check with `==`, store, dispatch a copy to the observers in bind order; refs: set each reference, then one dispatch; alias: call the setter |
 | extra setters | `varlist`: from 1, 2 or 4 numbers; `color`: from 3 numbers (alpha 1) |
-| `bindP(w; cb): Binding`, `unbindP(w; b)` | typed callback; the handle unbinds |
+| `bindP(w; cb): Binding`, `unbindP(w; b)`, `dispatchP(w)` | typed callback; the handle unbinds; `dispatchP` dispatches the current value (Kivy's `property('p').dispatch(w)`) |
 | `initP(w; v)` | set without dispatch, for constructors and `{.defaults.}` |
-| `initProps(w)` | the base's `initProps`, own defaults, overrides; then eager alias links, then `handler` binds in name order: phase 1's `initEventDispatcher` order exactly |
+| `initProps(w)` | `initPropValues` (the base's, own defaults, overrides), then `linkEagerProps` (the base's, then own eager alias links), then `bindPropHandlers` (the base's, then own in name order): phase 1's `initEventDispatcher` order for every property's observers. Each chain ends at a no-op for `RootRef` in `props`, so the base may be a type declared without the block |
 | refs and alias: `linkP`, `triggerP` | on first use, a trigger is bound into each dependency's observer list, so its place among their observers is Kivy's (phase 1 keeps the same lazy linking) |
 | `handler`: base method `onPChanged(w; v: T)` | the class's `on_<prop>`; a subclass overrides the method |
 
@@ -94,7 +96,7 @@ until one returns true, then the default handler), and the base method
 `onE(w; args): bool` (Kivy's default `on_e`), which subclasses override.
 
 A wrong property, event or default name, or a callback of the wrong type, is
-a compile error (`prototypes/props/bad/`).
+a compile error (`tests/bad/`, checked by `run_tests.sh`).
 
 ### Binding
 
@@ -107,7 +109,7 @@ discard button.bindRelease(proc (): bool = app.goHome(); false)
 Callbacks get the value, not the instance: a closure captures the widget.
 (With the instance, a DSL or a subclass could not write the callback type:
 proc parameters are invariant and the declaring class is not known at the
-call site.) `Observers[F]` (`prototypes/props/observers.nim`) keeps Kivy's
+call site.) `Observers[F]` (`src/nimkivy/observers.nim`) keeps Kivy's
 dispatch rules: bound during a dispatch, not called; unbound during it, not
 called; unbinding marks the entry and the list is compacted when no dispatch
 runs, so a dispatch allocates nothing (phase 1 copies the list each time).
@@ -265,7 +267,7 @@ the block).
 | # | Step | Tests | Done when |
 |---|---|---|---|
 | 0 | **Standalone harness** (done, 2026-11-22): fixtures to `tests/fixtures`, Nim format, `tests/compare.nim`, `archive/`; trace and scene writers print Nim's format | all current tests, traces, scenes | `run_tests.sh` passes with no Python on the machine; `compare.nim` and `compare.py` agree on the current outputs (checked once) |
-| 1 | **Plugins and observers** in `src/nimkivy/props.nim`, `observers.nim`, `plugins/propsplug.nim`, `plugins/codegen.nim`: every kind above, observer order as phase 1 | `tproperties` and the `events`/`properties` cases rewritten on it; the prototype tests; `bad/` programs | every phase-1 property and event case passes typed; the old `event.nim`/`properties.nim` still build the rest |
+| 1 | **Plugins and observers** (done, 2026-11-22; #336, #290, #175, #337 still open at Nimony `95afaa04`, which is master) in `src/nimkivy/props.nim`, `observers.nim`, `plugins/propsplug.nim`, `plugins/codegen.nim`: every kind above, observer order as phase 1 | `tproperties` and the `events`/`properties` cases rewritten on it; the prototype tests; `bad/` programs | every phase-1 property and event case passes typed; the old `event.nim`/`properties.nim` still build the rest |
 | 2 | **Layer 1 and 5 dispatchers**: metrics (aliases), clock, core/window (WindowBase, WidgetBase with typed hints, parent and children by hand: #337), input/motionevent (`claimedBy`), base, app, config typed | tclock, tmetrics, tmotionevent, twindow, tapp; traces `events`, `clock`, `touch` | no name lookups in these modules |
 | 3 | **Layer 6**: widget, layout, the four layouts (typed triggers, `PosHint`, `CanvasLayer`) | twidget, tlayout, trelativelayout; trace `properties`; layout scenes | geometry exact, pixels as before |
 | 4 | **Layer 7**: label (typed font options), image, ButtonBehavior as an owned properties object, no closures | tlabel, timage, tbutton; traces `label`, `touch`; label and image scenes | as before |
@@ -274,6 +276,20 @@ the block).
 | 7 | **`buildUi`** in `src/nimkivy/buildui.nim` + plugin; the showcase's trees written with it | tshowcase unchanged in behaviour; the prototype test as `tbuildui` | the showcase reads like a kv file and passes |
 | 8 | **Word-width cache** | ttext, label trace and scenes, tshowcase | outputs identical; `TTF_GetStringSize` calls down |
 | 9 | **Profile again** with `tools/profile.sh` and `tools/callcounts.sh` on the same machine and settings | — | PROFILE.md gets an "after" section with the same tables: frame times, Ir by area, `doDispatch` (same count), `getPropertyStorage` (0), `rawAlloc` per drawn frame, `TTF_GetStringSize` calls; compared with "before" |
+
+Step 1 notes: `tproperties` runs test_properties.py typed and replays the
+first 44 lines of the `properties` trace (Widget's geometry and BoxLayout's
+padding, the observer order with reference lists and aliases) on typed copies
+of those properties; `tests/traces.nim` writes the `events` trace through a
+`properties:` block; the prototype's tests are `tests/tprops.nim` (with
+`propwidgets.nim`, `proplabels.nim`) and `tests/bad/`, which `run_tests.sh`
+checks. `prototypes/props/` is gone; `prototypes/buildui` and its plugin use
+`src/nimkivy/props` and `plugins/codegen`. Animation tracks (`pTo`, `pKey`)
+are not generated yet: step 5 adds them with `Track`. Found on the way:
+planetis-m/nimony-bugs-llms#338 (a proc literal in an `{.untyped.}` template
+crashes nimsem) and #339 (an object constructor of an inherited field in an
+`{.untyped.}` template gives invalid C); `tproperties` writes around both in
+an equivalent form.
 
 The kiosk (philosykos-website) is written once on the result, after step 7;
 its own parity harness and Python app leave its tree then (ROADMAP.md).

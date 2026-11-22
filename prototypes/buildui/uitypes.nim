@@ -1,7 +1,7 @@
 ## The widgets of the buildUi prototype, declared with `properties:`.
 
 import std/syncio
-import ../props/props
+import nimkivy/props
 import uibase
 
 export props, uibase

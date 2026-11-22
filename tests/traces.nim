@@ -11,7 +11,7 @@
 # touches are logged by it too.
 
 import std/[dirs, formatfloat, os, paths, strutils, syncio]
-import nimkivy/[properties, clock, config, base, animation]
+import nimkivy/[properties, props, clock, config, base, animation]
 import nimkivy/core/text
 import nimkivy/uix/[boxlayout, floatlayout, label, screenmanager, modalview]
 import nimkivy/uix/behaviors/button
@@ -38,15 +38,6 @@ proc save(log: Log; name: string) =
   except:
     quit "cannot write " & dir & "/" & name & ".txt"
   log.lines = @[]
-
-proc args(a: seq[Value]): string =
-  # The event's arguments as a Nim tuple of numbers: (7,)
-  result = "("
-  for i, v in a:
-    if i > 0: result.add ", "
-    result.add $int(v.num)
-  if a.len == 1: result.add ","
-  result.add ")"
 
 # ------------------------------------------------------------------ properties
 
@@ -103,39 +94,48 @@ proc traceProperties() =
 
 # ------------------------------------------------------------------ events
 
-type D = ref object of EventDispatcher
+proc args(n: int): string =
+  # The event's argument as a Nim tuple: (7,)
+  "(" & $n & ",)"
 
-let DClass = newDispatcherClass("D", EventDispatcherClass)
-discard DClass.addNumeric("v", 0)
-DClass.addPropertyHandler("v",
-  proc (d: EventDispatcher; v: Value) = log.emit("default onV", $v))
-DClass.addEvent("on_go",
-  proc (d: EventDispatcher; a: seq[Value]): bool =
-    log.emit("default onGo", args(a))
-    result = false)
+properties:
+  type
+    D = ref object of RootObj
+      v {.prop, handler.}: float = 0.0
+      go {.event.}: proc (n: int)
+
+  method onVChanged(d: D; v: float) {.base.} =
+    log.emit("default onV", fmt3(v))
+
+  method onGo(d: D; n: int): bool {.base.} =
+    log.emit("default onGo", args(n))
+    result = false
+
+  proc newD(): D =
+    result = D()
+    result.initProps()
 
 proc traceEvents() =
-  let d = D(cls: DClass)
-  d.initEventDispatcher()
-  d.bind("v", proc (d: EventDispatcher; v: Value) {.closure.} = log.emit "v1")
-  d.bind("v", proc (d: EventDispatcher; v: Value) {.closure.} = log.emit "v2 returns true")
-  d.bind("v", proc (d: EventDispatcher; v: Value) {.closure.} = log.emit "v3")
-  d.setProperty("v", toValue(1))
-  d.setProperty("v", toValue(1))
+  let d = newD()
+  discard d.bindV(proc (v: float) {.closure.} = log.emit "v1")
+  discard d.bindV(proc (v: float) {.closure.} = log.emit "v2 returns true")
+  discard d.bindV(proc (v: float) {.closure.} = log.emit "v3")
+  d.v = 1.0
+  d.v = 1.0
   log.emit "# events"
-  d.bind("on_go", proc (d: EventDispatcher; a: seq[Value]): bool {.closure.} =
-    log.emit("g1", args(a))
+  discard d.bindGo(proc (n: int): bool {.closure.} =
+    log.emit("g1", args(n))
     result = false)
-  d.bind("on_go", proc (d: EventDispatcher; a: seq[Value]): bool {.closure.} =
-    log.emit("g2", args(a))
+  discard d.bindGo(proc (n: int): bool {.closure.} =
+    log.emit("g2", args(n))
     result = false)
-  log.emit("dispatch ->", $(d.dispatch("on_go", toValue(7))))
-  let uid = d.fbind("on_go", proc (d: EventDispatcher; a: seq[Value]): bool {.closure.} =
+  log.emit("dispatch ->", $d.dispatchGo(7))
+  let b = d.bindGo(proc (n: int): bool {.closure.} =
     log.emit "g3 returns true"
     result = true)
-  log.emit("dispatch ->", $(d.dispatch("on_go", toValue(8))))
-  d.unbindUid("on_go", uid)
-  log.emit("dispatch after unbindUid ->", $(d.dispatch("on_go", toValue(9))))
+  log.emit("dispatch ->", $d.dispatchGo(8))
+  d.unbindGo(b)
+  log.emit("dispatch after unbindUid ->", $d.dispatchGo(9))
   log.save "events"
 
 # ------------------------------------------------------------------ clock

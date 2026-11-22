@@ -1,8 +1,9 @@
-## Tests of the property prototype: typed properties, bind/unbind, change-only
-## dispatch, bounds, a list, a reference list, events, subclass defaults.
+## Tests of the properties plugin (the prototype's tests): typed properties,
+## bind/unbind, change-only dispatch, bounds, a list, a reference list,
+## events, subclass defaults.
 
 import std/[syncio, assertions]
-import labels
+import proplabels
 
 proc testDefaults() =
   let w = newWidget("w")
