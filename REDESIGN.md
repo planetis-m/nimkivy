@@ -37,7 +37,7 @@
   its class name), #334 (a dispatch passes a copy of the value). Written
   around in tests only: #338, #339; found on the way: #341.
 
-The plan for ROADMAP.md's phase 2. Behaviour stays phase 1's: the same tests,
+The plan for archive/ROADMAP.md's phase 2. Behaviour stays phase 1's: the same tests,
 traces and scenes, adapted in syntax only, are the safety net. The two
 plugins were prototyped first (`prototypes/`, debug and release); what they
 showed decides the mechanism below. Both prototypes moved into `src/` and
@@ -581,4 +581,4 @@ property (one dispatch per ScreenManager) and phase 2 stores directly, as
 Kivy does.
 
 The kiosk (philosykos-website) is written once on the result, after step 7;
-its own parity harness and Python app leave its tree then (ROADMAP.md).
+its own parity harness and Python app leave its tree then (archive/ROADMAP.md).

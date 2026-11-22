@@ -4,6 +4,10 @@ Nothing here is run by the build or the tests. These are the Python scripts
 that produced nimkivy's test fixtures during phase 1, kept as their
 provenance. nimkivy builds and tests without Python (REDESIGN.md, Standalone).
 
+Also kept here, as finished: `ROADMAP.md` (phases 1 and 2, both complete)
+and `notes/` (the phase-2 brief and the handoff notes of layers 6-10 and
+phase 2's steps). The paths they name are from the nimkivy root.
+
 ## The scripts (`reference/`)
 
 They ran the real Kivy 2.3.2, installed in the kiosk's virtual environment
@@ -21,7 +25,7 @@ the nimkivy root, between 2026-11-21 and 2026-11-22 (git history of
 | `compare.py` | (compared nimkivy's output with `out/`) | `tests/compare.nim` |
 
 `smooth.py` ran on 2026-11-22 in a throwaway Python 3.12 environment
-outside the repository (`~/.cache/kivy232-venv`, `uv pip install
+outside the repository (`~/.cache/kivy232-venv`, since deleted; `uv pip install
 kivy==2.3.2`; its docstring has the commands), on the same machine and
 display; that environment re-rendered graphics_basic and graphics_basic_msaa
 byte for byte as the committed fixtures before it was used.

@@ -248,7 +248,7 @@ A layer is done when:
 ## 10. Whole-stack check on this machine (owner, 2026-11-22: no tablet testing for now)
 
 - **Goal:** all of phase 1 works together on the development machine (Linux, SDL3, OpenGL renderer): every reference scene and trace, plus one small app that uses every widget, layout, animation, screen change, the modal view and audio together, driven by a scripted run.
-- **Profiling baseline:** measure frame time on this machine for that app and for the busiest reference scenes, and record where time goes (properties, layout, drawing, text). This is the "before" number for phase 2 (`ROADMAP.md`).
+- **Profiling baseline:** measure frame time on this machine for that app and for the busiest reference scenes, and record where time goes (properties, layout, drawing, text). This is the "before" number for phase 2 (`archive/ROADMAP.md`).
 - **Android:** not tested now. Write down in `ANDROID.md` what a later Android build will need (the path below), without building it.
 - **Path for later Android work:** compile with Nimony using `--os:android --cpu:arm64` (and `arm` for 32-bit) and the NDK's clang into `libmain.so`, packaged with SDL3's Android project template (SDLActivity), assets read through SDL's IOStream, Back as key 27 (`SDL_HINT_ANDROID_TRAP_BACK_BUTTON`), keep-screen-on and immersive mode in SDLActivity.
 - **Done:** the scripted whole-stack run passes in debug and release, the profiling baseline is recorded, `ANDROID.md` is written.

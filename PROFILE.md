@@ -1,6 +1,6 @@
 # Profiling: phase 1 (before) and phase 2 (after), 2026-11-22
 
-The first part is the "before" numbers for phase 2 (ROADMAP.md): frame time
+The first part is the "before" numbers for phase 2 (archive/ROADMAP.md): frame time
 of the whole-stack showcase and of the busiest reference scenes, and where
 the time goes. Facts only; what they suggest is at its end. The second part,
 "After phase 2", measures the finished phase 2 the same way, beside the
