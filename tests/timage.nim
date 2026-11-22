@@ -79,7 +79,7 @@ block shared_texture_and_reload:
   let t = one.texture
   assert t != nil and t == two.texture
   var changes = 0
-  one.bind("texture", proc (d: EventDispatcher; v: Value) {.closure.} = inc changes)
+  discard one.bindTexture(proc (v: nil Texture) {.closure.} = inc changes)
   one.reload()
   assert one.texture != nil and one.texture != t
   assert one.source == a("small.png") and one.textureSize == (40.0, 30.0)

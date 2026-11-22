@@ -346,13 +346,16 @@ proc traceAnimation() =
 # ------------------------------------------------------------------ touch
 
 type
+  BtnPart = ref object of ButtonBehavior
+    # Btn's on_press and on_release, logged.
+    tag: string
+
   Btn = ref object of Widget
     # traces.py trace_touch: class Btn(ButtonBehavior, Widget).
     tag: string
-    button: nil ButtonBehavior
+    button: BtnPart
 
 let BtnClass = newDispatcherClass("Btn", WidgetClass)
-BtnClass.addButtonBehavior()
 
 proc r(p: (float, float)): string =
   # traces.py r(): numbers with 3 decimals.
@@ -363,48 +366,45 @@ proc tagOf(d: nil RootRef): string =
   elif d of Btn: Btn(d).tag
   else: "?"
 
-proc onPress(d: EventDispatcher; args: seq[Value]): bool =
-  log.emit(Btn(d).tag, "onPress")
+method onPress(b: BtnPart): bool =
+  log.emit(b.tag, "onPress")
   result = false
 
-proc onRelease(d: EventDispatcher; args: seq[Value]): bool =
-  log.emit(Btn(d).tag, "onRelease")
+method onRelease(b: BtnPart): bool =
+  log.emit(b.tag, "onRelease")
   result = false
 
-BtnClass.setEventHandler("on_press", onPress)
-BtnClass.setEventHandler("on_release", onRelease)
+proc newBtnPart(tag: string): BtnPart =
+  result = BtnPart(tag: tag)
+  result.initProps()
+  result.initButtonBehavior()
 
 proc newBtn(tag: string; x, y, w, h: float): Btn =
-  result = Btn(cls: BtnClass, canvas: newCanvas(), tag: tag, button: nil)
+  result = Btn(cls: BtnClass, canvas: newCanvas(), tag: tag, button: newBtnPart(tag))
   result.initProps()
   result.initWidget()
-  result.button = newButtonBehavior(result)
   result.sizeHint = (none[float](), none[float]())
   result.size = (w, h)
   result.pos = (x, y)
-  result.bind("state", proc (d: EventDispatcher; v: Value) {.closure.} =
-    log.emit(tag, "state", v.str))
-
-proc buttonOf(b: Btn): ButtonBehavior =
-  let bb = b.button
-  if bb == nil: quit "Btn without its ButtonBehavior"
-  result = bb
+  discard result.button.bindState(proc (v: ButtonState) {.closure.} =
+    log.emit(tag, "state", $v))
 
 method onTouchDown(b: Btn; t: MotionEvent): bool =
   log.emit(b.tag, "onTouchDown", r(t.pos))
-  result = b.buttonOf.onTouchDown(t, proc (t: MotionEvent): bool {.closure.} =
-    procCall onTouchDown(Widget(b), t))
+  result = procCall onTouchDown(Widget(b), t)
+  if not result: result = b.button.touchDown(b, t)
   log.emit(b.tag, "onTouchDown ->", $result)
 
 method onTouchMove(b: Btn; t: MotionEvent): bool =
-  result = b.buttonOf.onTouchMove(t, proc (t: MotionEvent): bool {.closure.} =
-    procCall onTouchMove(Widget(b), t))
+  result = b.button.grabbed(b, t)
+  if not result: result = procCall onTouchMove(Widget(b), t)
+  if not result: result = b.button.touchMove(b, t)
   log.emit(b.tag, "onTouchMove grabCurrent", tagOf(t.grabCurrent), "->",
     $result)
 
 method onTouchUp(b: Btn; t: MotionEvent): bool =
-  result = b.buttonOf.onTouchUp(t, proc (t: MotionEvent): bool {.closure.} =
-    procCall onTouchUp(Widget(b), t))
+  if b.button.grabbed(b, t): result = b.button.touchUp(b, t)
+  else: result = procCall onTouchUp(Widget(b), t)
   log.emit(b.tag, "onTouchUp grabCurrent", tagOf(t.grabCurrent), "->",
     $result)
 

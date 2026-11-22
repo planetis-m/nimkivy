@@ -16,16 +16,10 @@ type
   ModalButton = ref object of Widget
     # test_uix_modal.py ModalButton: a button used as the root widget that
     # must not get a touch while the modal is open.
-    button: nil ButtonBehavior
+    button: ButtonBehavior
     modal: nil ModalView
 
 let ModalButtonClass = newDispatcherClass("ModalButton", WidgetClass)
-ModalButtonClass.addButtonBehavior()
-
-proc bb(b: ModalButton): ButtonBehavior =
-  let x = b.button
-  if x == nil: quit "ModalButton without its ButtonBehavior"
-  result = x
 
 proc checkClosed(b: ModalButton) =
   let m = b.modal
@@ -35,24 +29,25 @@ proc checkClosed(b: ModalButton) =
 
 method onTouchDown(b: ModalButton; t: MotionEvent): bool =
   b.checkClosed()
-  b.bb.onTouchDown(t, proc (t: MotionEvent): bool {.closure.} =
-    procCall onTouchDown(Widget(b), t))
+  result = procCall onTouchDown(Widget(b), t)
+  if not result: result = b.button.touchDown(b, t)
 
 method onTouchMove(b: ModalButton; t: MotionEvent): bool =
   b.checkClosed()
-  b.bb.onTouchMove(t, proc (t: MotionEvent): bool {.closure.} =
-    procCall onTouchMove(Widget(b), t))
+  result = b.button.grabbed(b, t)
+  if not result: result = procCall onTouchMove(Widget(b), t)
+  if not result: result = b.button.touchMove(b, t)
 
 method onTouchUp(b: ModalButton; t: MotionEvent): bool =
   b.checkClosed()
-  b.bb.onTouchUp(t, proc (t: MotionEvent): bool {.closure.} =
-    procCall onTouchUp(Widget(b), t))
+  if b.button.grabbed(b, t): result = b.button.touchUp(b, t)
+  else: result = procCall onTouchUp(Widget(b), t)
 
 proc newModalButton(): ModalButton =
-  result = ModalButton(cls: ModalButtonClass, canvas: newCanvas(), button: nil, modal: nil)
+  result = ModalButton(cls: ModalButtonClass, canvas: newCanvas(),
+    button: newButtonBehavior(), modal: nil)
   result.initProps()
   result.initWidget()
-  result.button = newButtonBehavior(result)
 
 proc waitFrames(n: int) =
   # UnitKivyApp.wait_clock_frames: n frames of the event loop.

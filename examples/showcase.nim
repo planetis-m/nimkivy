@@ -82,28 +82,23 @@ proc texts*(lang: string): Texts =
 type
   Pressable* = ref object of BoxLayout
     ## A BoxLayout that is a button (the kiosk's PillButton and PhotoTile):
-    ## ButtonBehavior held as a field (PORTING.md, decision 4).
-    button: nil ButtonBehavior
+    ## it owns a ButtonBehavior (PORTING.md, decision 4).
+    button: ButtonBehavior
 
 let PressableClass = newDispatcherClass("Pressable", BoxLayoutClass)
-PressableClass.addButtonBehavior()
-
-proc bb(p: Pressable): ButtonBehavior =
-  let b = p.button
-  if b == nil: quit "Pressable without its ButtonBehavior"
-  result = b
 
 method onTouchDown(p: Pressable; t: MotionEvent): bool =
-  p.bb.onTouchDown(t, proc (t: MotionEvent): bool {.closure.} =
-    procCall onTouchDown(BoxLayout(p), t))
+  result = procCall onTouchDown(BoxLayout(p), t)
+  if not result: result = p.button.touchDown(p, t)
 
 method onTouchMove(p: Pressable; t: MotionEvent): bool =
-  p.bb.onTouchMove(t, proc (t: MotionEvent): bool {.closure.} =
-    procCall onTouchMove(BoxLayout(p), t))
+  result = p.button.grabbed(p, t)
+  if not result: result = procCall onTouchMove(BoxLayout(p), t)
+  if not result: result = p.button.touchMove(p, t)
 
 method onTouchUp(p: Pressable; t: MotionEvent): bool =
-  p.bb.onTouchUp(t, proc (t: MotionEvent): bool {.closure.} =
-    procCall onTouchUp(BoxLayout(p), t))
+  if p.button.grabbed(p, t): result = p.button.touchUp(p, t)
+  else: result = procCall onTouchUp(BoxLayout(p), t)
 
 proc paint(w: Widget; rgba: array[4, float]) =
   # A background rectangle in canvas.before that follows the widget (the
@@ -136,10 +131,9 @@ proc label(text: string; size: float; color: array[4, float]; bold = false;
   else: result.boxedText()
 
 proc pressable(vertical = false): Pressable =
-  result = Pressable(cls: PressableClass, canvas: newCanvas(), button: nil)
+  result = Pressable(cls: PressableClass, canvas: newCanvas(), button: newButtonBehavior())
   result.initProps()
   result.initBoxLayout()
-  result.button = newButtonBehavior(result)
   if vertical: result.orientation = orientationVertical
 
 proc pill(text: Label; fill: array[4, float]): Pressable =
@@ -149,7 +143,7 @@ proc pill(text: Label; fill: array[4, float]): Pressable =
   result.addWidget(text)
 
 proc onRelease(p: Pressable; action: proc () {.closure.}) =
-  p.bind("on_release", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+  discard p.button.bindRelease(proc (): bool {.closure.} =
     action()
     result = false)
 
@@ -341,7 +335,7 @@ proc tile(s: Showcase; i: int): Pressable =
   s.tiles.add p
   s.tileImages.add im
   s.tileLabels.add caption
-  p.bind("on_press", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+  discard p.button.bindPress(proc (): bool {.closure.} =
     newAnimation({"opacity": 0.8}, duration = 0.08).start(p)
     result = false)
   p.onRelease(proc () {.closure.} =

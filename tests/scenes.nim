@@ -380,8 +380,7 @@ proc fitHeight(l: Label) =
   # lb.bind(width=lambda w, v: setattr(w, "text_size", (v, None)),
   #         texture_size=lambda w, v: setattr(w, "height", v[1]))
   discard l.bindWidth(proc (v: float) {.closure.} = l.textSize = (some(v), none[float]()))
-  l.bind("texture_size", proc (d: EventDispatcher; v: Value) {.closure.} =
-    l.height = v.items[1].num)
+  discard l.bindTextureSize(proc (v: (float, float)) {.closure.} = l.height = v[1])
 
 proc labelAlign(): Widget =
   # scenes.py label_align

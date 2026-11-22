@@ -56,33 +56,6 @@ proc logError(msg: string) =
   # goes on without the font (PORTING.md, Errors).
   stderr.writeLine "[ERROR  ] [Text        ] " & msg
 
-proc parseHalign*(s: string): Halign =
-  ## Kivy's halign string as a Halign; unknown strings are `halignLeft`.
-  case s
-  of "center": halignCenter
-  of "right": halignRight
-  of "justify": halignJustify
-  of "auto": halignAuto
-  else: halignLeft
-
-proc parseValign*(s: string): Valign =
-  ## Kivy's valign string as a Valign; unknown strings are `valignBottom`.
-  case s
-  of "middle": valignMiddle
-  of "center": valignCenter
-  of "top": valignTop
-  else: valignBottom
-
-proc setPadding*(o: LabelOptions; padding: openArray[float]) =
-  ## Sets the padding from 1, 2 or 4 values, as Kivy accepts it:
-  ## `[p]`, `[horizontal, vertical]` or `[left, top, right, bottom]`.
-  case padding.len
-  of 1: o.padding = [padding[0], padding[0], padding[0], padding[0]]
-  of 2: o.padding = [padding[0], padding[1], padding[0], padding[1]]
-  of 4: o.padding = [padding[0], padding[1], padding[2], padding[3]]
-  else: logError "padding should be a list with 1, 2 or 4 elements, got " &
-    $padding.len & " elements."
-
 # ---------------------------------------------------------------- fonts
 
 proc register*(name, fnRegular: string; fnItalic = ""; fnBold = "";

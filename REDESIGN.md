@@ -270,7 +270,7 @@ the block).
 | 1 | **Plugins and observers** (done, 2026-11-22; #336, #290, #175, #337 still open at Nimony `95afaa04`, which is master) in `src/nimkivy/props.nim`, `observers.nim`, `plugins/propsplug.nim`, `plugins/codegen.nim`: every kind above, observer order as phase 1 | `tproperties` and the `events`/`properties` cases rewritten on it; the prototype tests; `bad/` programs | every phase-1 property and event case passes typed; the old `event.nim`/`properties.nim` still build the rest |
 | 2 | **Layer 1 and 5 dispatchers** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master): metrics (aliases), clock, core/window (WindowBase, WidgetBase with typed hints, parent and children by hand: #337), input/motionevent (`claimedBy`), base, app, config typed | tclock, tmetrics, tmotionevent, twindow, tapp; traces `events`, `clock`, `touch` | no name lookups in these modules |
 | 3 | **Layer 6** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master): widget, layout, the four layouts (typed triggers, `PosHint`, `CanvasLayer`) | twidget, tlayout, trelativelayout; trace `properties`; layout scenes | geometry exact, pixels as before |
-| 4 | **Layer 7**: label (typed font options), image, ButtonBehavior as an owned properties object, no closures | tlabel, timage, tbutton; traces `label`, `touch`; label and image scenes | as before |
+| 4 | **Layer 7** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master): label (typed font options), image, ButtonBehavior as an owned properties object, no closures | tlabel, timage, tbutton; traces `label`, `touch`; label and image scenes | as before |
 | 5 | **Layers 8-9**: animation (tracks), screenmanager, modalview, audio | tanimation, tscreenmanager, tmodalview, taudio; traces `animation`, `screens`, `modal`; fade and modal scenes | as before |
 | 6 | **Cleanup**: remove `Value`, `DispatcherClass`, the name APIs and every helper in the table above; rename the Python-style helpers | everything | `grep` finds none of the phase-1 names; PORTING.md's decisions 3 and 4 rewritten |
 | 7 | **`buildUi`** in `src/nimkivy/buildui.nim` + plugin; the showcase's trees written with it | tshowcase unchanged in behaviour; the prototype test as `tbuildui` | the showcase reads like a kv file and passes |
@@ -342,6 +342,37 @@ shoggoth (#337, commented), so `widgetChildren` and `walk` are iterators
 side-effect free by default (`{.sideEffect.}`); `discard` of a call with
 side effects in a func or iterator crashes nimsem instead of reporting it
 (filed #341).
+
+Step 4 notes: Label and Image are `properties:` blocks (`newLabel`,
+`newImage`: `initProps`, then `initLabel`/`initImage`); Label forwards each
+font property to its core label through its own typed observer, in Kivy's
+`_font_properties` order; Image's `imageRatio` and `normImageSize` are
+cached eager aliases (`normImageSize` deps `texture, size, imageRatio,
+fitMode`), declared after their dependencies so the eager links and the
+`onTextureChanged` handler bind in phase 1's order. **ButtonBehavior** is a
+`ref object of RootObj` block with `state`, `lastTouch`, `minStateTime`,
+`alwaysRelease`, `press`, `release`; it has no widget field. Kivy's
+`on_touch_move` and `on_touch_up` call `super()` only conditionally (not for
+the grabbed touch), so "procCall first, then `w.button.touchDown(w, t)`"
+holds for the down only; the widget's methods are:
+
+```nim
+method onTouchDown(b: Btn; t: MotionEvent): bool =
+  result = procCall onTouchDown(Widget(b), t)
+  if not result: result = b.button.touchDown(b, t)
+method onTouchMove(b: Btn; t: MotionEvent): bool =
+  result = b.button.grabbed(b, t)
+  if not result: result = procCall onTouchMove(Widget(b), t)
+  if not result: result = b.button.touchMove(b, t)
+method onTouchUp(b: Btn; t: MotionEvent): bool =
+  if b.button.grabbed(b, t): result = b.button.touchUp(b, t)
+  else: result = procCall onTouchUp(Widget(b), t)
+```
+
+A subclass of ButtonBehavior in another module overrides `onPress` (a base
+method generated in button.nim) without meeting #175 (that needs the base
+method declared outside its class's module). `LabelClass` and `ImageClass`
+are names only, until step 6.
 
 The kiosk (philosykos-website) is written once on the result, after step 7;
 its own parity harness and Python app leave its tree then (ROADMAP.md).

@@ -23,8 +23,8 @@ type Counter = ref object
 proc renderCounter(l: Label): Counter =
   # Counts the textures the label gets (one per render).
   let c = Counter(n: 0)
-  l.bind("texture", proc (d: EventDispatcher; v: Value) {.closure.} =
-    if v.kind != vkNone: inc c.n)
+  discard l.bindTexture(proc (v: nil Texture) {.closure.} =
+    if v != nil: inc c.n)
   result = c
 
 block defaults:
@@ -153,9 +153,8 @@ block hinting:
   let l = newLabel("x")
   l.fontHinting = hintingNone
   assert l.fontHinting == hintingNone
-  assert l.getProperty("font_hinting").kind == vkNone
   l.fontHinting = hintingMono
-  assert l.getProperty("font_hinting").str == "mono"
+  assert l.fontHinting == hintingMono
   assert l.rendered[0] > 0
 
 type BasicApp = ref object of App

@@ -77,9 +77,9 @@ type
     ## `touchUp`, and coordinate methods. Build it with `T(cls: ...,
     ## canvas: newCanvas())`, then call `initWidgetBase`. It stays an
     ## EventDispatcher (`cls` names the class) while widgets below it
-    ## still declare phase-1 properties on their classes (Label, Image,
-    ## ButtonBehavior until step 4; ScreenManager and ModalView until
-    ## step 5); step 6 makes it a `ref object of RootObj`.
+    ## still declare phase-1 properties on their classes (ScreenManager
+    ## and ModalView until step 5); step 6 makes it a `ref object of
+    ## RootObj`.
     canvas*: Canvas
     parentStore: nil WidgetBase
     parentObs: Observers[proc (v: nil WidgetBase) {.closure.}]

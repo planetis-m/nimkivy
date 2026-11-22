@@ -1,29 +1,41 @@
 ## Button behaviour: Kivy's `kivy/uix/behaviors/button.py` (ButtonBehavior).
 ##
 ## Kivy's ButtonBehavior is a mixin: `class Btn(ButtonBehavior, Widget)`.
-## Nim has single inheritance, so here the widget holds a `ButtonBehavior`
-## and calls into it (PORTING.md, decision 4):
+## Nim has single inheritance, so here the button part is an object with its
+## own properties and events that the widget owns (PORTING.md, decision 4):
 ##
-## - `addButtonBehavior(cls)` declares the properties `state`, `last_touch`,
-##   `min_state_time` and `always_release`, and the events `on_press` and
-##   `on_release`, on the widget's class; a subclass overrides their default
-##   handlers with `setEventHandler`.
-## - `newButtonBehavior(widget)`, called after the widget is set up, reads
-##   `min_state_time` from Config, as Kivy's `__init__` does.
-## - The widget's `onTouchDown`, `onTouchMove` and `onTouchUp` methods call
-##   the behaviour's, passing what Kivy's `super()` would call there (the
-##   parent class's method, through `procCall`) as `inherited`.
+## .. code-block:: nim
+##   type Btn = ref object of Widget
+##     button: ButtonBehavior        # newButtonBehavior(), or a subclass
+##
+##   method onTouchDown(b: Btn; t: MotionEvent): bool =
+##     result = procCall onTouchDown(Widget(b), t)
+##     if not result: result = b.button.touchDown(b, t)
+##
+##   method onTouchMove(b: Btn; t: MotionEvent): bool =
+##     result = b.button.grabbed(b, t)
+##     if not result: result = procCall onTouchMove(Widget(b), t)
+##     if not result: result = b.button.touchMove(b, t)
+##
+##   method onTouchUp(b: Btn; t: MotionEvent): bool =
+##     if b.button.grabbed(b, t): result = b.button.touchUp(b, t)
+##     else: result = procCall onTouchUp(Widget(b), t)
+##
+## The widget's parent class is called where Kivy's ButtonBehavior calls
+## `super()`. A subclass of ButtonBehavior overrides `onPress` and
+## `onRelease` (Kivy's `on_press` and `on_release` methods); anyone binds
+## them with `bindPress` and `bindRelease`.
 ##
 ## A touch down on the widget grabs the touch, sets `state` to down and
-## dispatches `on_press`. Its end dispatches `on_release` when it is still on
-## the widget (or always, with `always_release`), and `state` goes back to
-## normal, but not sooner than `min_state_time` after the press.
+## dispatches `press`. Its end dispatches `release` when it is still on the
+## widget (or always, with `alwaysRelease`), and `state` goes back to
+## normal, but not sooner than `minStateTime` after the press.
 
 import std/assertions
-import ../../[properties, clock, config]
+import ../../[props, clock, config]
 import ../widget
 
-export widget
+export widget, props
 
 type
   ButtonState* = enum
@@ -31,163 +43,116 @@ type
     stateNormal = "normal"     ## not pressed
     stateDown = "down"         ## pressed
 
-  TouchHandler* = proc (touch: MotionEvent): bool {.closure.}
-    ## A touch method of the widget's parent class: Kivy's `super()` call.
+properties:
+  type
+    ButtonBehavior* = ref object of RootObj
+      ## The button part of a widget. uix/behaviors/button.py ButtonBehavior
+      stateEvent: nil ClockEvent   # __state_event: the delayed release
+      touchTime: float             # __touch_time: when the touch went down
+      state* {.prop.}: ButtonState = stateNormal  ## down while a touch presses it
+      lastTouch* {.prop.}: nil MotionEvent = nil  ## the last touch that pressed or released it
+      minStateTime* {.prop.}: float = 0.0  ## the shortest time, in seconds, the state stays down
+      alwaysRelease* {.prop.}: bool = false  ## `release` also for a touch that ends off the widget
+      press* {.event.}: proc ()    ## the button was pressed
+      release* {.event.}: proc ()  ## the button was released
 
-  ButtonBehavior* = ref object
-    ## The button part of a widget. uix/behaviors/button.py ButtonBehavior
-    widget: Widget
-    stateEvent: nil ClockEvent   # __state_event: the delayed release
-    touchTime: float             # __touch_time: when the touch went down
+  proc cancelEvent(b: ButtonBehavior) =
+    # ButtonBehavior.cancel_event
+    let ev = b.stateEvent
+    if ev != nil:
+      ev.cancel()
+      b.stateEvent = nil
 
-proc noHandler(d: EventDispatcher; args: seq[Value]): bool =
-  # ButtonBehavior.on_press and on_release: nothing.
-  false
-
-proc addButtonBehavior*(cls: DispatcherClass) =
-  ## Declares ButtonBehavior's properties and events on a widget class.
-  discard cls.addOption("state", "normal", @["normal", "down"])
-  discard cls.addObject("last_touch", noneValue(), allowNone = true)
-  discard cls.addNumeric("min_state_time", 0)
-  discard cls.addBoolean("always_release", false)
-  cls.addEvent("on_press", noHandler)
-  cls.addEvent("on_release", noHandler)
-
-proc cancelEvent(b: ButtonBehavior) =
-  # ButtonBehavior.cancel_event
-  let ev = b.stateEvent
-  if ev != nil:
-    ev.cancel()
+  proc initButtonBehavior*(b: ButtonBehavior) =
+    ## Sets up a new button part whose properties `initProps` has set: sets
+    ## `minStateTime` from Config (graphics, minStateTime); a later
+    ## `minStateTime=` overrides it, as a keyword argument does in Kivy.
+    ## ButtonBehavior.__init__
     b.stateEvent = nil
+    b.touchTime = 0
+    b.minStateTime = Config.graphics.minStateTime
+    discard b.bindState(proc (v: ButtonState) {.closure.} = b.cancelEvent())
 
-proc newButtonBehavior*(widget: Widget): ButtonBehavior =
-  ## The button part of `widget`, whose class has `addButtonBehavior` and
-  ## which is set up. Sets `min_state_time` from Config (graphics,
-  ## min_state_time); a later `minStateTime=` overrides it, as a keyword
-  ## argument does in Kivy. ButtonBehavior.__init__
-  result = ButtonBehavior(widget: widget, stateEvent: nil, touchTime: 0)
-  widget.setProperty("min_state_time",
-    toValue(Config.graphics.minStateTime))
-  let b = result
-  discard widget.fbind("state", proc (d: EventDispatcher; v: Value) {.closure.} =
-    b.cancelEvent())
+  proc newButtonBehavior*(): ButtonBehavior =
+    ## A button part with the default handlers, for a widget to own.
+    result = ButtonBehavior(stateEvent: nil, touchTime: 0)
+    result.initProps()
+    result.initButtonBehavior()
 
-# ------------------------------------------------------------------ accessors
+  # ---------------------------------------------------------------- press and release
 
-proc widget*(b: ButtonBehavior): Widget {.inline.} =
-  ## The widget this is the button part of (Kivy's `self`).
-  b.widget
+  proc doPress(b: ButtonBehavior) =
+    # ButtonBehavior._do_press
+    b.state = stateDown
 
-proc state*(b: ButtonBehavior): ButtonState =
-  ## Down while a touch presses the button, else normal.
-  if b.widget.getProperty("state").str == "down": stateDown else: stateNormal
-proc `state=`*(b: ButtonBehavior; v: ButtonState) =
-  ## Sets the state.
-  b.widget.setProperty("state", toValue($v))
+  proc doRelease(b: ButtonBehavior) =
+    # ButtonBehavior._do_release
+    b.state = stateNormal
 
-proc lastTouch*(b: ButtonBehavior): nil MotionEvent =
-  ## The last touch that pressed or released the button; nil before.
-  result = nil
-  let v = b.widget.getProperty("last_touch")
-  if v.kind == vkObject:
-    let o = v.obj
-    if o != nil and o of MotionEvent:
-      result = MotionEvent(o)
+  proc grabbed*(b: ButtonBehavior; w: Widget; touch: MotionEvent): bool {.inline.} =
+    ## Whether `touch` is grabbed by `w` and dispatched to it as the grabber:
+    ## the touch that pressed the button, whose moves and end are the
+    ## button's, not the children's.
+    touch.grabCurrent == RootRef(w)
 
-proc minStateTime*(b: ButtonBehavior): float =
-  ## The shortest time, in seconds, the state stays down.
-  b.widget.getProperty("min_state_time").num
-proc `minStateTime=`*(b: ButtonBehavior; v: float) =
-  ## Sets the shortest time the state stays down.
-  b.widget.setProperty("min_state_time", toValue(v))
+  proc touchDown*(b: ButtonBehavior; w: Widget; touch: MotionEvent): bool =
+    ## A touch down that the widget's children did not take: on the widget,
+    ## not a scroll and not seen before, it is grabbed and presses the
+    ## button. The widget, as the key, claims the touch (Kivy's
+    ## `touch.ud[self]`). ButtonBehavior.on_touch_down, after `super()`
+    if touch.isMouseScrolling:
+      return false
+    if not w.collidePoint(touch.x, touch.y):
+      return false
+    if RootRef(w) in touch.claimedBy:
+      return false
+    touch.grab(w)
+    touch.claimedBy.add RootRef(w)
+    b.lastTouch = touch
+    b.touchTime = time()
+    b.doPress()
+    discard b.dispatchPress()
+    result = true
 
-proc alwaysRelease*(b: ButtonBehavior): bool =
-  ## Whether `on_release` is dispatched when the touch ends off the button
-  ## (default false).
-  b.widget.getProperty("always_release").flag
-proc `alwaysRelease=`*(b: ButtonBehavior; v: bool) =
-  ## Dispatches `on_release` for a touch that ends off the button, or not.
-  b.widget.setProperty("always_release", toValue(v))
+  proc touchMove*(b: ButtonBehavior; w: Widget; touch: MotionEvent): bool =
+    ## A move that is not `grabbed` and that the children did not take: the
+    ## button's if it pressed the touch. ButtonBehavior.on_touch_move, after
+    ## `super()`
+    RootRef(w) in touch.claimedBy
 
-# ------------------------------------------------------------------ press and release
+  proc touchUp*(b: ButtonBehavior; w: Widget; touch: MotionEvent): bool =
+    ## The end of the `grabbed` touch: ungrabs it and releases the button,
+    ## with `release` when the touch is still on the widget (or
+    ## `alwaysRelease`), and `state` normal after `minStateTime`. Returns
+    ## false (Kivy's None) for a release off the widget.
+    ## ButtonBehavior.on_touch_up
+    assert RootRef(w) in touch.claimedBy
+    touch.ungrab(w)
+    b.lastTouch = touch
+    if not b.alwaysRelease and not w.collidePoint(touch.pos[0], touch.pos[1]):
+      b.doRelease()
+      return false
+    let touchtime = time() - b.touchTime
+    let minStateTime = b.minStateTime
+    if touchtime < minStateTime:
+      b.stateEvent = Clock.scheduleOnce(proc (dt: float) {.closure.} = b.doRelease(),
+        minStateTime - touchtime)
+    else:
+      b.doRelease()
+    discard b.dispatchRelease()
+    result = true
 
-proc doPress(b: ButtonBehavior) =
-  # ButtonBehavior._do_press
-  b.state = stateDown
-
-proc doRelease(b: ButtonBehavior) =
-  # ButtonBehavior._do_release
-  b.state = stateNormal
-
-proc key(b: ButtonBehavior): RootRef {.inline.} =
-  # The widget, as it claims a touch (Kivy's `self in touch.ud`).
-  RootRef(b.widget)
-
-proc onTouchDown*(b: ButtonBehavior; touch: MotionEvent; inherited: TouchHandler): bool =
-  ## The children first (`inherited`); then a touch down on the widget,
-  ## not a scroll and not seen before, is grabbed and presses the button.
-  ## ButtonBehavior.on_touch_down
-  if inherited(touch):
-    return true
-  if touch.isMouseScrolling:
-    return false
-  let w = b.widget
-  if not w.collidePoint(touch.x, touch.y):
-    return false
-  if b.key in touch.claimedBy:
-    return false
-  touch.grab(w)
-  touch.claimedBy.add b.key
-  w.setProperty("last_touch", toValue(RootRef(touch)))
-  b.touchTime = time()
-  b.doPress()
-  discard w.dispatch("on_press")
-  result = true
-
-proc onTouchMove*(b: ButtonBehavior; touch: MotionEvent; inherited: TouchHandler): bool =
-  ## A grabbed touch is the button's; otherwise the children's
-  ## (`inherited`), or the button's if it pressed it.
-  ## ButtonBehavior.on_touch_move
-  if touch.grabCurrent == RootRef(b.widget):
-    return true
-  if inherited(touch):
-    return true
-  result = b.key in touch.claimedBy
-
-proc onTouchUp*(b: ButtonBehavior; touch: MotionEvent; inherited: TouchHandler): bool =
-  ## The end of the touch that pressed the button: ungrabs it and releases
-  ## the button, with `on_release` when the touch is still on the widget
-  ## (or `always_release`), and `state` normal after `min_state_time`.
-  ## Other touches go to `inherited`. Returns false (Kivy's None) for a
-  ## release off the widget. ButtonBehavior.on_touch_up
-  let w = b.widget
-  if touch.grabCurrent != RootRef(w):
-    return inherited(touch)
-  assert b.key in touch.claimedBy
-  touch.ungrab(w)
-  w.setProperty("last_touch", toValue(RootRef(touch)))
-  if not b.alwaysRelease and not w.collidePoint(touch.pos[0], touch.pos[1]):
-    b.doRelease()
-    return false
-  let touchtime = time() - b.touchTime
-  let minStateTime = b.minStateTime
-  if touchtime < minStateTime:
-    b.stateEvent = Clock.scheduleOnce(proc (dt: float) {.closure.} = b.doRelease(),
-      minStateTime - touchtime)
-  else:
-    b.doRelease()
-  discard w.dispatch("on_release")
-  result = true
-
-proc triggerAction*(b: ButtonBehavior; duration = 0.1) =
-  ## Presses the button without a touch: `on_press` now, then `on_release`
-  ## after `duration` seconds (at once for 0). ButtonBehavior.trigger_action
-  b.doPress()
-  discard b.widget.dispatch("on_press")
   proc triggerRelease(b: ButtonBehavior) =
     b.doRelease()
-    discard b.widget.dispatch("on_release")
-  if duration == 0:
-    triggerRelease(b)
-  else:
-    discard Clock.scheduleOnce(proc (dt: float) {.closure.} = triggerRelease(b), duration)
+    discard b.dispatchRelease()
+
+  proc triggerAction*(b: ButtonBehavior; duration = 0.1) =
+    ## Presses the button without a touch: `press` now, then `release`
+    ## after `duration` seconds (at once for 0).
+    ## ButtonBehavior.trigger_action
+    b.doPress()
+    discard b.dispatchPress()
+    if duration == 0:
+      b.triggerRelease()
+    else:
+      discard Clock.scheduleOnce(proc (dt: float) {.closure.} = b.triggerRelease(), duration)
