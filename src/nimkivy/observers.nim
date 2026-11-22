@@ -34,6 +34,18 @@ type
 
 proc `==`*(a, b: Binding): bool {.borrow.}
 
+when defined(countDispatches):
+  # Profiling only (tools/profile.sh, PROFILE.md): one call per dispatch of
+  # an observer list, which callgrind counts. The dispatch loops are inlined
+  # iterators in the generated setters, so they have no call of their own.
+  var propertyDispatches, eventDispatches: int
+  proc countPropertyDispatch() {.noinline.} =
+    {.cast(assumeSync).}:
+      inc propertyDispatches
+  proc countEventDispatch() {.noinline.} =
+    {.cast(assumeSync).}:
+      inc eventDispatches
+
 func add*[F](obs: var Observers[F]; cb: F): Binding =
   ## Binds `cb` last; returns its binding.
   inc obs.lastUid
@@ -64,6 +76,8 @@ func len*[F](obs: Observers[F]): int =
 iterator live*[F](obs: var Observers[F]): F =
   ## The callbacks bound when the loop starts and still bound, first bound
   ## first (a property's order). Do not leave the loop early.
+  when defined(countDispatches):
+    {.cast(noSideEffect).}: countPropertyDispatch()
   let n = obs.entries.len
   inc obs.running
   for i in 0 ..< n:
@@ -74,6 +88,8 @@ iterator live*[F](obs: var Observers[F]): F =
 
 iterator liveReversed*[F](obs: var Observers[F]): F =
   ## The same, last bound first (an event's order, `dispatch_reverse`).
+  when defined(countDispatches):
+    {.cast(noSideEffect).}: countEventDispatch()
   let n = obs.entries.len
   inc obs.running
   var i = n - 1

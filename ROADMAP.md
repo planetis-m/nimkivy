@@ -1,10 +1,12 @@
 # nimkivy roadmap (owner decision, 2026-11-22)
 
-## Phase 1: faithful port (now)
+## Phase 1: faithful port (complete)
 
 Layers 1 to 10 in `LAYERS.md`: Kivy's behaviour, checked by Kivy's own tests, the traces and the reference scenes. Python-style design is kept on purpose in this phase, so the port can be checked against Kivy line by line.
 
-## Phase 2: Nim-style redesign (after phase 1 is finished)
+## Phase 2: Nim-style redesign (complete, 2026-11-22)
+
+Done in steps 0-9 (REDESIGN.md, with a summary at its top; the numbers before and after are in PROFILE.md).
 
 Everything Pythonic goes. Goals:
 

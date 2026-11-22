@@ -126,7 +126,7 @@ properties:
       screens* {.prop.}: seq[Screen] = @[]
         ## the managed screens, in the order they were added; read only
       currentScreen* {.prop.}: nil Screen = nil  ## the screen shown, or nil
-      screenNames* {.alias: getScreenNames, deps: screens.}: seq[string]
+      screenNames* {.alias: getScreenNames, deps: screens, eager.}: seq[string]
         ## the names of the screens
 
   # ---------------------------------------------------------------- TransitionBase

@@ -1,9 +1,11 @@
 #!/bin/sh
 # Total calls of the functions PROFILE.md counts, from a callgrind output
 # file (tools/profile.sh): SDL drawing calls, nimkivy's property and event
-# dispatch, layouts, text and image loading, and allocations. Function
+# dispatch (built with -d:countDispatches: one call per dispatch of an
+# observer list), layouts, text and image loading, and allocations. Function
 # names in the file are compressed ("cfn=(12) name" once, then "cfn=(12)");
-# every "calls=N" line belongs to the cfn before it.
+# every "calls=N" line belongs to the cfn before it; recursive calls
+# ("name'2") count as calls of the function.
 #
 #   sh tools/callcounts.sh tests/out/profile/callgrind.out
 set -eu
@@ -17,10 +19,14 @@ awk '
 }
 /^calls=/ { n = $0; sub(/^calls=/, "", n); sub(/ .*/, "", n); calls[cur] += n }
 END {
+  # A recursive call is a function of its own in the file (its name, a quote
+  # and the depth): added to the function.
   for (id in calls) {
-    nm = names[id]
+    nm = names[id]; sub(/\047[0-9]+$/, "", nm); total[nm] += calls[id]
+  }
+  for (nm in total) {
     if (nm ~ /^(SDL_RenderGeometry|SDL_RenderLines|SDL_RenderTexture|SDL_RenderPresent|SDL_RenderClear|SDL_SetRenderTarget|SDL_SetRenderClipRect|SDL_CreateTexture|SDL_CreateTextureFromSurface|SDL_UpdateTexture|SDL_PollEvent|IMG_Load|TTF_OpenFont|TTF_GetStringSize|TTF_Render[A-Za-z_]*|malloc|free|calloc|realloc|rawAlloc_.*|rawDealloc_.*)$/ ||
-        nm ~ /^(dispatch|set|get|doLayout|draw|drawTriangles|drawLineStrip|apply|render|renderLines|renderText|getExtents|layoutText|textureUpdate|loadTexture|newTexture|handle|blit|onDraw|idle|tick|tickDraw)_[0-9]+_[a-z0-9]+$/)
-      printf "%12d  %s\n", calls[id], nm
+        nm ~ /^(countPropertyDispatch|countEventDispatch|dispatch|set|get|doLayout|draw|drawTriangles|drawLineStrip|apply|render|renderLines|renderText|getExtents|layoutText|textureUpdate|loadTexture|newTexture|handle|blit|onDraw|idle|tick|tickDraw)_[0-9]+_[a-z0-9]+$/)
+      printf "%12d  %s\n", total[nm], nm
   }
 }' "$1" | sort -k2
