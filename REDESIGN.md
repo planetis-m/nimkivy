@@ -8,8 +8,9 @@
   lookup by name are gone, and a wrong name or callback type is a compile
   error. Animation uses typed tracks; ButtonBehavior is an owned properties
   object; the Python-style helpers and messages are renamed or removed.
-  `buildUi:` (`buildui`, `plugins/builduiplug`) builds widget trees as a kv
-  file does, with bindings and handlers; the showcase is written in it. The
+  `buildUi:` (`buildui`, `plugins/builduiplug`) builds widget trees; the
+  showcase is written in it. (Since then redesigned after Karax as thin
+  sugar over plain Nim, without bindings: DSL.md.) The
   SDL3_ttf provider remembers word widths per font. Tests, traces and
   scenes need no Python (Kivy's outputs are fixtures). Behaviour is phase
   1's: every test, trace, scene and tshowcase passes in debug and release.
@@ -204,7 +205,9 @@ passed to callbacks.
 ## `buildUi:`
 
 `src/nimkivy/buildui.nim` and `plugins/builduiplug.nim` (step 7; the module
-doc is the reference).
+doc is the reference). Superseded by DSL.md (2026-11-22): this section
+records step 7's design, with bindings, `on`, `self` and `place`, which are
+gone.
 
 ```nim
 buildUi:

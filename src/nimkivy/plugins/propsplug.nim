@@ -194,15 +194,6 @@ const
   propObs: Observers[proc ($1): bool {.closure.}]
 """
 
-  # A handler of the property in the form of an event's (buildUi's `on`),
-  # with the value or without; its result is ignored.
-  handlerBinds = """
-proc bindProp*(w: Owner; cb: proc (v: PropT): bool {.closure.}): Binding =
-  w.bindProp(proc (v: PropT) {.closure.} = discard cb(v))
-proc bindProp*(w: Owner; cb: proc (): bool {.closure.}): Binding =
-  w.bindProp(proc (v: PropT) {.closure.} = discard cb())
-"""
-
   # Shared by every property kind. A dispatch passes a copy of the value: an
   # observer may replace the stored one while the later observers still need
   # it (planetis-m/nimony-bugs-llms#334).
@@ -216,7 +207,7 @@ proc dispatchProp*(w: Owner) =
   $1
   let value = w.prop
   for cb in w.propObs.live: cb(value)
-""" & handlerBinds
+"""
 
   propProcs = """
 proc prop*(w: Owner): PropT {.inline.} =
@@ -292,7 +283,7 @@ proc dispatchProp*(w: Owner) =
   w.linkProp()
   let value = w.propStore
   for cb in w.propObs.live: cb(value)
-""" & handlerBinds
+"""
 
   # AliasProperty (properties.pyx): `propValid` is Kivy's "not
   # alias_initial". Without `cache` nothing is stored, so a dependency's

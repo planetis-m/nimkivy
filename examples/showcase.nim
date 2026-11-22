@@ -15,9 +15,9 @@
 ##   screen after `idleTimeout` seconds without a touch (a Clock interval);
 ## - the header and the type follow the window height (window resize).
 ##
-## The widget trees are written with `buildUi` (nimkivy/buildui), as a kv
-## file would be; the components (`Pill`, `Panel`, `Tile`, `Caption`, ...)
-## are procs named `newX`, as kv's class rules. The app's logic is in the
+## The widget trees are written with `buildUi` (nimkivy/buildui); the
+## components (`pill`, `panel`, `tile`, `caption`, ...) are plain procs with
+## keyword arguments. The app's logic is in the
 ## procs on `Showcase`; the handlers in the trees reach it through the app
 ## (`app.show`), as kv's `app.`.
 ##
@@ -111,46 +111,60 @@ proc newPressable*(): Pressable =
   result.initProps()
   result.initBoxLayout()
 
-proc newPill(fill: Rgba): Pressable =
+proc bindPress*(p: Pressable; cb: proc (): bool {.closure.}): Binding =
+  ## The button's `press`, as the Pressable's own event.
+  p.button.bindPress(cb)
+
+proc bindRelease*(p: Pressable; cb: proc (): bool {.closure.}): Binding =
+  ## The button's `release`, as the Pressable's own event.
+  p.button.bindRelease(cb)
+
+proc pill(fill: Rgba): Pressable =
   # A Pressable on a coloured background (the kiosk's paint()).
   buildUi:
-    Pressable as p:
+    newPressable() as p:
       canvas.before:
         Color(rgba = fill)
-        Rectangle(pos <- self.pos, size <- self.size)
+        Rectangle(pos = p.pos, size = p.size) as bg
+      proc onPos(v: (float, float)) = bg.pos = v
+      proc onSize(v: (float, float)) = bg.size = v
   result = p
 
-proc newPanel(fill: Rgba): BoxLayout =
+proc panel(fill: Rgba): BoxLayout =
   # A BoxLayout on a coloured background.
   buildUi:
-    BoxLayout as b:
+    BoxLayout() as b:
       canvas.before:
         Color(rgba = fill)
-        Rectangle(pos <- self.pos, size <- self.size)
+        Rectangle(pos = b.pos, size = b.size) as bg
+      proc onPos(v: (float, float)) = bg.pos = v
+      proc onSize(v: (float, float)) = bg.size = v
   result = b
 
-proc newTile(): Pressable =
+proc tile(): Pressable =
   # A photo tile: dims while it is pressed (the kiosk's PhotoTile).
   buildUi:
-    Pill(Linen, orientation = orientationVertical) as p:
-      on button.press:
-        newAnimation([opacityTo(Widget, 0.8)], duration = 0.08).start(self)
-      on button.release:
-        newAnimation([opacityTo(Widget, 1.0)], duration = 0.15).start(self)
+    pill(Linen) as p:
+      p.orientation = orientationVertical
+      proc onPress() = newAnimation([opacityTo(Widget, 0.8)], duration = 0.08).start(p)
+      proc onRelease() = newAnimation([opacityTo(Widget, 1.0)], duration = 0.15).start(p)
   result = p
 
-proc newCaption(text = ""): Label =
+proc caption(text = ""; fontSize: float; color: Rgba; bold = false;
+    halign = halignCenter): Label =
   # The kiosk's label(): Source Sans 3, centred in its own box.
   buildUi:
-    Label(text, fontName = "SourceSans", halign = halignCenter, valign = valignMiddle) as l:
-      textSize <- self.size
+    Label(text, fontName = "SourceSans", fontSize = fontSize, color = color, bold = bold,
+        halign = halign, valign = valignMiddle) as l:
+      proc onSize(v: (float, float)) = l.textSize = v
   result = l
 
-proc newParagraph(): Label =
+proc paragraph(fontSize: float; color: Rgba; halign: Halign): Label =
   # Source Sans 3 that wraps at the label's width and grows downwards.
   buildUi:
-    Label(fontName = "SourceSans", valign = valignMiddle) as l:
-      textSize <- (some(self.width), none[float]())
+    Label(fontName = "SourceSans", fontSize = fontSize, color = color, halign = halign,
+        valign = valignMiddle) as l:
+      proc onWidth(v: float) = l.textSize = (some(v), none[float]())
   result = l
 
 # ------------------------------------------------------------------ the app
@@ -312,14 +326,16 @@ proc rescale(s: Showcase) =
 
 # ------------------------------------------------------------------ screens
 
-proc newChoice(app: ShowcaseApp; lang, name: string): Pressable =
+proc choice(app: ShowcaseApp; lang, name: string): Pressable =
   # One language of the picker: a flag and its name.
   buildUi:
-    Pill(Linen, orientation = orientationVertical) as p:
-      on button.release:
-        app.show.setLanguage(lang)
+    pill(Linen) as p:
+      p.orientation = orientationVertical
+      proc onRelease() = app.show.setLanguage(lang)
       Image(Assets & "flag.png")
-      Caption(name, fontSize = 22, color = Charcoal, sizeHintY = none[float](), height = 40)
+      caption(name, fontSize = 22, color = Charcoal) as c:
+        c.sizeHintY = none[float]()
+        c.height = 40
   result = p
 
 proc newShowcase*(app: ShowcaseApp): Showcase =
@@ -329,101 +345,110 @@ proc newShowcase*(app: ShowcaseApp): Showcase =
   buildUi:
     Screen("attract") as attract:
       # Two photos and a title; any touch goes home.
-      on touchDown(t: MotionEvent):
+      proc onTouchDown(t: MotionEvent): bool =
         app.show.go("home")
         result = true
-      on enter:
-        app.show.startSlides()
-      on leave:
-        app.show.stopSlides()
-      FloatLayout:
+      proc onEnter() = app.show.startSlides()
+      proc onLeave() = app.show.stopSlides()
+      FloatLayout():
         Image(Assets & Photos[0], fitMode = fitCover) as slide0
         Image(fitMode = fitCover, opacity = 0) as slide1
         AnchorLayout(anchorY = anchorBottom, padding = [0.0, 0, 0, 40]):
-          Caption(fontSize = 56, color = Linen, bold = true,
-              sizeHintY = none[float](), height = 120) as attractTitle:
+          caption(fontSize = 56, color = Linen, bold = true) as attractTitle:
+            attractTitle.sizeHintY = none[float]()
+            attractTitle.height = 120
             canvas.before:
               Color(rgba = [0.0, 0, 0, 0.35])
-              Rectangle(pos <- self.pos, size <- self.size)
+              Rectangle(pos = attractTitle.pos, size = attractTitle.size) as shade
+            proc onPos(v: (float, float)) = shade.pos = v
+            proc onSize(v: (float, float)) = shade.size = v
 
   buildUi:
     Screen("home") as home:
-      Panel(Sand, orientation = orientationVertical):
-        Panel(Linen, sizeHintY = none[float](), height = 80,
-            padding = [16.0, 8, 16, 8]) as homeHeader:
-          Caption(fontSize = 30, color = Fig, bold = true, halign = halignLeft) as homeTitle
-          Pill(Fig, sizeHintX = none[float](), width = 160) as langButton:
-            on button.release:
-              app.show.picker.open()
-            Caption(fontSize = 22, color = Linen) as langLabel
+      panel(Sand) as homeBody:
+        homeBody.orientation = orientationVertical
+        panel(Linen) as homeHeader:
+          homeHeader.sizeHintY = none[float]()
+          homeHeader.height = 80
+          homeHeader.padding = [16.0, 8, 16, 8]
+          caption(fontSize = 30, color = Fig, bold = true, halign = halignLeft) as homeTitle
+          pill(Fig) as langButton:
+            langButton.sizeHintX = none[float]()
+            langButton.width = 160
+            proc onRelease() = app.show.picker.open()
+            caption(fontSize = 22, color = Linen) as langLabel
         BoxLayout(spacing = 16, padding = [16.0, 16, 16, 16]):
-          Tile as tile0:
-            on button.release:
-              app.show.openTopic(0)
+          tile() as tile0:
+            proc onRelease() = app.show.openTopic(0)
             Image(Assets & Photos[0], fitMode = fitCover) as tileImage0
-            Caption(fontSize = 22, color = Fig, bold = true,
-              sizeHintY = none[float](), height = 56) as tileLabel0
-          Tile as tile1:
-            on button.release:
-              app.show.openTopic(1)
+            caption(fontSize = 22, color = Fig, bold = true) as tileLabel0:
+              tileLabel0.sizeHintY = none[float]()
+              tileLabel0.height = 56
+          tile() as tile1:
+            proc onRelease() = app.show.openTopic(1)
             Image(Assets & Photos[1], fitMode = fitCover) as tileImage1
-            Caption(fontSize = 22, color = Fig, bold = true,
-              sizeHintY = none[float](), height = 56) as tileLabel1
-          Tile as tile2:
-            on button.release:
-              app.show.openTopic(2)
+            caption(fontSize = 22, color = Fig, bold = true) as tileLabel1:
+              tileLabel1.sizeHintY = none[float]()
+              tileLabel1.height = 56
+          tile() as tile2:
+            proc onRelease() = app.show.openTopic(2)
             Image(Assets & Photos[2], fitMode = fitCover) as tileImage2
-            Caption(fontSize = 22, color = Fig, bold = true,
-              sizeHintY = none[float](), height = 56) as tileLabel2
+            caption(fontSize = 22, color = Fig, bold = true) as tileLabel2:
+              tileLabel2.sizeHintY = none[float]()
+              tileLabel2.height = 56
 
   buildUi:
     Screen("topic") as topic:
       # Header, then the card (photo | text and Listen), then prev, dots,
       # next.
-      on leave:
-        app.show.stopVoice()
-      Panel(Sand, orientation = orientationVertical):
-        Panel(Linen, sizeHintY = none[float](), height = 80,
-            padding = [16.0, 8, 16, 8]) as topicHeader:
-          Caption(fontSize = 30, color = Fig, bold = true, halign = halignLeft) as topicTitle
-          Pill(Fig, sizeHintX = none[float](), width = 160) as homeButton:
-            on button.release:
-              app.show.go("home")
-            Caption(fontSize = 22, color = Linen) as homeLabel
-        RelativeLayout:
-          on touchUp(t: MotionEvent):
-            result = app.show.swipe(self, t)
+      proc onLeave() = app.show.stopVoice()
+      panel(Sand) as topicBody:
+        topicBody.orientation = orientationVertical
+        panel(Linen) as topicHeader:
+          topicHeader.sizeHintY = none[float]()
+          topicHeader.height = 80
+          topicHeader.padding = [16.0, 8, 16, 8]
+          caption(fontSize = 30, color = Fig, bold = true, halign = halignLeft) as topicTitle
+          pill(Fig) as homeButton:
+            homeButton.sizeHintX = none[float]()
+            homeButton.width = 160
+            proc onRelease() = app.show.go("home")
+            caption(fontSize = 22, color = Linen) as homeLabel
+        RelativeLayout() as cardArea:
+          proc onTouchUp(t: MotionEvent): bool = app.show.swipe(cardArea, t)
           BoxLayout(padding = [24.0, 16, 24, 16], spacing = 24):
             Image(fitMode = fitContain, sizeHintX = 0.45) as cardImage
             BoxLayout(orientation = orientationVertical, spacing = 12):
-              Paragraph(fontSize = 24, color = Charcoal, halign = halignLeft) as cardText
+              paragraph(24, Charcoal, halignLeft) as cardText
               AnchorLayout(sizeHintY = none[float](), height = 64, anchorX = anchorLeft):
-                Pill(Leaf, sizeHintX = none[float](), width = 180,
-                    sizeHintY = none[float](), height = 56) as listen:
-                  on button.release:
-                    app.show.toggleListen()
-                  Caption(fontSize = 22, color = Linen, bold = true) as listenLabel
+                pill(Leaf) as listen:
+                  listen.sizeHintX = none[float]()
+                  listen.width = 180
+                  listen.sizeHintY = none[float]()
+                  listen.height = 56
+                  proc onRelease() = app.show.toggleListen()
+                  caption(fontSize = 22, color = Linen, bold = true) as listenLabel
         BoxLayout(sizeHintY = none[float](), height = 64, padding = [24.0, 4, 24, 4]):
-          Pill(Fig, sizeHintX = none[float](), width = 120) as prev:
-            on button.release:
-              app.show.showCard(app.show.card - 1)
-            Caption("<", fontSize = 30, color = Linen, bold = true)
-          Widget as dots:
-            on pos:
-              app.show.drawDots()
-            on size:
-              app.show.drawDots()
-          Pill(Fig, sizeHintX = none[float](), width = 120) as next:
-            on button.release:
-              app.show.showCard(app.show.card + 1)
-            Caption(">", fontSize = 30, color = Linen, bold = true)
+          pill(Fig) as prev:
+            prev.sizeHintX = none[float]()
+            prev.width = 120
+            proc onRelease() = app.show.showCard(app.show.card - 1)
+            caption("<", fontSize = 30, color = Linen, bold = true)
+          Widget() as dots:
+            proc onPos(v: (float, float)) = app.show.drawDots()
+            proc onSize(v: (float, float)) = app.show.drawDots()
+          pill(Fig) as next:
+            next.sizeHintX = none[float]()
+            next.width = 120
+            proc onRelease() = app.show.showCard(app.show.card + 1)
+            caption(">", fontSize = 30, color = Linen, bold = true)
 
   buildUi:
     ModalView(sizeHint = (0.7, 0.4), backgroundColor = Linen, animDuration = 0.1) as picker:
       BoxLayout(padding = [16.0, 16, 16, 16], spacing = 16):
-        Choice(app, "en", "English") as english
-        Choice(app, "el", "Ελληνικά") as greek
-        Choice(app, "de", "Deutsch") as german
+        choice(app, "en", "English") as english
+        choice(app, "el", "Ελληνικά") as greek
+        choice(app, "de", "Deutsch") as german
 
   let s = Showcase(sm: newScreenManager(), lang: "en", slides: [slide0, slide1], front: 0,
     slide: 0, attractTitle: attractTitle, homeTitle: homeTitle, topicTitle: topicTitle,

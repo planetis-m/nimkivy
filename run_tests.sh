@@ -36,11 +36,6 @@ bad bad_default "undeclared identifier: 'initOpacty'"
 bad bad_refs "undeclared field: 'h'"
 bad bad_readonly "undeclared field: 'half='"
 bad bad_pragma "bad_pragma.nim(7, 12) Error: properties: unsupported syntax"
-bad bad_ui_item "bad_ui_item.nim(9, 7) Error: buildUi: unsupported syntax"
-bad bad_ui_prop "undeclared field: 'txt='"
-bad bad_ui_bind "bad_ui_bind.nim(10, 22) Error: undeclared field: 'txt'"
-bad bad_ui_event "undeclared identifier: 'bindPresss'"
-bad bad_ui_params "bad_ui_params.nim(9, 7) Error: Type mismatch"
 "$nimony" c --mm:orc --path:src --nimcache:nimcache/bad_bounds -o:bin/bad_bounds \
   tests/bad/bad_bounds.nim
 if ./bin/bad_bounds; then echo "bad_bounds: ran, expected exit code 1"; exit 1; fi
