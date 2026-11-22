@@ -1,6 +1,6 @@
 # Tests graphics/instructions, context_instructions, stencil_instructions and
 # the renderer: the children of a canvas after add, insert, remove and clear
-# against Kivy's (reference/out/graphics_points.txt, the `canvas` lines),
+# against Kivy's (tests/fixtures/graphics_points.txt, the `canvas` lines),
 # update flags, and what the renderer draws: the opacity product, the colour
 # state across canvases, translation and stencil clipping. Drawing is headless
 # (run_tests.sh sets SDL_VIDEO_DRIVER=offscreen).
@@ -31,15 +31,15 @@ proc kivyCanvasLines(): seq[string] =
   # The `canvas ...` lines Kivy printed, without the `canvas ` prefix.
   var text = ""
   try:
-    text = readFile("reference/out/graphics_points.txt")
+    text = readFile("tests/fixtures/graphics_points.txt")
   except:
-    quit "cannot read reference/out/graphics_points.txt"
+    quit "cannot read tests/fixtures/graphics_points.txt"
   result = @[]
   for line in text.splitLines():
     if line.startsWith("canvas "):
       result.add line.substr(7)
 
-# The same steps as reference/graphics_points.py canvas_steps.
+# The same steps as archive/reference/graphics_points.py canvas_steps.
 block canvas_children:
   let kivy = kivyCanvasLines()
   var got: seq[string] = @[]

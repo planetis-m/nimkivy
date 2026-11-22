@@ -10,7 +10,7 @@
 # It plays clip A, stops it (unload, as the kiosk's voice.py does), plays
 # clip B to its natural end, then plays A again and closes the window while
 # it plays, and unloads it after SDL has shut down. The clips default to
-# reference/assets/tone.wav.
+# tests/assets/tone.wav.
 
 import std/[assertions, os, strutils, syncio]
 import nimkivy/[clock, config, properties, base]
@@ -45,7 +45,7 @@ proc load(c: Check; path, name: string): Sound =
   c.watch(s, name)
   result = s
 
-let clipA = if paramCount() >= 1: paramStr(1) else: "reference/assets/tone.wav"
+let clipA = if paramCount() >= 1: paramStr(1) else: "tests/assets/tone.wav"
 let clipB = if paramCount() >= 2: paramStr(2) else: clipA
 
 Config.set("graphics", "width", "320")

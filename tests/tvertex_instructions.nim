@@ -1,8 +1,9 @@
 # Tests graphics/vertex_instructions: Kivy's test_line_rounded_rectangle, and
 # the geometry Kivy computes for the same instructions, read from
-# reference/out/graphics_points.txt (written by reference/graphics_points.py
-# with the running Kivy). Kivy builds an instruction when it is drawn; here
-# `build` is called directly, which is what the renderer does.
+# tests/fixtures/graphics_points.txt (written by
+# archive/reference/graphics_points.py with the running Kivy). Kivy builds an
+# instruction when it is drawn; here `build` is called directly, which is what
+# the renderer does.
 
 import std/[assertions, parseutils, strutils, syncio]
 import nimkivy/graphics/[instructions, vertex_instructions]
@@ -63,7 +64,7 @@ block border_image:
   assert v[0].y == 20 and v[4].y == 25 and v[5].y == 63 and v[6].y == 70
   assert v[12].x == 18 and v[12].y == 25 and v[14].x == 104 and v[14].y == 63
 
-# The cases of reference/graphics_points.py, in the same order.
+# The cases of archive/reference/graphics_points.py, in the same order.
 proc line(points: openArray[float] = []; width = 1.0): Line =
   newLine(points, width = width)
 
@@ -153,7 +154,7 @@ proc caseValue(name, attr: string): seq[float] =
     of "points": l.points
     of "circle": l.circle
     of "rectangle": l.rectangle
-    of "rounded_rectangle": l.roundedRectangle
+    of "roundedRectangle": l.roundedRectangle
     of "close": @[if l.close: 1.0 else: 0.0]
     of "width": @[l.width]
     else: quit "unknown attribute " & attr
@@ -163,17 +164,21 @@ proc caseValue(name, attr: string): seq[float] =
 block graphics_points:
   var text = ""
   try:
-    text = readFile("reference/out/graphics_points.txt")
+    text = readFile("tests/fixtures/graphics_points.txt")
   except:
-    quit "cannot read reference/out/graphics_points.txt"
+    quit "cannot read tests/fixtures/graphics_points.txt"
   var values, inexact = 0
   for line in text.splitLines():
     let fields = line.split(' ')
     if fields.len >= 2 and fields[0] != "canvas":
       let (name, attr) = (fields[0], fields[1])
       let got = caseValue(name, attr)
-      if fields.len == 3 and fields[2] == "None":
-        assert got.len == 0, name & " " & attr & " should be None"
+      if fields.len == 3 and fields[2] == "none":
+        assert got.len == 0, name & " " & attr & " should be none"
+      elif attr == "close":
+        # A bool, which caseValue gives as 1.0 or 0.0.
+        assert fields.len == 3 and fields[2] == $(got == @[1.0]),
+          name & " close differs from Kivy's " & fields[2]
       else:
         assert got.len == fields.len - 2,
           name & " " & attr & ": " & $got.len & " values, Kivy has " & $(fields.len - 2)

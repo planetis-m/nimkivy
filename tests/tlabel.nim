@@ -57,7 +57,7 @@ block trigger:
   assert renders.n == 2
 
 block trace_numbers:
-  # texture_size through the widget, against reference/out/traces/label.txt.
+  # texture_size through the widget, against tests/fixtures/traces/label.txt.
   register("Deja", "data/fonts/DejaVuSans.ttf", fnBold = "data/fonts/Roboto-Bold.ttf")
   let text = "Figs have been grown in Greece for thousands of years. The fruit is " &
     "dried in the sun, pressed by hand and packed the same day."

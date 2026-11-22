@@ -1,5 +1,5 @@
 # Tests uix/image against Kivy 2.3.2: norm_image_size for every fit mode
-# (the numbers of reference/out/image_fit.txt), texture_size and
+# (the numbers of tests/fixtures/scenes/image_fit.txt), texture_size and
 # image_ratio, a missing file, an empty source, reload, and the style.kv
 # canvas (stencil of the widget box, texture centred). The pixels are
 # compared in the image scenes.
@@ -12,7 +12,7 @@ import nimkivy/uix/image
 Config.set("graphics", "width", "800")
 Config.set("graphics", "height", "600")
 
-proc a(name: string): string = "reference/assets/" & name
+proc a(name: string): string = "tests/assets/" & name
 
 proc sized(source: string; mode: FitMode; w, h: float): Image =
   result = newImage(source)
@@ -20,7 +20,7 @@ proc sized(source: string; mode: FitMode; w, h: float): Image =
   result.size = (w, h)
 
 block test_fit_modes:
-  # reference/out/image_fit.txt: a 180 x 150 box; landscape 400 x 200,
+  # tests/fixtures/scenes/image_fit.txt: a 180 x 150 box; landscape 400 x 200,
   # portrait 100 x 200, small 40 x 30.
   let expected = [
     (fitScaleDown, "landscape.png", (180.0, 90.0)),

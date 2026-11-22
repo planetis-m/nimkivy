@@ -2,7 +2,7 @@
 # kivy/tests/test_uix_layout.py, BoxLayout's minimum_size and the
 # placement of children with size_hint_min, and layout_hint_with_bounds
 # against the numbers Kivy 2.3.2 computes for the same arguments
-# (reference/scenes.py's boxlayout_hints covers it in a scene too).
+# (archive/reference/scenes.py's boxlayout_hints covers it in a scene too).
 #
 # Layout() raises in Kivy; here it stops the program, so
 # test_instantiation runs this program again and checks that.

@@ -10,7 +10,7 @@ A layer is done when:
 
 - its modules compile in debug and in `-d:release`
 - its ported Kivy tests and its trace lines pass
-- its scenes, where it has any, pass `reference/compare.py`
+- its scenes, where it has any, pass `tests/compare.nim` (phase 1: `reference/compare.py`)
 - every inaccuracy has a `# GAP:` comment and a row in PORTING.md
 - the Progress row says "done"
 
@@ -81,7 +81,7 @@ A layer is done when:
   a smoke test under `SDL_VIDEO_DRIVER=offscreen`: create a window and a
   software renderer, draw one coloured triangle with `SDL_RenderGeometry`,
   read the pixels back, render a word with TTF, and load
-  `reference/assets/landscape.png`.
+  `tests/assets/landscape.png`.
 - **Done:** the smoke test passes headless. No ergonomic layer: the wrappers
   belong to layers 3 to 5.
 

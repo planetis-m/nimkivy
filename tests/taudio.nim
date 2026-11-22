@@ -1,5 +1,5 @@
 # Tests core/audio against kivy/tests/test_audio.py (adapted: the WAV
-# reference/assets/tone.wav, 1.402 s, instead of sample1.ogg), plus the order
+# tests/assets/tone.wav, 1.402 s, instead of sample1.ogg), plus the order
 # of the state changes and of on_play and on_stop for play, stop, the natural
 # end and a loop, as Kivy 2.3.2 gives them (SDL2 provider), volume, unload and
 # missing files. Run with SDL_AUDIO_DRIVER=dummy (run_tests.sh), which plays
@@ -10,7 +10,7 @@ import nimkivy/[clock, properties]
 import nimkivy/core/audio
 
 const
-  SampleFile = "reference/assets/tone.wav"
+  SampleFile = "tests/assets/tone.wav"
   SampleLength = 1.402
   Delta = SampleLength * 0.01
   Delay = 0.2
@@ -175,7 +175,7 @@ block unload:
 block missingFile:
   # A missing WAV still gives a Sound (Kivy logs "Unable to load"); it has no
   # length and does not play.
-  let sound = loadSound("reference/assets/missing.wav")
+  let sound = loadSound("tests/assets/missing.wav")
   assert sound != nil
   let log = sound.record()
   assert sound.length == 0
@@ -185,8 +185,8 @@ block missingFile:
   sound.unload()
   assert log.entries.len == 0
   # Not a WAV: no loader.
-  assert loadSound("reference/assets/flag.png") == nil
-  assert loadSound("reference/assets/missing.ogg") == nil
+  assert loadSound("tests/assets/flag.png") == nil
+  assert loadSound("tests/assets/missing.ogg") == nil
 
 proc extensionCase() {.raises.} =
   # The extension is matched without case and without a query string.

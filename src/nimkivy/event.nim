@@ -161,10 +161,10 @@ func toFloats*(v: Value): seq[float] =
 func `$`*(v: Value): string =
   ## A short text form, numbers with 3 decimals (for logs and traces).
   case v.kind
-  of vkNone: result = "None"
+  of vkNone: result = "none"
   of vkNumber: result = formatFloat(v.num, ffDecimal, 3)
   of vkString: result = v.str
-  of vkBool: result = if v.flag: "True" else: "False"
+  of vkBool: result = $v.flag
   of vkObject: result = "<object>"
   of vkList:
     result = "("

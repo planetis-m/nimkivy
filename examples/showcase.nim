@@ -15,7 +15,7 @@
 ##   screen after `idleTimeout` seconds without a touch (a Clock interval);
 ## - the header and the type follow the window height (window resize).
 ##
-## Assets come from `reference/assets` and the fonts from `data/fonts`, so
+## Assets come from `tests/assets` and the fonts from `data/fonts`, so
 ## it runs from the repository root:
 ##
 ##   nimony c --mm:orc --path:src -o:bin/showcase examples/showcase.nim
@@ -36,7 +36,7 @@ export app, clock, config, animation, audio, boxlayout, floatlayout, anchorlayou
   relativelayout, label, image, screenmanager, modalview, button
 
 const
-  Assets* = "reference/assets/"
+  Assets* = "tests/assets/"
   Photos* = ["landscape.jpg", "portrait.png", "landscape.png"]
     ## The topics' photos; the attract screen cycles through them.
   Languages* = ["en", "el", "de"]

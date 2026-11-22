@@ -1,5 +1,6 @@
-# Replays the steps of reference/traces.py and writes tests/out/traces/<name>.txt,
-# which must equal reference/out/traces/<name>.txt line for line.
+# Replays the steps of archive/reference/traces.py and writes
+# tests/out/traces/<name>.txt, which must equal tests/fixtures/traces/<name>.txt
+# line for line (REDESIGN.md, Standalone, says the format).
 #
 # Layer 1 writes `events` and `clock`, layer 6 `properties` (through the
 # real Widget and BoxLayout). Layer 4 writes `label`, through the core
@@ -38,12 +39,8 @@ proc save(log: Log; name: string) =
     quit "cannot write " & dir & "/" & name & ".txt"
   log.lines = @[]
 
-proc pyBool(b: bool): string =
-  # What Kivy's dispatch returns, printed: True, or None from the handlers.
-  if b: "True" else: "None"
-
 proc args(a: seq[Value]): string =
-  # A Python tuple of numbers, as `print` shows `a[1:]`: (7,)
+  # The event's arguments as a Nim tuple of numbers: (7,)
   result = "("
   for i, v in a:
     if i > 0: result.add ", "
@@ -56,13 +53,13 @@ proc args(a: seq[Value]): string =
 proc logger(name: string): PropertyCallback =
   result = proc (d: EventDispatcher; v: Value) {.closure.} = log.emit(name, $v)
 
-proc pyDict(pairs: seq[(string, Value)]): string =
-  # Python's repr of a dict of numbers: {'top': 0.9}
-  result = "{"
+proc hintText(pairs: seq[(string, Value)]): string =
+  # A pos_hint as a Nim seq of (key, number) pairs: @[(top, 0.9)]
+  result = "@["
   for i, (k, v) in pairs:
     if i > 0: result.add ", "
-    result.add "'" & k & "': " & $v.num
-  result.add "}"
+    result.add "(" & k & ", " & $v.num & ")"
+  result.add "]"
 
 proc traceProperties() =
   let w = newWidget()
@@ -89,19 +86,19 @@ proc traceProperties() =
   for (text, v) in forms:
     b.setProperty("padding", v)
     log.emit("padding", text, "->", $b.getProperty("padding"))
-  log.emit("defaults size", $newWidget().getProperty("size"), "size_hint",
-    $newWidget().getProperty("size_hint"), "pos_hint", pyDict(newWidget().posHint))
+  log.emit("defaults size", $newWidget().getProperty("size"), "sizeHint",
+    $newWidget().getProperty("size_hint"), "posHint", hintText(newWidget().posHint))
   let parent = newWidget()
   let child = newWidget()
   parent.addWidget(child)
   child.bind("disabled", proc (d: EventDispatcher; v: Value) {.closure.} =
     log.emit("child disabled", $v))
   parent.disabled = true
-  log.emit("parent", $toValue(parent.disabled), "child", $toValue(child.disabled))
+  log.emit("parent", $parent.disabled, "child", $child.disabled)
   child.disabled = false
-  log.emit("child set False while parent disabled ->", $toValue(child.disabled))
+  log.emit("child set false while parent disabled ->", $child.disabled)
   parent.disabled = false
-  log.emit("parent False ->", $toValue(child.disabled))
+  log.emit("parent false ->", $child.disabled)
   log.save "properties"
 
 # ------------------------------------------------------------------ events
@@ -111,17 +108,17 @@ type D = ref object of EventDispatcher
 let DClass = newDispatcherClass("D", EventDispatcherClass)
 discard DClass.addNumeric("v", 0)
 DClass.addPropertyHandler("v",
-  proc (d: EventDispatcher; v: Value) = log.emit("default on_v", $v))
+  proc (d: EventDispatcher; v: Value) = log.emit("default onV", $v))
 DClass.addEvent("on_go",
   proc (d: EventDispatcher; a: seq[Value]): bool =
-    log.emit("default on_go", args(a))
+    log.emit("default onGo", args(a))
     result = false)
 
 proc traceEvents() =
   let d = D(cls: DClass)
   d.initEventDispatcher()
   d.bind("v", proc (d: EventDispatcher; v: Value) {.closure.} = log.emit "v1")
-  d.bind("v", proc (d: EventDispatcher; v: Value) {.closure.} = log.emit "v2 returns True")
+  d.bind("v", proc (d: EventDispatcher; v: Value) {.closure.} = log.emit "v2 returns true")
   d.bind("v", proc (d: EventDispatcher; v: Value) {.closure.} = log.emit "v3")
   d.setProperty("v", toValue(1))
   d.setProperty("v", toValue(1))
@@ -132,13 +129,13 @@ proc traceEvents() =
   d.bind("on_go", proc (d: EventDispatcher; a: seq[Value]): bool {.closure.} =
     log.emit("g2", args(a))
     result = false)
-  log.emit("dispatch ->", pyBool(d.dispatch("on_go", toValue(7))))
+  log.emit("dispatch ->", $(d.dispatch("on_go", toValue(7))))
   let uid = d.fbind("on_go", proc (d: EventDispatcher; a: seq[Value]): bool {.closure.} =
-    log.emit "g3 returns True"
+    log.emit "g3 returns true"
     result = true)
-  log.emit("dispatch ->", pyBool(d.dispatch("on_go", toValue(8))))
+  log.emit("dispatch ->", $(d.dispatch("on_go", toValue(8))))
   d.unbindUid("on_go", uid)
-  log.emit("dispatch after unbind_uid ->", pyBool(d.dispatch("on_go", toValue(9))))
+  log.emit("dispatch after unbindUid ->", $(d.dispatch("on_go", toValue(9))))
   log.save "events"
 
 # ------------------------------------------------------------------ clock
@@ -162,7 +159,7 @@ proc traceClock() =
   trig.trigger()
   trig.trigger()  # a trigger runs once per tick however often it is called
   for step in 0 ..< 3:
-    log.emit("# tick_draw " & $step)
+    log.emit("# tickDraw " & $step)
     c.tickDraw()
     log.emit("# tick " & $step)
     c.tick()
@@ -175,77 +172,78 @@ proc traceClock() =
 # ------------------------------------------------------------------ label
 
 proc fmt3(v: float): string =
-  # Python's f"{float(v):.3f}"
+  # A number with 3 decimals, as the traces print them.
   formatFloat(v, ffDecimal, 3)
 
 proc traceLabel() =
-  # reference/traces.py trace_label: Label(**kw), texture_update(), and its
-  # texture_size.
+  # archive/reference/traces.py trace_label: Label(**kw), texture_update(),
+  # and its texture_size. Each case is logged as the Nim named arguments
+  # it sets.
   register("Deja", "data/fonts/DejaVuSans.ttf", fnBold = "data/fonts/Roboto-Bold.ttf")
   const text = "Figs have been grown in Greece for thousands of years. The fruit is " &
     "dried in the sun, pressed by hand and packed the same day."
   type Setup = proc (l: Label) {.closure.}
-  let r = "{'text': '" & text & "'"
+  let r = "text = \"" & text & "\""
   proc wrap(l: Label) =
     l.text = text
     l.textSize = (some(300.0), none[float]())
   # An array: a seq literal of proc literals is rejected
   # (planetis-m/nimony-bugs-llms#311).
   let cases: array[20, (string, Setup)] = [
-    ("{'text': ''}", proc (l: Label) {.closure.} = l.text = ""),
-    ("{'text': 'A'}", proc (l: Label) {.closure.} = l.text = "A"),
-    ("{'text': 'Hello world'}", proc (l: Label) {.closure.} = l.text = "Hello world"),
-    ("{'text': 'two\\nlines'}", proc (l: Label) {.closure.} = l.text = "two\nlines"),
-    ("{'text': 'trailing space '}", proc (l: Label) {.closure.} =
+    ("text = \"\"", proc (l: Label) {.closure.} = l.text = ""),
+    ("text = \"A\"", proc (l: Label) {.closure.} = l.text = "A"),
+    ("text = \"Hello world\"", proc (l: Label) {.closure.} = l.text = "Hello world"),
+    ("text = \"two\\nlines\"", proc (l: Label) {.closure.} = l.text = "two\nlines"),
+    ("text = \"trailing space \"", proc (l: Label) {.closure.} =
       l.text = "trailing space "),
-    ("{'text': 'Ελληνικά'}", proc (l: Label) {.closure.} = l.text = "Ελληνικά"),
-    ("{'text': 'Hello', 'font_size': 40}", proc (l: Label) {.closure.} =
+    ("text = \"Ελληνικά\"", proc (l: Label) {.closure.} = l.text = "Ελληνικά"),
+    ("text = \"Hello\", fontSize = 40", proc (l: Label) {.closure.} =
       l.text = "Hello"
       l.fontSize = 40),
-    ("{'text': 'Hello', 'bold': True}", proc (l: Label) {.closure.} =
+    ("text = \"Hello\", bold = true", proc (l: Label) {.closure.} =
       l.text = "Hello"
       l.bold = true),
-    ("{'text': 'Hello', 'font_name': 'Deja'}", proc (l: Label) {.closure.} =
+    ("text = \"Hello\", fontName = \"Deja\"", proc (l: Label) {.closure.} =
       l.text = "Hello"
       l.fontName = "Deja"),
-    ("{'text': 'Hello', 'font_name': 'Deja', 'bold': True}",
+    ("text = \"Hello\", fontName = \"Deja\", bold = true",
       proc (l: Label) {.closure.} =
         l.text = "Hello"
         l.fontName = "Deja"
         l.bold = true),
-    (r & ", 'text_size': (300, None)}", proc (l: Label) {.closure.} = wrap(l)),
-    (r & ", 'text_size': (300, None), 'line_height': 1.25}",
+    (r & ", textSize = (300, none)", proc (l: Label) {.closure.} = wrap(l)),
+    (r & ", textSize = (300, none), lineHeight = 1.25",
       proc (l: Label) {.closure.} =
         wrap(l)
         l.lineHeight = 1.25),
-    (r & ", 'text_size': (300, None), 'line_height': 0.8}",
+    (r & ", textSize = (300, none), lineHeight = 0.8",
       proc (l: Label) {.closure.} =
         wrap(l)
         l.lineHeight = 0.8),
-    (r & ", 'text_size': (300, 100)}", proc (l: Label) {.closure.} =
+    (r & ", textSize = (300, 100)", proc (l: Label) {.closure.} =
       l.text = text
       l.textSize = (some(300.0), some(100.0))),
-    (r & ", 'text_size': (300, 40), 'valign': 'middle'}",
+    (r & ", textSize = (300, 40), valign = valignMiddle",
       proc (l: Label) {.closure.} =
         l.text = text
         l.textSize = (some(300.0), some(40.0))
         l.valign = valignMiddle),
-    ("{'text': 'Hello', 'padding': (10, 5)}", proc (l: Label) {.closure.} =
+    ("text = \"Hello\", padding = (10, 5)", proc (l: Label) {.closure.} =
       l.text = "Hello"
       l.padding = [10.0, 5]),
-    (r & ", 'text_size': (300, None), 'padding': (20, 0)}",
+    (r & ", textSize = (300, none), padding = (20, 0)",
       proc (l: Label) {.closure.} =
         wrap(l)
         l.padding = [20.0, 0]),
-    (r & ", 'text_size': (300, None), 'halign': 'justify'}",
+    (r & ", textSize = (300, none), halign = halignJustify",
       proc (l: Label) {.closure.} =
         wrap(l)
         l.halign = halignJustify),
-    ("{'text': 'averyveryverylongwordthatcannotwrap', 'text_size': (100, None)}",
+    ("text = \"averyveryverylongwordthatcannotwrap\", textSize = (100, none)",
       proc (l: Label) {.closure.} =
         l.text = "averyveryverylongwordthatcannotwrap"
         l.textSize = (some(100.0), none[float]())),
-    ("{'text': 'Hello', 'text_size': (None, 100)}", proc (l: Label) {.closure.} =
+    ("text = \"Hello\", textSize = (none, 100)", proc (l: Label) {.closure.} =
       l.text = "Hello"
       l.textSize = (none[float](), some(100.0)))]
   for (kw, setup) in cases:
@@ -272,14 +270,14 @@ proc logOnComplete(a: Animation; text: string; w: Widget) =
     result = false)
 
 proc traceAnimation() =
-  # reference/traces.py trace_animation
+  # archive/reference/traces.py trace_animation
   let w = newWidget()
   w.opacity = 0
   let anim = newAnimation({"opacity": 1.0}, duration = 0.2)
   anim.bind("on_start", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
-    log.emit "on_start"
+    log.emit "onStart"
     result = false)
-  anim.logOnComplete("on_complete opacity", w)
+  anim.logOnComplete("onComplete opacity", w)
   var progress: seq[float] = @[]
   anim.bind("on_progress", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
     progress.add args[1].num
@@ -287,13 +285,13 @@ proc traceAnimation() =
   anim.start(w)
   # traces.py checks `w in [x["widget"] for x in anim._widgets.values()]`.
   log.emit("after start opacity", fmt3(w.opacity), "running",
-    if anim.havePropertiesToAnimate(w): "True" else: "False")
+    $anim.havePropertiesToAnimate(w))
   tickFor(0.5)
   var monotonic = true
   for i in 1 ..< progress.len:
     if progress[i] < progress[i - 1]: monotonic = false
   log.emit("progress first", fmt3(progress[0]), "last", fmt3(progress[^1]), "monotonic",
-    if monotonic: "True" else: "False")
+    $monotonic)
   let w2 = newWidget()
   w2.opacity = 1
   let a1 = newAnimation({"opacity": 0.0}, duration = 0.1)
@@ -340,22 +338,17 @@ proc r(p: (float, float)): string =
   # traces.py r(): numbers with 3 decimals.
   "(" & formatFloat(p[0], ffDecimal, 3) & ", " & formatFloat(p[1], ffDecimal, 3) & ")"
 
-proc pyResult(b: bool; falsy: string): string =
-  # What the Python method returned, printed: True, or its falsy value
-  # (False from on_touch_down and on_touch_move, None from on_touch_up).
-  if b: "True" else: falsy
-
 proc tagOf(d: nil EventDispatcher): string =
-  if d == nil: "None"
+  if d == nil: "nil"
   elif d of Btn: Btn(d).tag
   else: "?"
 
 proc onPress(d: EventDispatcher; args: seq[Value]): bool =
-  log.emit(Btn(d).tag, "on_press")
+  log.emit(Btn(d).tag, "onPress")
   result = false
 
 proc onRelease(d: EventDispatcher; args: seq[Value]): bool =
-  log.emit(Btn(d).tag, "on_release")
+  log.emit(Btn(d).tag, "onRelease")
   result = false
 
 BtnClass.setEventHandler("on_press", onPress)
@@ -377,22 +370,22 @@ proc buttonOf(b: Btn): ButtonBehavior =
   result = bb
 
 method onTouchDown(b: Btn; t: MotionEvent): bool =
-  log.emit(b.tag, "on_touch_down", r(t.pos))
+  log.emit(b.tag, "onTouchDown", r(t.pos))
   result = b.buttonOf.onTouchDown(t, proc (t: MotionEvent): bool {.closure.} =
     procCall onTouchDown(Widget(b), t))
-  log.emit(b.tag, "on_touch_down ->", pyResult(result, "False"))
+  log.emit(b.tag, "onTouchDown ->", $result)
 
 method onTouchMove(b: Btn; t: MotionEvent): bool =
   result = b.buttonOf.onTouchMove(t, proc (t: MotionEvent): bool {.closure.} =
     procCall onTouchMove(Widget(b), t))
-  log.emit(b.tag, "on_touch_move grab_current", tagOf(t.grabCurrent), "->",
-    pyResult(result, "False"))
+  log.emit(b.tag, "onTouchMove grabCurrent", tagOf(t.grabCurrent), "->",
+    $result)
 
 method onTouchUp(b: Btn; t: MotionEvent): bool =
   result = b.buttonOf.onTouchUp(t, proc (t: MotionEvent): bool {.closure.} =
     procCall onTouchUp(Widget(b), t))
-  log.emit(b.tag, "on_touch_up grab_current", tagOf(t.grabCurrent), "->",
-    pyResult(result, "None"))
+  log.emit(b.tag, "onTouchUp grabCurrent", tagOf(t.grabCurrent), "->",
+    $result)
 
 proc tap(x, y: float; name: string; moveTo = (-1.0, -1.0)) =
   # traces.py trace_touch tap()
@@ -402,12 +395,12 @@ proc tap(x, y: float; name: string; moveTo = (-1.0, -1.0)) =
   if moveTo[0] >= 0:
     t.touchMove(moveTo[0], moveTo[1])
   t.touchUp()
-  log.emit "(wait past min_state_time .035 s, tick the clock)"
+  log.emit "(wait past minStateTime 0.035 s, tick the clock)"
   sleep(60)
   Clock.tick()
 
 proc traceTouch() =
-  # reference/traces.py trace_touch, in an 800 x 600 window.
+  # archive/reference/traces.py trace_touch, in an 800 x 600 window.
   EventLoop.ensureWindow()
   let win = Window
   let root = newFloatLayout()
@@ -419,7 +412,7 @@ proc traceTouch() =
     root.addWidget(w)
   win.addWidget(root)
   win.bind("on_touch_down", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
-    log.emit("Window observer on_touch_down", r(toMotionEvent(args[0]).pos))
+    log.emit("Window observer onTouchDown", r(toMotionEvent(args[0]).pos))
     result = false)
   tap(150, 150, "tap A only")
   tap(250, 250, "tap overlap: B is on top")
@@ -432,37 +425,36 @@ proc traceTouch() =
 
 # ------------------------------------------------------------------ screens
 
-proc pyList(items: seq[string]): string =
-  # Python's repr of a list of strings: ['a', 'b']
-  result = "["
+proc nimList(items: seq[string]): string =
+  # A seq of names as a Nim literal: @["a", "b"]
+  result = "@["
   for i, x in items:
     if i > 0: result.add ", "
-    result.add "'" & x & "'"
+    result.add "\"" & x & "\""
   result.add "]"
 
 proc childNames(sm: ScreenManager): string =
   var names: seq[string] = @[]
   for c in sm.children:
     if c of Screen: names.add Screen(c).name
-  result = pyList(names)
+  result = nimList(names)
 
-proc logScreenEvent(s: Screen; e: string) =
-  # One closure per call: closures made in a loop share the loop's variables.
+proc logScreenEvent(s: Screen; e, shown: string) =
+  # Logs `shown` (the event's Nim name) when event `e` is dispatched. One
+  # closure per call: closures made in a loop share the loop's variables.
   s.bind(e, proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
-    log.emit(Screen(d).name, e)
+    log.emit(Screen(d).name, shown)
     result = false)
 
 proc newS(name: string): Screen =
   # traces.py trace_screens: class S(Screen) logging its four events.
   result = newScreen(name)
-  for ev in ["on_pre_enter", "on_enter", "on_pre_leave", "on_leave"]:
-    result.logScreenEvent(ev)
-
-proc pyTrue(b: bool): string =
-  if b: "True" else: "False"
+  for (ev, shown) in [("on_pre_enter", "onPreEnter"), ("on_enter", "onEnter"),
+      ("on_pre_leave", "onPreLeave"), ("on_leave", "onLeave")]:
+    result.logScreenEvent(ev, shown)
 
 proc traceScreens() =
-  # reference/traces.py trace_screens
+  # archive/reference/traces.py trace_screens
   let win = Window
   let sm = newScreenManager()
   let fade = newFadeTransition()
@@ -471,18 +463,18 @@ proc traceScreens() =
   win.addWidget(sm)
   log.emit "# add first screen"
   sm.addWidget(newS("a"))
-  log.emit("current", sm.current.get("None"))
+  log.emit("current", sm.current.get("none"))
   sm.addWidget(newS("b"))
   sm.addWidget(newS("c"))
-  log.emit("screen_names", pyList(sm.screenNames), "children", childNames(sm))
+  log.emit("screenNames", nimList(sm.screenNames), "children", childNames(sm))
   log.emit "# current = b"
   sm.current = "b"
-  log.emit("is_active", pyTrue(sm.transition.isActive), "children", childNames(sm))
+  log.emit("isActive", $(sm.transition.isActive), "children", childNames(sm))
   log.emit "# current = c while a->b is running"
   sm.current = "c"
   tickFor(0.4)
-  log.emit("after", "current", sm.current.get("None"), "is_active",
-    pyTrue(sm.transition.isActive), "children", childNames(sm))
+  log.emit("after", "current", sm.current.get("none"), "isActive",
+    $(sm.transition.isActive), "children", childNames(sm))
   log.emit "# current = c again (no-op)"
   sm.current = "c"
   win.removeWidget(sm)
@@ -490,9 +482,10 @@ proc traceScreens() =
 
 # ------------------------------------------------------------------ modal
 
-proc logModalEvent(mv: ModalView; e: string) =
+proc logModalEvent(mv: ModalView; e, shown: string) =
+  # Logs `shown` (the event's Nim name) when event `e` is dispatched.
   mv.bind(e, proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
-    log.emit e
+    log.emit shown
     result = false)
 
 proc touchAt(x, y: float) =
@@ -502,38 +495,39 @@ proc touchAt(x, y: float) =
   t.touchUp()
 
 proc traceModal() =
-  # reference/traces.py trace_modal
+  # archive/reference/traces.py trace_modal
   let win = Window
   let mv = newModalView()
   mv.sizeHint = (none[float](), none[float]())
   mv.size = (200.0, 100.0)
-  for ev in ["on_pre_open", "on_open", "on_pre_dismiss", "on_dismiss"]:
-    mv.logModalEvent(ev)
+  for (ev, shown) in [("on_pre_open", "onPreOpen"), ("on_open", "onOpen"),
+      ("on_pre_dismiss", "onPreDismiss"), ("on_dismiss", "onDismiss")]:
+    mv.logModalEvent(ev, shown)
   proc inWindow(mv: ModalView): string =
-    pyTrue(Window.children.find(WidgetBase(mv)) >= 0)
-  log.emit "# open(animation=False)"
+    $(Window.children.find(WidgetBase(mv)) >= 0)
+  log.emit "# open(animation = false)"
   mv.open(animation = false)
-  log.emit("is_open", pyTrue(mv.isOpen), "center", r(mv.center), "in window", inWindow(mv))
+  log.emit("isOpen", $(mv.isOpen), "center", r(mv.center), "in window", inWindow(mv))
   log.emit "# touch inside"
   touchAt(400, 300)
-  log.emit("is_open", pyTrue(mv.isOpen))
+  log.emit("isOpen", $(mv.isOpen))
   log.emit "# touch outside"
   touchAt(10, 10)
-  log.emit("is_open", pyTrue(mv.isOpen), "in window", inWindow(mv))
+  log.emit("isOpen", $(mv.isOpen), "in window", inWindow(mv))
   log.emit "# open again, escape key"
   mv.open(animation = false)
   discard win.dispatch("on_keyboard", toValue(27), toValue(41), noneValue(),
     toValue(newSeq[Value]()))
-  log.emit("is_open after escape (animated dismiss pending)", pyTrue(mv.isOpen))
+  log.emit("isOpen after escape (animated dismiss pending)", $(mv.isOpen))
   tickFor(0.3)
-  log.emit("is_open after animation", pyTrue(mv.isOpen))
-  log.emit "# auto_dismiss False"
+  log.emit("isOpen after animation", $(mv.isOpen))
+  log.emit "# autoDismiss false"
   mv.autoDismiss = false
   mv.open(animation = false)
   touchAt(10, 10)
-  log.emit("is_open", pyTrue(mv.isOpen))
+  log.emit("isOpen", $(mv.isOpen))
   mv.dismiss(animation = false)
-  log.emit("is_open", pyTrue(mv.isOpen))
+  log.emit("isOpen", $(mv.isOpen))
   log.save "modal"
 
 # traces.py sets Config before anything opens the window (a Widget does).

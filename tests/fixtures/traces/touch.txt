@@ -1,0 +1,92 @@
+# tap A only
+Window observer onTouchDown (150.000, 150.000)
+C onTouchDown (150.000, 150.000)
+C onTouchDown -> false
+B onTouchDown (150.000, 150.000)
+B onTouchDown -> false
+A onTouchDown (150.000, 150.000)
+A state down
+A onPress
+A onTouchDown -> true
+C onTouchUp grabCurrent nil -> false
+B onTouchUp grabCurrent nil -> false
+A onTouchUp grabCurrent nil -> false
+A onRelease
+A onTouchUp grabCurrent A -> true
+(wait past minStateTime 0.035 s, tick the clock)
+A state normal
+# tap overlap: B is on top
+Window observer onTouchDown (250.000, 250.000)
+C onTouchDown (250.000, 250.000)
+C onTouchDown -> false
+B onTouchDown (250.000, 250.000)
+B state down
+B onPress
+B onTouchDown -> true
+C onTouchUp grabCurrent nil -> false
+B onTouchUp grabCurrent nil -> false
+A onTouchUp grabCurrent nil -> false
+B onRelease
+B onTouchUp grabCurrent B -> true
+(wait past minStateTime 0.035 s, tick the clock)
+B state normal
+# press A, release outside
+Window observer onTouchDown (150.000, 150.000)
+C onTouchDown (150.000, 150.000)
+C onTouchDown -> false
+B onTouchDown (150.000, 150.000)
+B onTouchDown -> false
+A onTouchDown (150.000, 150.000)
+A state down
+A onPress
+A onTouchDown -> true
+C onTouchMove grabCurrent nil -> false
+B onTouchMove grabCurrent nil -> false
+A onTouchMove grabCurrent nil -> true
+A onTouchMove grabCurrent A -> true
+C onTouchUp grabCurrent nil -> false
+B onTouchUp grabCurrent nil -> false
+A onTouchUp grabCurrent nil -> false
+A state normal
+A onTouchUp grabCurrent A -> false
+(wait past minStateTime 0.035 s, tick the clock)
+# press A, release over B
+Window observer onTouchDown (150.000, 150.000)
+C onTouchDown (150.000, 150.000)
+C onTouchDown -> false
+B onTouchDown (150.000, 150.000)
+B onTouchDown -> false
+A onTouchDown (150.000, 150.000)
+A state down
+A onPress
+A onTouchDown -> true
+C onTouchMove grabCurrent nil -> false
+B onTouchMove grabCurrent nil -> false
+A onTouchMove grabCurrent nil -> true
+A onTouchMove grabCurrent A -> true
+C onTouchUp grabCurrent nil -> false
+B onTouchUp grabCurrent nil -> false
+A onTouchUp grabCurrent nil -> false
+A state normal
+A onTouchUp grabCurrent A -> false
+(wait past minStateTime 0.035 s, tick the clock)
+# tap disabled C
+Window observer onTouchDown (650.000, 150.000)
+C onTouchDown (650.000, 150.000)
+C onTouchDown -> true
+C onTouchUp grabCurrent nil -> false
+B onTouchUp grabCurrent nil -> false
+A onTouchUp grabCurrent nil -> false
+(wait past minStateTime 0.035 s, tick the clock)
+# tap empty space
+Window observer onTouchDown (50.000, 550.000)
+C onTouchDown (50.000, 550.000)
+C onTouchDown -> false
+B onTouchDown (50.000, 550.000)
+B onTouchDown -> false
+A onTouchDown (50.000, 550.000)
+A onTouchDown -> false
+C onTouchUp grabCurrent nil -> false
+B onTouchUp grabCurrent nil -> false
+A onTouchUp grabCurrent nil -> false
+(wait past minStateTime 0.035 s, tick the clock)

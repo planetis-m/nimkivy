@@ -1,6 +1,6 @@
 # Test helpers (not a test file: the name does not start with `t`):
 # UnitTestTouch, kivy/tests/common.py: a touch posted straight into the
-# event loop, as Kivy's tests and reference/traces.py do.
+# event loop, as Kivy's tests and archive/reference/traces.py do.
 
 import nimkivy/base
 

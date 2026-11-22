@@ -1,0 +1,8 @@
+onStart
+after start opacity 0.000 running true
+onComplete opacity 1.000
+progress first 0.000 last 1.000 monotonic true
+a1 complete opacity 0.000
+a2 complete opacity 0.500
+a3 complete (stop)
+a5 duration 0 complete opacity 0.250

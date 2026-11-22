@@ -9,8 +9,8 @@ import nimkivy/sdl3/[sdl, ttf, image]
 proc sdl3CSizeof(name: cstring): clonglong {.importc, cdecl.}
 
 const
-  FontPath = cstring"reference/assets/fonts/SourceSans3-Regular.ttf"
-  ImagePath = cstring"reference/assets/landscape.png"
+  FontPath = cstring"tests/assets/fonts/SourceSans3-Regular.ttf"
+  ImagePath = cstring"tests/assets/landscape.png"
 
 proc pixel(s: ptr SDL_Surface; x, y: int): array[4, uint8] =
   # The bytes of pixel (x, y) of a 4-byte-per-pixel surface.
@@ -192,7 +192,7 @@ block smoke:
   var spec = default(SDL_AudioSpec)
   var buf: nil ptr uint8 = nil
   var size = 0'u32
-  assert SDL_LoadWAV("reference/assets/tone.wav", addr spec, addr buf, addr size),
+  assert SDL_LoadWAV("tests/assets/tone.wav", addr spec, addr buf, addr size),
     fromCString(SDL_GetError())
   assert buf != nil and size > 0 and spec.freq > 0
   let stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,

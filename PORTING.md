@@ -16,8 +16,9 @@ layers. Each layer is given to one porter.
   to keep. The ones listed in `ACCEPTANCE.md` are ported with each module.
 - The running Kivy is the installed 2.3.2 at
   `/home/ageralis/Projects/philosykos-website/kiosk/.venv`, which has the same
-  sources as `upstream/kivy`. `reference/` holds scripts that run it, and their
-  outputs in `reference/out/`.
+  sources as `upstream/kivy`. What it produced is stored as test fixtures in
+  `tests/fixtures/` (REDESIGN.md, Standalone); the Python scripts that made
+  them are kept in `archive/` as provenance and are not run.
 - `kivy/data/style.kv` holds the default canvases of the in-scope widgets
   (Label, Image, RelativeLayout, ScreenManager, ModalView). There is no kv
   language, so these rules are ported by hand into each widget's module, and
@@ -127,9 +128,9 @@ proc. Source paths are relative to `upstream/kivy/kivy/`, Nimony paths to
 - **Run everything:** `./run_tests.sh` (from anywhere). It builds every
   `tests/t*.nim` and `tests/traces.nim` in debug and in `-d:release` with
   `nimony c --mm:orc --path:src --nimcache:nimcache/<name>-<mode> -o:bin/<name>-<mode>`,
-  runs them, and compares the traces with
-  `$PY reference/compare.py tests/out --traces <name> ...`. `NIMONY` and `PY`
-  override the Nimony checkout and the Python with Kivy.
+  runs them, and compares the traces and scenes with Kivy's through
+  `bin/compare-<mode>` (`tests/compare.nim`). `NIMONY` overrides the Nimony
+  checkout. No Python is needed.
 - Build:
   `nimony c --mm:orc --path:src --nimcache:nimcache/<name> -o:bin/<name> <file>.nim`.
   `--mm:orc` is needed because widgets and their closures form cycles (see
@@ -141,27 +142,25 @@ proc. Source paths are relative to `upstream/kivy/kivy/`, Nimony paths to
   `SDL_VIDEO_DRIVER=offscreen SDL_RENDER_DRIVER=software SDL_AUDIO_DRIVER=dummy`,
   so tests that open a window or an audio device are headless and
   deterministic; run a test by hand with the same variables. Tests run from
-  the repository root and read fonts from `reference/assets/fonts/` (Source
+  the repository root and read fonts from `tests/assets/fonts/` (Source
   Sans 3 and Noto Serif, SIL Open Font License, licence files beside them).
 - Scenes: `tests/scenes.nim <scene> ...` renders the same trees as
-  `reference/scenes.py`, into `tests/out/<scene>.png` and `.txt`, through
-  the real Window. Then `reference/compare.py tests/out <scene> ...` checks
-  them against `reference/out` (see ACCEPTANCE.md): the geometry exactly,
-  the pixels within budget. `run_tests.sh` runs the scenes on SDL's OpenGL renderer
+  `archive/reference/scenes.py`, into `tests/out/<scene>.png` and `.txt`,
+  through the real Window. Then `bin/compare-<mode> tests/out <scene> ...`
+  checks them against `tests/fixtures/scenes` (see ACCEPTANCE.md): the
+  geometry exactly, the pixels within budget. `run_tests.sh` runs the scenes on SDL's OpenGL renderer
   (`SDL_RENDER_DRIVER=opengl`, through the offscreen driver's EGL), which
   matches GL's rasterization and supports Kivy's blend mode; the tests stay
   on the software renderer (Gaps).
-- Geometry: `reference/graphics_points.py` writes
-  `reference/out/graphics_points.txt`, the points, radii and normalised Line
-  shapes Kivy computes, and the children of a Canvas after add, insert,
+- Geometry: `tests/fixtures/graphics_points.txt` holds the points, radii and
+  normalised Line shapes Kivy computes, and the children of a Canvas after add, insert,
   remove and clear. `tvertex_instructions` and `tinstructions` compare with
   it.
 - Traces: `tests/traces.nim` writes `tests/out/traces/*.txt`, which must equal
-  `reference/out/traces/*.txt` line for line.
-- Python, from `nimkivy/`, with
-  `PY=/home/ageralis/Projects/philosykos-website/kiosk/.venv/bin/python`:
-  run `$PY reference/make_assets.py`, `$PY reference/scenes.py`,
-  `$PY reference/traces.py` and `$PY reference/graphics_points.py`.
+  `tests/fixtures/traces/*.txt` line for line (`bin/compare-<mode> tests/out
+  --traces`).
+- Fixtures: Kivy's outputs in the format of REDESIGN.md (Standalone);
+  `archive/README.md` says how they were made.
 - Whole stack: `tests/tshowcase.nim` drives `examples/showcase.nim`
   (run_tests.sh runs it on the OpenGL renderer). The example runs on its
   own from the repository root:
@@ -184,6 +183,7 @@ proc. Source paths are relative to `upstream/kivy/kivy/`, Nimony paths to
 | 8 | animation, uix/screenmanager, uix/modalview | done: tanimation (TestAnimation's 11 tests, test_animated_instruction on a Translate as Scale is out; the events, stop against cancel, a list property, a Color's alpha, stop_property; all 31 transition functions at 0, .3, .5, .7, 1 against Kivy's values), tscreenmanager (test_switch_to, test_switching_does_not_affect_a_list_of_screens for NoTransition and FadeTransition; the lifecycle events, next/previous, renaming and removing screens, clear_widgets, switch_to renaming and removing the old screen, the fade's screens and textures, touches ignored during a transition) and tmodalview (test_modal_app adapted; on_dismiss returning true and force, Escape with its fade, auto_dismiss false, the style.kv colours) pass in debug and release. Traces `animation`, `screens` and `modal` match exactly (and the earlier five still do). Scenes on the OpenGL renderer: screen_relative, fade_half and modal_custom geometry exact and 0.00% of pixels (fade_half also 0.00% on the software renderer); modal_default geometry exact, pixels 19.96% (expected: Kivy's atlas background, SCOPE.md; run_tests.sh checks only its geometry). `reference/out/modal_default.*` were generated again: the committed ones showed the modal never opened (re-running `reference/scenes.py modal_default` opens it every time). Layer 3 change: `graphics/renderer` got `Fbo` and `FadeMix` (FadeTransition's render targets and mix) and tracks its current target. No Nimony bugs found. |
 | 9 | core/audio | done: taudio (test_audio's 3 length tests with `reference/assets/tone.wav`, 1.4019954648526076 s as Kivy reports; the state changes and on_play/on_stop in Kivy 2.3.2's order for play, play again, stop, stop again, the natural end and a loop, recorded from the running Kivy; volume while playing; unload while playing; a missing WAV (a Sound with length 0 that does not play, as Kivy) and other extensions (nil); the extension's case and query string; the natural end of a 24 kHz WAV that the device resamples) passes in debug and release with `SDL_AUDIO_DRIVER=dummy`. Real device (PipeWire 1.6.11, SDL 3.4.20, SDL's default driver, then `pipewire` and `pulseaudio` forced): `tests/audiodevice.nim` (not in run_tests.sh; how to run it is in its header) opens the window first, then loads the first Sound, plays a kiosk clip, unloads it while it plays, plays a second clip (4.00 s) to its natural end (on_stop 4.02 s later), plays again and closes the window while it plays: no hang, events in order, on all three drivers. The first run found that a resampled stream never empties (the resampler keeps 14 bytes queued), so the end was never seen: `play` now calls SDL_FlushAudioStream. Added SDL_WasInit and SDL_FlushAudioStream to sdl3/sdl (called in tsdl3). Bug filed: planetis-m/nimony-bugs-llms#335 (an integer literal picks the float32 overload: `61828 / 44100` is computed in float32; the test writes float literals). |
 | 10 | whole-stack check, profiling baseline, Android notes | done: `examples/showcase.nim`, a kiosk-like App with every phase-1 piece (ScreenManager with FadeTransition between attract, home and topic screens; Box, Float, Anchor and Relative layouts; wrapped and aligned Labels in a registered font; Images with cover and contain; ButtonBehavior buttons and tiles; Animation crossfade and press feedback; a ModalView language picker; a WAV played with on_play/on_stop; Clock intervals for the slideshow and the idle reset; text sizes following a window resize), and `tests/tshowcase.nim`, its scripted run (35 steps from a Clock interval inside App.run, SDL finger events through SDL_PushEvent, each step waiting for its condition, checks of what is shown and current, and of the order of what happened) pass in debug and release on the offscreen driver with the OpenGL renderer (run_tests.sh) and also on the software renderer, the X11 window and under valgrind. Every earlier test, trace and scene still passes. `PROFILE.md`: frame times and where the time goes (tools/profile.sh, tools/callcounts.sh; `tests/scenes.nim` times redraws with SCENES_REDRAW). `ANDROID.md`: what an Android build needs, nothing built. No new GAPs; no Nimony bugs found. **Phase 1 is complete.** |
+| P2.0 | phase 2 step 0: standalone harness | done: Kivy's outputs moved to `tests/fixtures/` (traces, scenes, graphics_points, known-geometry-diffs) and converted once to Nim's format (`archive/convert-fixtures.sh`); assets to `tests/assets/`; the Python scripts to `archive/reference/` with `archive/README.md`. `tests/compare.nim` (SDL3_image) replaces compare.py; checked once against it on the same outputs: same results, same differing-pixel counts for all 18 scenes, same failures and diff image on a broken copy. `tests/traces.nim` and `tests/scenes.nim` write the new format; `$` of a `Value` prints none/true/false. run_tests.sh passes in debug and release with no Python on PATH. No new GAPs; no Nimony bugs found. |
 
 ## Gaps
 

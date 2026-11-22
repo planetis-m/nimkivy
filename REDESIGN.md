@@ -146,7 +146,7 @@ Animation itself.
 | `touch.ud` keyed by `Value` | a typed set of objects (`touch.claimedBy`, the only use) |
 | `_touch_started_inside` as int -1/0/1 | enum `TouchStart` |
 | `Config.get("graphics", "width")` string sections and keys | typed `Config` fields (`Config.graphics.width`) |
-| `"None"`/`"True"`/`"False"` in `$Value`, Python's repr in traces | gone with `Value`; fixtures in Nim's format (below) |
+| `"None"`/`"True"`/`"False"` in `$Value`, Python's repr in traces | `$Value` prints `none`/`true`/`false` and the fixtures are in Nim's format (step 0, below); `Value` itself goes in step 6 |
 | `pyStrip`, `pyLstrip`, `pyRstrip`, `pyInsert`, `pyRemove` | Nim names saying what they do (`stripUnicodeSpace` with Python's whitespace set, which Kivy's layout depends on; `insertAt` with a negative index) |
 | `quit "KeyError: ..."`, `"AttributeError: ..."`, `"ValueError: ..."` | most of these cases are compile errors now; the rest (`bounds`, a widget with a parent) say what is wrong without Python exception names |
 | `parseHalign("center")` and other Kivy-string parsers | enums only |
@@ -196,27 +196,44 @@ A wrong property or a binding to something that is not a property is a
 compile error at its place. The prototype has all of this except `part.` in
 `on part.event` (a path to an owned properties object such as `w.button`).
 
-## Standalone: tests without Python
+## Standalone: tests without Python (step 0, done)
 
-- `reference/out/` moves to `tests/fixtures/` (`traces/*.txt`,
-  `scenes/*.txt` and `*.png`, `graphics_points.txt`,
-  `known-geometry-diffs.txt`); `reference/assets/` to `tests/assets/`.
-- **Format.** Text, one fact per line, as now, but Nim's: `true`/`false`,
-  `none` for an empty `Opt`, numbers as `formatFloat(x, ffDecimal, 3)` where
-  the traces use 3 decimals and as `$x` (shortest round trip, the same digits
-  as Python's repr) elsewhere, tuples `(a, b)`, strings unquoted, event names
-  as the Nim names (`onTouchDown`). The Kivy-made files are converted once
-  (True/False/None, Python's quoted strings and dicts in the label trace);
-  the conversion rules go in `archive/README.md`.
-- **`tests/compare.nim`** replaces `compare.py`: geometry and traces line by
-  line with the known-differences file, PNGs through SDL3_image (already a
-  dependency): the same tolerance (24 per channel) and budgets (0.5%, 3%
-  for labels, modals and MSAA, 1% with JPEG), a diff image in
-  `tests/out/diff/`. Checked once against `compare.py` on the same outputs
-  before `compare.py` moves.
-- `reference/*.py` (scenes, traces, graphics_points, make_assets, compare)
-  move to `archive/reference/` with a README: Kivy 2.3.2, the kiosk's venv,
-  the commands, the date, and the conversion. `run_tests.sh` needs no `PY`.
+- **Layout.** `tests/fixtures/`: `traces/*.txt`, `scenes/<scene>.txt` and
+  `.png`, `graphics_points.txt`, `known-geometry-diffs.txt`, all made by
+  Kivy 2.3.2. `tests/assets/`: the images, sound and fonts the tests, scenes
+  and showcase read. `archive/`: the Python scripts that made them, the
+  one-time conversion and a README (provenance only, never run).
+- **Format.** Plain text, one fact per line, written the way Nim writes it:
+  - `true`/`false`; `nil` for a missing object (`grabCurrent nil`); `none`
+    for an empty `Opt` (`textSize = (300, none)`); a handler that returned
+    Python's `None` is `false`;
+  - numbers with 3 decimals (`formatFloat(x, ffDecimal, 3)`) where the
+    traces and geometry print 3, and the shortest round-trip text elsewhere
+    (`graphics_points.txt`: `$x`, the same digits as Python's repr);
+  - tuples `(a, b)` (`(7,)` for one), seqs `@["a", "b"]`, `@[]`;
+  - names are Nim's (`onTouchDown`, `isOpen`, `textureSize=`,
+    `roundedRectangle`), enum values by their Nim names (`valignMiddle`);
+    case and step labels (`rect_fraction`) stay as they are;
+  - words logged as words are unquoted (`A state down`); the label trace
+    shows each case as the Nim named arguments it sets, with Nim string
+    literals (`text = "Hello", fontSize = 40 -> (93.000, 47.000)`).
+  `tests/traces.nim` and `tests/scenes.nim` write this format; `$` of a
+  phase-1 `Value` prints `none`/`true`/`false`. The Kivy-made files were
+  converted once by `archive/convert-fixtures.sh`; `archive/README.md` lists
+  the rules.
+- **`tests/compare.nim`** replaced `compare.py`, with the same rules:
+  geometry and traces line by line except the lines in
+  `known-geometry-diffs.txt`; PNGs read with SDL3_image, a pixel differs when
+  a channel differs by more than 24, budgets 0.5%, 3% for labels, modals and
+  MSAA, 1% with JPEG; over budget, `tests/out/diff/<scene>.png`. Checked once
+  against `compare.py` on the same outputs (archive/README.md): the same
+  result for every scene and trace, the same pixel counts, the same failures
+  on a broken copy.
+- **Run:** `./run_tests.sh` (needs Nimony and SDL3, SDL3_ttf, SDL3_image; no
+  Python, no `PY`). By hand, from the repository root:
+  `bin/compare-debug tests/out <scene> ...`,
+  `bin/compare-debug tests/out --traces [name ...]`, `--pixels <scene> ...`
+  for pixels only, `--fixtures <dir>` first for other fixtures.
 
 ## Performance allowed in phase 2
 
@@ -247,7 +264,7 @@ the block).
 
 | # | Step | Tests | Done when |
 |---|---|---|---|
-| 0 | **Standalone harness**: fixtures to `tests/fixtures`, Nim format, `tests/compare.nim`, `archive/`; trace and scene writers print Nim's format | all current tests, traces, scenes | `run_tests.sh` passes with no Python on the machine; `compare.nim` and `compare.py` agree on the current outputs (checked once) |
+| 0 | **Standalone harness** (done, 2026-11-22): fixtures to `tests/fixtures`, Nim format, `tests/compare.nim`, `archive/`; trace and scene writers print Nim's format | all current tests, traces, scenes | `run_tests.sh` passes with no Python on the machine; `compare.nim` and `compare.py` agree on the current outputs (checked once) |
 | 1 | **Plugins and observers** in `src/nimkivy/props.nim`, `observers.nim`, `plugins/propsplug.nim`, `plugins/codegen.nim`: every kind above, observer order as phase 1 | `tproperties` and the `events`/`properties` cases rewritten on it; the prototype tests; `bad/` programs | every phase-1 property and event case passes typed; the old `event.nim`/`properties.nim` still build the rest |
 | 2 | **Layer 1 and 5 dispatchers**: metrics (aliases), clock, core/window (WindowBase, WidgetBase with typed hints, parent and children by hand: #337), input/motionevent (`claimedBy`), base, app, config typed | tclock, tmetrics, tmotionevent, twindow, tapp; traces `events`, `clock`, `touch` | no name lookups in these modules |
 | 3 | **Layer 6**: widget, layout, the four layouts (typed triggers, `PosHint`, `CanvasLayer`) | twidget, tlayout, trelativelayout; trace `properties`; layout scenes | geometry exact, pixels as before |

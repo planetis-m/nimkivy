@@ -1,0 +1,16 @@
+# add first screen
+a onPreEnter
+a onEnter
+current a
+screenNames @["a", "b", "c"] children @["a"]
+# current = b
+b onPreEnter
+a onPreLeave
+isActive true children @[]
+# current = c while a->b is running
+c onPreEnter
+b onPreLeave
+c onEnter
+b onLeave
+after current c isActive false children @["c"]
+# current = c again (no-op)

@@ -1,5 +1,6 @@
-# Renders the reference scenes of reference/scenes.py into tests/out/<scene>.png and <scene>.txt, for
-# `reference/compare.py tests/out <scene> ...`:
+# Renders the reference scenes of archive/reference/scenes.py into
+# tests/out/<scene>.png and <scene>.txt, for `bin/compare tests/out <scene> ...`
+# (tests/compare.nim):
 #
 #   bin/scenes-<mode> graphics_basic boxlayout_tests ...
 #
@@ -22,8 +23,8 @@ import nimkivy/uix/[boxlayout, floatlayout, anchorlayout, label, image, screenma
   modalview]
 
 proc a(name: string): string =
-  # scenes.py a(): an asset of reference/assets.
-  "reference/assets/" & name
+  # scenes.py a(): an asset of tests/assets.
+  "tests/assets/" & name
 
 # ---------------------------------------------------------------- helpers
 
@@ -705,12 +706,12 @@ proc shoot(name: string) =
     if top of Widget:
       for wid in Widget(top).walk():
         var line = wid.cls.name & " pos=" & fmt(wid.pos) & " size=" & fmt(wid.size)
-        # scenes.py: texture_size and norm_image_size where the widget has them.
+        # scenes.py: textureSize and normImageSize where the widget has them.
         if wid of Label:
-          line.add " texture_size=" & fmt(Label(wid).textureSize)
+          line.add " textureSize=" & fmt(Label(wid).textureSize)
         elif wid of Image:
-          line.add " texture_size=" & fmt(Image(wid).textureSize)
-          line.add " norm_image_size=" & fmt(Image(wid).normImageSize)
+          line.add " textureSize=" & fmt(Image(wid).textureSize)
+          line.add " normImageSize=" & fmt(Image(wid).normImageSize)
         lines.add line
   try:
     writeFile(cwd / "tests" / "out" / (name & ".txt"), lines.join("\n") & "\n")

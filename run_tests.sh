@@ -1,11 +1,11 @@
 #!/bin/sh
-# Builds and runs nimkivy's tests and traces, in debug and release.
-# Run from anywhere; one Nimony build at a time. Needs NIMONY (default
-# ~/Projects/nimony) and the kiosk's Python with Kivy for reference/compare.py.
+# Builds and runs nimkivy's tests, traces and scenes, in debug and release,
+# and compares the traces and scenes with Kivy's (tests/fixtures) through
+# tests/compare.nim. Run from anywhere; one Nimony build at a time. Needs
+# NIMONY (default ~/Projects/nimony), SDL3, SDL3_ttf and SDL3_image; no Python.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 nimony=${NIMONY:-$HOME/Projects/nimony}/bin/nimony
-python=${PY:-$HOME/Projects/philosykos-website/kiosk/.venv/bin/python}
 cd "$here"
 # Tests that open a window (tsdl3 and later) run headless and deterministic.
 export SDL_VIDEO_DRIVER=offscreen SDL_RENDER_DRIVER=software SDL_AUDIO_DRIVER=dummy
@@ -32,28 +32,29 @@ for mode in debug release; do
     fi
     echo "$t ($mode): passed"
   done
+  build compare "$mode" tests/compare.nim
   build traces "$mode" tests/traces.nim
-  rm -rf tests/out/traces
+  rm -rf tests/out/traces tests/out/diff
   "./bin/traces-$mode"
-  # The traces written so far must match Kivy's exactly.
-  "$python" reference/compare.py tests/out --traces events clock label touch properties \
+  # The traces must match Kivy's exactly.
+  "./bin/compare-$mode" tests/out --traces events clock label touch properties \
     animation screens modal
-  # The scenes drawn so far: geometry exact, pixels within budget. They use
-  # SDL's OpenGL renderer through the offscreen driver's EGL: the software
-  # renderer rasterizes long thin triangles up to a pixel off GL's and
-  # refuses Kivy's blend mode (PORTING.md, Gaps).
+  # The scenes: geometry exact, pixels within budget. They use SDL's OpenGL
+  # renderer through the offscreen driver's EGL: the software renderer
+  # rasterizes long thin triangles up to a pixel off GL's and refuses Kivy's
+  # blend mode (PORTING.md, Gaps).
   scenes="graphics_basic graphics_basic_msaa graphics_line graphics_texture canvas_order
     boxlayout_tests boxlayout_hints floatlayout_hints anchorlayout_tests
     label_align image_fit image_misc label_wrap label_default
     screen_relative fade_half modal_custom"
   # Known geometry differences (one label a pixel narrower: SDL3_ttf) are
-  # listed exactly in reference/known-geometry-diffs.txt; any other fails.
+  # listed exactly in tests/fixtures/known-geometry-diffs.txt; any other fails.
   build scenes "$mode" tests/scenes.nim
   SDL_RENDER_DRIVER=opengl "./bin/scenes-$mode" $scenes modal_default
-  "$python" reference/compare.py tests/out $scenes
+  "./bin/compare-$mode" tests/out $scenes
   # Kivy's default ModalView background is an atlas image, which is out of
   # scope: nimkivy draws a plain white box, so only the geometry must match.
-  diff reference/out/modal_default.txt tests/out/modal_default.txt
+  diff tests/fixtures/scenes/modal_default.txt tests/out/modal_default.txt
   echo "ok   modal_default geometry (pixels differ as expected: SCOPE.md, ModalView)"
 done
 echo "all passed"

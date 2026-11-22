@@ -1,0 +1,25 @@
+# open(animation = false)
+onPreOpen
+onOpen
+isOpen true center (400.000, 300.000) in window true
+# touch inside
+Window observer onTouchDown (400.000, 300.000)
+isOpen true
+# touch outside
+Window observer onTouchDown (10.000, 10.000)
+onPreDismiss
+onDismiss
+isOpen true in window true
+# open again, escape key
+onPreDismiss
+onDismiss
+isOpen after escape (animated dismiss pending) true
+isOpen after animation false
+# autoDismiss false
+onPreOpen
+onOpen
+Window observer onTouchDown (10.000, 10.000)
+isOpen true
+onPreDismiss
+onDismiss
+isOpen false

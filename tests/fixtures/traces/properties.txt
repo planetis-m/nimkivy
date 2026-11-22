@@ -42,9 +42,9 @@ padding 5 -> (5.000, 5.000, 5.000, 5.000)
 padding (10, 20) -> (10.000, 20.000, 10.000, 20.000)
 padding (1, 2, 3, 4) -> (1.000, 2.000, 3.000, 4.000)
 padding [7] -> (7.000, 7.000, 7.000, 7.000)
-defaults size (100.000, 100.000) size_hint (1.000, 1.000) pos_hint {}
-child disabled True
-parent True child True
-child set False while parent disabled -> True
-child disabled False
-parent False -> False
+defaults size (100.000, 100.000) sizeHint (1.000, 1.000) posHint @[]
+child disabled true
+parent true child true
+child set false while parent disabled -> true
+child disabled false
+parent false -> false

@@ -1,5 +1,0 @@
-FloatLayout pos=(0.000, 0.000) size=(800.000, 600.000)
-Image pos=(10.000, 310.000) size=(380.000, 280.000) texture_size=(400.000, 200.000) norm_image_size=(380.000, 190.000)
-Image pos=(410.000, 310.000) size=(380.000, 280.000) texture_size=(400.000, 200.000) norm_image_size=(380.000, 190.000)
-Image pos=(10.000, 10.000) size=(380.000, 280.000) texture_size=(400.000, 200.000) norm_image_size=(560.000, 280.000)
-Image pos=(410.000, 10.000) size=(380.000, 280.000) texture_size=(0.000, 0.000) norm_image_size=(380.000, 280.000)

@@ -1,8 +1,8 @@
 # nimkivy acceptance
 
 A layer is done when its ported Kivy tests pass, and when its scenes and
-traces match Kivy's output (`reference/out/`), produced by the running Kivy
-2.3.2. Kivy's tests are in `upstream/kivy/kivy/tests/`. Each one is ported
+traces match Kivy's output, produced by the running Kivy 2.3.2 and
+stored in `tests/fixtures/` (`archive/README.md` says how). Kivy's tests are in `upstream/kivy/kivy/tests/`. Each one is ported
 into `tests/t<module>.nim` as a `block` named after the Kivy test, with a
 comment `# kivy/tests/<file>::<test>`.
 
@@ -29,7 +29,7 @@ the reference scenes.
 | `test_graphics.py` | test_line_rounded_rectangle | `tvertex_instructions.nim` | The asserts on the normalised `rounded_rectangle` radii (clamping, minimum 1). The renders are covered by `graphics_line`. |
 | `test_app.py` | test_basic_app, test_graphics_app | `tlabel.nim` (test_basic_app), `tapp.nim` | test_basic_app checks `root.text`. test_graphics_app reads two pixels of the rendered window. |
 | `test_fonts.py` | test_unicode_name | `ttext.nim` | Adapted: `data/fonts/DejaVuSans.ttf` is copied to a temporary file named `कीवी.ttf` (no zip). |
-| `test_audio.py` | test_length_simple, test_length_playing, test_length_stopped | `taudio.nim` | Adapted: `reference/assets/tone.wav` (1.402 s, the length of `sample1.ogg`), because only WAV is supported (Gaps). Kivy reports 1.40200 s for this file. |
+| `test_audio.py` | test_length_simple, test_length_playing, test_length_stopped | `taudio.nim` | Adapted: `tests/assets/tone.wav` (1.402 s, the length of `sample1.ogg`), because only WAV is supported (Gaps). Kivy reports 1.40200 s for this file. |
 
 ## Kivy tests not ported
 
@@ -48,13 +48,14 @@ the reference scenes.
 | test_image, test_imageloader | keep_data, BytesIO saving, and per-provider loader suites (SDL2, PIL, ...) are out. Loading is compared in the `image_*` and `graphics_texture` scenes. |
 | test_utils (other tests), test_config, test_lang*, test_uix_* of other widgets, test_issues, and the rest | out of scope |
 
-## Reference scenes (`reference/scenes.py`)
+## Reference scenes (`archive/reference/scenes.py`)
 
 Each scene builds a widget tree with the in-scope API in an 800 x 600 window
-(clearcolor white, `multisamples = 0`). It saves `reference/out/<scene>.png`
+(clearcolor white, `multisamples = 0`). It saved `<scene>.png`
 with `Window.screenshot` (Kivy numbers the file, and the script renames it),
 and `<scene>.txt` with every widget's pos, size, `texture_size` and
-`norm_image_size`. The test images are made by `reference/make_assets.py`.
+`norm_image_size`, now in `tests/fixtures/scenes/`. The test images in
+`tests/assets/` were made by `archive/reference/make_assets.py`.
 
 | Scene | What it shows |
 |---|---|
@@ -77,16 +78,16 @@ and `<scene>.txt` with every widget's pos, size, `texture_size` and
 | modal_custom | the kiosk's picker style: transparent background, coloured overlay, painted panel |
 | modal_default | Kivy's default ModalView look. nimkivy is expected to differ here (no atlas; see SCOPE.md). |
 
-**Comparison:** `reference/compare.py tests/out`. The `.txt` geometry must
+**Comparison:** `bin/compare-<mode> tests/out <scene> ...` (`tests/compare.nim`). The `.txt` geometry must
 match exactly, printed to 3 decimals. In the `.png`, at most 0.5% of pixels
 may differ by more than 24/255 in a channel. The budget is 3% for label,
 modal and `_msaa` scenes, and 1% for scenes with JPEG. Every scene over budget
 gets a diff image in `tests/out/diff/`. A remaining difference is either fixed
 or written down as a GAP with the measured percentage.
 
-## Behaviour traces (`reference/traces.py`)
+## Behaviour traces (`archive/reference/traces.py`)
 
-`reference/out/traces/<name>.txt` holds the exact lines that `tests/traces.nim`
+`tests/fixtures/traces/<name>.txt` holds the exact lines that `tests/traces.nim`
 must print:
 
 | Trace | What it fixes |

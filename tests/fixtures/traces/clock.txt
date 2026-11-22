@@ -1,4 +1,4 @@
-# tick_draw 0
+# tickDraw 0
 call once -1
 # tick 0
 call once 0 a
@@ -6,12 +6,12 @@ call once 0 b
 call interval 0
 call nest; schedules once 0 and once -1
 call trigger
-# tick_draw 1
+# tickDraw 1
 call nested -1
 # tick 1
 call interval 0
 call nested 0
-# tick_draw 2
+# tickDraw 2
 # tick 2
 call interval 0
 # after cancel

@@ -1,0 +1,15 @@
+default onV 1.000
+v1
+v2 returns true
+v3
+# events
+g2 (7,)
+g1 (7,)
+default onGo (7,)
+dispatch -> false
+g3 returns true
+dispatch -> true
+g2 (9,)
+g1 (9,)
+default onGo (9,)
+dispatch after unbindUid -> false
