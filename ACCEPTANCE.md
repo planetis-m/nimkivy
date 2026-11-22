@@ -61,7 +61,7 @@ and `<scene>.txt` with every widget's pos, size, `texture_size` and
 | Scene | What it shows |
 |---|---|
 | graphics_basic | Rectangle, alpha blending, RoundedRectangle (one radius, and 4 mixed corners), Ellipse (full, angle range, 6 segments), Triangle, a 1 px rectangle, fractional geometry |
-| graphics_basic_msaa | the same scene with Kivy's default MSAA 2; nimkivy draws it with `multisamples = 2` too (the smooth edges of `msaaEdge`, PORTING.md, Design differences) |
+| graphics_basic_msaa | the same scene with Kivy's default MSAA 2, to measure the MSAA GAP |
 | graphics_smooth | SmoothRoundedRectangle, SmoothEllipse (full, slice, 7 segments), SmoothRectangle at fractional geometry, SmoothTriangle, SmoothQuad, half-alpha smooth shapes over a dark rectangle (Kivy's stencil; hard edges here, PORTING.md Gaps), SmoothLine open, closed, circle, arc, rectangle, rounded rectangles, half alpha, an overdraw width of 2.5 (`archive/reference/smooth.py`) |
 | graphics_line | 1 px open and closed polylines, the three caps, the four joints, circle (full and arcs, segments), rectangle, rounded_rectangle, a width of 1.5 |
 | graphics_texture | `source` on Rectangle, Ellipse and RoundedRectangle, PNG with alpha, JPEG, colour tint, half alpha, an upscaled small image |

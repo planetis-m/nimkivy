@@ -110,10 +110,8 @@ nimkivy spells them in camelCase.
 - **Smooth instructions (after phase 2, P2.12):** SmoothLine,
   SmoothRectangle, SmoothRoundedRectangle, SmoothEllipse, SmoothTriangle,
   SmoothQuad (and Quad, which it needs), with Kivy's internal
-  AntiAliasingLine. With `multisamples > 0` (Kivy's default 2) the
-  Rectangle, Ellipse, RoundedRectangle, Triangle and wide Line get the same
-  kind of edges (PORTING.md, Design differences), since SDL_Renderer has no
-  MSAA.
+  AntiAliasingLine. `multisamples` is not used: SDL_Renderer has no MSAA
+  (PORTING.md, Gaps).
 - **Out:** OpenGL, Shader, RenderContext, Fbo (except the private
   render-to-texture inside FadeTransition), Mesh, Point, Bezier,
   `Line` dash, bezier and ellipse

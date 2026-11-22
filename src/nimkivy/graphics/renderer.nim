@@ -20,9 +20,7 @@
 ## An AntiAliasingLine drawn with a colour whose alpha is below 1 goes, in
 ## Kivy, through a stencil of its shape, so that it is drawn only outside
 ## the shape. SDL_Renderer has no stencil, so here it is not drawn and the
-## translucent shape keeps a hard edge (Gaps). With
-## `Config.graphics.multisamples > 0` a shape's `msaaEdge`
-## (vertex_instructions) is drawn right after it, under the same rule.
+## translucent shape keeps a hard edge (Gaps).
 ##
 ## Two instructions exist only for FadeTransition (layer 8), because they
 ## need the SDL renderer: `Fbo` draws its children into a render-target
@@ -98,6 +96,10 @@ proc emptyBox(): Box {.inline.} =
 
 proc newRenderer*(sdl: SDL_Renderer): Renderer =
   ## A renderer drawing on `sdl` (the window's).
+  # GAP: no multisample antialiasing, where Kivy's default is
+  # `multisamples = 2`: edges of ellipses, rounded corners and wide lines are
+  # more jagged (graphics_basic_msaa: 0.27% of pixels differ), because
+  # SDL_Renderer has no MSAA
   result = Renderer(sdl: sdl, target: nil, blendMode: SDL_BLENDMODE_BLEND, height: 0, color: [1.0, 1, 1, 1],
     opacity: 1, opacityStack: @[], tx: 0, ty: 0, matrixStack: @[], texture: nil, phase: spNone,
     mask: emptyBox(), clipStack: @[], vbuf: @[], ibuf: @[], points: @[])
@@ -224,25 +226,8 @@ proc drawTriangles(r: Renderer; v: VertexInstruction) =
   discard SDL_RenderGeometry(r.sdl, handle, addr r.vbuf[0], cint(r.vbuf.len),
     addr r.ibuf[0], cint(r.ibuf.len))
 
-proc drawSmooth(r: Renderer; v: VertexInstruction) =
-  # A vertex instruction outside any stencil. Kivy draws an AntiAliasingLine
-  # whose colour is translucent (the colour's alpha, not the opacity) only
-  # outside its shape, through a stencil.
-  if v.mode == vmLineStrip:
-    r.drawLineStrip(v)
-  elif v of AntiAliasingLine and r.color[3] < 1:
-    # GAP: translucent smooth shapes have hard edges, because SDL_Renderer
-    # has no stencil
-    discard
-  else:
-    # GAP: a wide Line drawn with alpha below 1 blends its overlapping
-    # triangles (joints, caps) twice, where Kivy draws it once through a
-    # stencil, because SDL_Renderer has no stencil buffer
-    r.drawTriangles(v)
-
 proc drawVertex(r: Renderer; v: VertexInstruction) =
-  # VertexInstruction.apply: rebuild if flagged, then draw the batch; then
-  # the shape's msaaEdge, with its own texture.
+  # VertexInstruction.apply: rebuild if flagged, then draw the batch.
   if v.needsRedraw:
     v.build()
     v.flagUpdateDone()
@@ -252,16 +237,20 @@ proc drawVertex(r: Renderer; v: VertexInstruction) =
   of spUnmask:
     discard     # erasing the mask: nothing to draw
   of spNone:
-    r.drawSmooth(v)
-    let edge = msaaEdge(v)
-    if edge != nil:
-      if edge.needsRedraw:
-        edge.build()
-        edge.flagUpdateDone()
-      let bound = r.texture
-      r.texture = edge.texture
-      r.drawSmooth(edge)
-      r.texture = bound
+    if v.mode == vmLineStrip:
+      r.drawLineStrip(v)
+    elif v of AntiAliasingLine and r.color[3] < 1:
+      # Kivy draws an AntiAliasingLine whose colour is translucent (the
+      # colour's alpha, not the opacity) only outside its shape, through a
+      # stencil.
+      # GAP: translucent smooth shapes have hard edges, because SDL_Renderer
+      # has no stencil
+      discard
+    else:
+      # GAP: a wide Line drawn with alpha below 1 blends its overlapping
+      # triangles (joints, caps) twice, where Kivy draws it once through a
+      # stencil, because SDL_Renderer has no stencil buffer
+      r.drawTriangles(v)
 
 proc applyFbo(r: Renderer; f: Fbo)
 proc applyFadeMix(r: Renderer; m: FadeMix)

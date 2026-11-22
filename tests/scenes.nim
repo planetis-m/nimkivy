@@ -750,8 +750,6 @@ proc shoot(name: string) =
   # scenes.py shoot: the root widget in the window, a few frames, then the
   # screenshot (Window.screenshot numbers the file; it is renamed) and the
   # geometry of every widget.
-  # scenes.py: multisamples 0, but 2 for the `_msaa` scenes.
-  Config.graphics.multisamples = if name.endsWith("_msaa"): 2 else: 0
   let root = build(name)
   Window.addWidget(root)
   for _ in 0 ..< 5:
@@ -798,8 +796,8 @@ proc shoot(name: string) =
   echo "wrote tests/out/", name, ".png and .txt"
 
 proc main() =
-  # scenes.py shoot's Config: 800 x 600, not resizable; multisamples are set
-  # for each scene (shoot).
+  # scenes.py shoot's Config: 800 x 600, not resizable; multisamples do not
+  # exist here (see the MSAA GAP).
   Config.graphics.width = 800
   Config.graphics.height = 600
   Config.graphics.resizable = false

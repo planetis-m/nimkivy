@@ -120,8 +120,7 @@ A layer is done when:
   without child widgets. Build these with bare Canvas objects and a
   temporary window, before Widget exists.
 - **Done:** those scenes are within budget, and `graphics_basic_msaa`'s
-  difference is measured and written into the MSAA GAP row (replaced in
-  P2.12 by the smooth edges of `msaaEdge`, PORTING.md).
+  difference is measured and written into the MSAA GAP row.
 
 ## 4. Text and image cores
 

@@ -7,7 +7,6 @@
 # directly, which is what the renderer does.
 
 import std/[assertions, parseutils, strutils, syncio]
-import nimkivy/config
 import nimkivy/graphics/[instructions, texture, vertex_instructions]
 import nimkivy/core/image
 
@@ -590,54 +589,3 @@ block smooth_points:
               name & " " & attr & "[" & $i & "]: " & $got[i] & ", Kivy " & $want
   assert values > 1000
   echo "smooth_points: ", values, " values, ", inexact, " not bit-identical (within 1e-9)"
-
-# With multisamples > 0 (Kivy's default 2) the regular shapes get the edges of
-# their smooth counterparts (msaaEdge), and keep Kivy's own points, pos, size
-# and radius; with 0 they have none.
-block msaa_edges:
-  proc shapes(): seq[VertexInstruction] =
-    let rr = newRoundedRectangle((540.0, 420.0), (220.0, 140.0))
-    rr.radius = [(10.0, 10.0), (60.0, 30.0), (0.0, 0.0), (40.0, 40.0)]
-    let l = newLine(width = 2)
-    l.circle = [80.0, 160, 50]
-    result = @[VertexInstruction(newEllipse((20.0, 220.0), (180.0, 120.0))), rr,
-      newTriangle([640.0, 200, 780, 200, 700, 360]), l,
-      newLine([0.0, 0, 50, 50, 100, 0], width = 3), newRectangle((1.0, 2.0), (30.0, 40.0)),
-      newLine([0.0, 0, 50, 50])]
-  proc geometry(v: VertexInstruction): seq[float] =
-    if v of RoundedRectangle:
-      result = RoundedRectangle(v).points
-      for (x, y) in RoundedRectangle(v).radius:
-        result.add x
-        result.add y
-    elif v of Rectangle:
-      result = Rectangle(v).points & @[Rectangle(v).pos[0], Rectangle(v).pos[1],
-        Rectangle(v).size[0], Rectangle(v).size[1]]
-    elif v of Triangle: result = Triangle(v).points
-    else: result = Line(v).points
-  assert Config.graphics.multisamples == 2
-  let smooth = shapes()
-  Config.graphics.multisamples = 0
-  let hard = shapes()
-  for k in 0 ..< hard.len:
-    hard[k].build()
-    assert msaaEdge(hard[k]) == nil
-  Config.graphics.multisamples = 2
-  for k in 0 ..< smooth.len:
-    smooth[k].build()
-    assert geometry(smooth[k]) == geometry(hard[k])
-    # A Line of width 1 keeps its hard edges.
-    assert (msaaEdge(smooth[k]) == nil) == (k == 6)
-  # With 2 samples the ramp is 0.5 px: the rounded rectangle is drawn
-  # 0.25 px inside, its line (half-width 0.75) on that outline.
-  let rr = RoundedRectangle(smooth[1])
-  let edge = msaaEdge(rr)
-  assert edge != nil and edge of AntiAliasingLine
-  let aa = AntiAliasingLine(edge)
-  assert aa.points[0] == 540.25 and aa.points[1] == 550.0 and aa.width == 0.75
-  assert rr.vertices[0].x == 650 and rr.vertices[1].x == 540.25
-  # The open wide line keeps only its caps; a full circle has none.
-  assert Line(smooth[4]).indices.len == 2 * 10 * 3 and Line(smooth[3]).indices.len == 0
-  let band = msaaEdge(smooth[4])
-  assert band != nil and band of SmoothLine and SmoothLine(band).width == 3.5 and
-    SmoothLine(band).overdrawWidth == 1
