@@ -6,7 +6,7 @@
 # in real time without a device.
 
 import std/[assertions, os, syncio, strutils, files, dirs, paths, tempfiles]
-import nimkivy/[clock, properties]
+import nimkivy/clock
 import nimkivy/core/audio
 
 const
@@ -36,13 +36,13 @@ type
 proc record(s: Sound): Log =
   # Logs the state changes and the events, with the state at each event.
   let log = Log(entries: @[])
-  s.bind("state", proc (d: EventDispatcher; v: Value) {.closure.} =
-    log.entries.add "state " & v.str)
-  s.bind("on_play", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
-    log.entries.add "on_play " & $Sound(d).state
+  discard s.bindState(proc (v: SoundState) {.closure.} =
+    log.entries.add "state " & $v)
+  discard s.bindPlay(proc (): bool {.closure.} =
+    log.entries.add "on_play " & $s.state
     false)
-  s.bind("on_stop", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
-    log.entries.add "on_stop " & $Sound(d).state
+  discard s.bindStop(proc (): bool {.closure.} =
+    log.entries.add "on_stop " & $s.state
     false)
   result = log
 
@@ -106,7 +106,7 @@ block naturalEnd:
   let log = sound.record()
   let start = time()
   var ended = 0.0
-  discard sound.fbind("on_stop", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+  discard sound.bindStop(proc (): bool {.closure.} =
     ended = time()
     false)
   sound.play()

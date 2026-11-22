@@ -53,15 +53,17 @@ block testSwitchingDoesNotAffectAListOfScreens:
 type Log = ref object
   lines: seq[string]
 
-proc logEvent(s: Screen; log: Log; e: string) =
-  # One closure per call: closures made in a loop share the loop's variables.
-  s.bind(e, proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
-    log.lines.add Screen(d).name & " " & e
-    result = false)
+proc logEvent(s: Screen; log: Log; e: string): proc (): bool {.closure.} =
+  # An observer logging the screen's name and `e`; one closure per call.
+  result = proc (): bool {.closure.} =
+    log.lines.add s.name & " " & e
+    result = false
 
 proc logged(s: Screen; log: Log) =
-  for ev in ["on_pre_enter", "on_enter", "on_pre_leave", "on_leave"]:
-    s.logEvent(log, ev)
+  discard s.bindPreEnter(s.logEvent(log, "on_pre_enter"))
+  discard s.bindEnter(s.logEvent(log, "on_enter"))
+  discard s.bindPreLeave(s.logEvent(log, "on_pre_leave"))
+  discard s.bindLeave(s.logEvent(log, "on_leave"))
 
 block lifecycleNoTransition:
   let log = Log(lines: @[])
@@ -96,10 +98,7 @@ block renameAndRemove:
   sm.addWidget(a)
   sm.addWidget(b)
   var names: seq[seq[string]] = @[]
-  sm.bind("screen_names", proc (d: EventDispatcher; v: Value) {.closure.} =
-    var n: seq[string] = @[]
-    for x in v.items: n.add x.str
-    names.add n)
+  discard sm.bindScreenNames(proc (v: seq[string]) {.closure.} = names.add v)
   a.name = "first"
   assert sm.current.get("") == "first"
   assert names == @[@["first", "b"]]

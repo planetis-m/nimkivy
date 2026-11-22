@@ -222,7 +222,7 @@ proc showCard*(s: Showcase; i: int; animate = true) =
   s.cardImage.source = Assets & Photos[s.card]
   if animate:
     s.cardImage.opacity = 0
-    newAnimation({"opacity": 1.0}, duration = 0.35).start(s.cardImage)
+    newAnimation([opacityTo(Widget, 1.0)], duration = 0.35).start(s.cardImage)
   s.drawDots()
   s.log.add "card " & $s.card
 
@@ -267,8 +267,8 @@ proc nextPhoto*(s: Showcase) =
   let back = s.slides[1 - s.front]
   let front = s.slides[s.front]
   back.source = Assets & Photos[s.slide]
-  newAnimation({"opacity": 1.0}, duration = s.fadeDuration).start(back)
-  newAnimation({"opacity": 0.0}, duration = s.fadeDuration).start(front)
+  newAnimation([opacityTo(Widget, 1.0)], duration = s.fadeDuration).start(back)
+  newAnimation([opacityTo(Widget, 0.0)], duration = s.fadeDuration).start(front)
   s.front = 1 - s.front
   s.log.add "slide " & $s.slide
 
@@ -312,11 +312,11 @@ proc attractScreen(s: Showcase): Screen =
   discard result.bindTouchDown(proc (t: MotionEvent): bool {.closure.} =
     s.go("home")
     result = true)
-  result.bind("on_enter", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+  discard result.bindEnter(proc (): bool {.closure.} =
     s.slideEv = Clock.scheduleInterval(proc (dt: float) {.closure.} = s.nextPhoto(),
       s.slideInterval)
     result = false)
-  result.bind("on_leave", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+  discard result.bindLeave(proc (): bool {.closure.} =
     let ev = s.slideEv
     if ev != nil: ev.cancel()
     s.slideEv = nil
@@ -336,10 +336,10 @@ proc tile(s: Showcase; i: int): Pressable =
   s.tileImages.add im
   s.tileLabels.add caption
   discard p.button.bindPress(proc (): bool {.closure.} =
-    newAnimation({"opacity": 0.8}, duration = 0.08).start(p)
+    newAnimation([opacityTo(Widget, 0.8)], duration = 0.08).start(p)
     result = false)
   p.onRelease(proc () {.closure.} =
-    newAnimation({"opacity": 1.0}, duration = 0.15).start(p)
+    newAnimation([opacityTo(Widget, 1.0)], duration = 0.15).start(p)
     s.showCard(i, animate = false)
     s.go("topic"))
   result = p
@@ -403,7 +403,7 @@ proc topicScreen(s: Showcase): Screen =
     if card.collidePoint(t.ox, t.oy) and abs(dx) > 80.0 * s.scale:
       s.showCard(s.card + (if dx < 0: 1 else: -1))
       result = true)
-  result.bind("on_leave", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+  discard result.bindLeave(proc (): bool {.closure.} =
     s.stopVoice()
     result = false)
 
@@ -469,11 +469,11 @@ proc newShowcase*(slideInterval = 6.0; fadeDuration = 1.6; idleTimeout = 60.0): 
   discard s.dots.bindSize(proc (v: (float, float)) {.closure.} = s.drawDots())
   let snd = s.sound
   if snd != nil:
-    snd.bind("on_play", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+    discard snd.bindPlay(proc (): bool {.closure.} =
       s.listenLabel.text = texts(s.lang).stop
       s.log.add "play"
       result = false)
-    snd.bind("on_stop", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+    discard snd.bindStop(proc (): bool {.closure.} =
       s.listenLabel.text = texts(s.lang).listen
       s.log.add "stop"
       result = false)
@@ -483,8 +483,8 @@ proc newShowcase*(slideInterval = 6.0; fadeDuration = 1.6; idleTimeout = 60.0): 
   s.sm.addWidget(s.attractScreen())
   s.sm.addWidget(s.homeScreen())
   s.sm.addWidget(s.topicScreen())
-  s.sm.bind("current", proc (d: EventDispatcher; v: Value) {.closure.} =
-    if v.kind == vkString: s.log.add "screen " & v.str)
+  discard s.sm.bindCurrent(proc (v: Opt[string]) {.closure.} =
+    if v.isSome: s.log.add "screen " & v.get(""))
   s.applyLanguage()
   result = s
 

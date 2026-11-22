@@ -139,7 +139,7 @@ block events:
   m.sizeHint = (none[float](), none[float]())
   m.size = (200.0, 100.0)
   var keep = true
-  m.bind("on_dismiss", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+  discard m.bindDismiss(proc (): bool {.closure.} =
     log.add "dismiss"
     result = keep)
   m.open(animation = false)

@@ -13,7 +13,7 @@
 # tests/assets/tone.wav.
 
 import std/[assertions, os, strutils, syncio]
-import nimkivy/[clock, config, properties, base]
+import nimkivy/[clock, config, base]
 import nimkivy/uix/widget
 import nimkivy/core/audio
 
@@ -32,11 +32,11 @@ proc note(c: Check; msg: string) =
 
 proc watch(c: Check; s: Sound; name: string) =
   # voice.py binds on_stop; on_play is logged too, with the state.
-  s.bind("on_play", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
-    c.note name & " on_play " & $Sound(d).state
+  discard s.bindPlay(proc (): bool {.closure.} =
+    c.note name & " on_play " & $s.state
     false)
-  s.bind("on_stop", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
-    c.note name & " on_stop " & $Sound(d).state
+  discard s.bindStop(proc (): bool {.closure.} =
+    c.note name & " on_stop " & $s.state
     false)
 
 proc load(c: Check; path, name: string): Sound =
@@ -67,7 +67,7 @@ discard Clock.scheduleOnce(proc (dt: float) {.closure.} =
     c.current = b
     c.lengthB = formatFloat(b.length, ffDecimal, 2)
     c.note "B is " & c.lengthB & " s"
-    discard b.fbind("on_stop", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+    discard b.bindStop(proc (): bool {.closure.} =
       # The natural end: play A again and close the window while it plays.
       discard Clock.scheduleOnce(proc (dt: float) {.closure.} =
         let a2 = c.load(clipA, "A2")

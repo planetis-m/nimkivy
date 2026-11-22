@@ -285,7 +285,7 @@ proc tickFor(seconds: float) =
 
 proc logOnComplete(a: Animation; text: string; w: Widget) =
   # Logs `text` and w's opacity when `a` completes (one closure per call).
-  a.bind("on_complete", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+  discard a.bindComplete(proc (target: RootRef): bool {.closure.} =
     log.emit(text, fmt3(w.opacity))
     result = false)
 
@@ -293,14 +293,14 @@ proc traceAnimation() =
   # archive/reference/traces.py trace_animation
   let w = newWidget()
   w.opacity = 0
-  let anim = newAnimation({"opacity": 1.0}, duration = 0.2)
-  anim.bind("on_start", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+  let anim = newAnimation([opacityTo(Widget, 1.0)], duration = 0.2)
+  discard anim.bindStart(proc (target: RootRef): bool {.closure.} =
     log.emit "onStart"
     result = false)
   anim.logOnComplete("onComplete opacity", w)
   var progress: seq[float] = @[]
-  anim.bind("on_progress", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
-    progress.add args[1].num
+  discard anim.bindProgress(proc (target: RootRef; p: float): bool {.closure.} =
+    progress.add p
     result = false)
   anim.start(w)
   # traces.py checks `w in [x["widget"] for x in anim._widgets.values()]`.
@@ -314,8 +314,8 @@ proc traceAnimation() =
     $monotonic)
   let w2 = newWidget()
   w2.opacity = 1
-  let a1 = newAnimation({"opacity": 0.0}, duration = 0.1)
-  let a2 = newAnimation({"opacity": 0.5}, duration = 0.3)
+  let a1 = newAnimation([opacityTo(Widget, 0.0)], duration = 0.1)
+  let a2 = newAnimation([opacityTo(Widget, 0.5)], duration = 0.3)
   a1.logOnComplete("a1 complete opacity", w2)
   a2.logOnComplete("a2 complete opacity", w2)
   a1.start(w2)
@@ -323,20 +323,20 @@ proc traceAnimation() =
   tickFor(0.6)
   let w3 = newWidget()
   w3.opacity = 1
-  let a3 = newAnimation({"opacity": 0.0}, duration = 1)
-  a3.bind("on_complete", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+  let a3 = newAnimation([opacityTo(Widget, 0.0)], duration = 1)
+  discard a3.bindComplete(proc (target: RootRef): bool {.closure.} =
     log.emit "a3 complete (stop)"
     result = false)
   a3.start(w3)
   Clock.tick()
   a3.stop(w3)
-  let a4 = newAnimation({"opacity": 0.0}, duration = 1)
-  a4.bind("on_complete", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+  let a4 = newAnimation([opacityTo(Widget, 0.0)], duration = 1)
+  discard a4.bindComplete(proc (target: RootRef): bool {.closure.} =
     log.emit "a4 complete (must not appear: cancel)"
     result = false)
   a4.start(w3)
   a4.cancel(w3)
-  let a5 = newAnimation({"opacity": 0.25}, duration = 0)
+  let a5 = newAnimation([opacityTo(Widget, 0.25)], duration = 0)
   a5.logOnComplete("a5 duration 0 complete opacity", w3)
   a5.start(w3)
   Clock.tick()
@@ -460,19 +460,20 @@ proc childNames(sm: ScreenManager): string =
     if c of Screen: names.add Screen(c).name
   result = nimList(names)
 
-proc logScreenEvent(s: Screen; e, shown: string) =
-  # Logs `shown` (the event's Nim name) when event `e` is dispatched. One
-  # closure per call: closures made in a loop share the loop's variables.
-  s.bind(e, proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
-    log.emit(Screen(d).name, shown)
-    result = false)
+proc logScreenEvent(s: Screen; shown: string): proc (): bool {.closure.} =
+  # An observer that logs the screen's name and `shown` (the event's Nim
+  # name); one closure per call.
+  result = proc (): bool {.closure.} =
+    log.emit(s.name, shown)
+    result = false
 
 proc newS(name: string): Screen =
   # traces.py trace_screens: class S(Screen) logging its four events.
   result = newScreen(name)
-  for (ev, shown) in [("on_pre_enter", "onPreEnter"), ("on_enter", "onEnter"),
-      ("on_pre_leave", "onPreLeave"), ("on_leave", "onLeave")]:
-    result.logScreenEvent(ev, shown)
+  discard result.bindPreEnter(result.logScreenEvent("onPreEnter"))
+  discard result.bindEnter(result.logScreenEvent("onEnter"))
+  discard result.bindPreLeave(result.logScreenEvent("onPreLeave"))
+  discard result.bindLeave(result.logScreenEvent("onLeave"))
 
 proc traceScreens() =
   # archive/reference/traces.py trace_screens
@@ -503,11 +504,11 @@ proc traceScreens() =
 
 # ------------------------------------------------------------------ modal
 
-proc logModalEvent(mv: ModalView; e, shown: string) =
-  # Logs `shown` (the event's Nim name) when event `e` is dispatched.
-  mv.bind(e, proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+proc logged(shown: string): proc (): bool {.closure.} =
+  # An observer that logs `shown` (the event's Nim name); one closure per call.
+  result = proc (): bool {.closure.} =
     log.emit shown
-    result = false)
+    result = false
 
 proc touchAt(x, y: float) =
   # traces.py make_touch(x, y): touch_down() then touch_up()
@@ -521,9 +522,10 @@ proc traceModal() =
   let mv = newModalView()
   mv.sizeHint = (none[float](), none[float]())
   mv.size = (200.0, 100.0)
-  for (ev, shown) in [("on_pre_open", "onPreOpen"), ("on_open", "onOpen"),
-      ("on_pre_dismiss", "onPreDismiss"), ("on_dismiss", "onDismiss")]:
-    mv.logModalEvent(ev, shown)
+  discard mv.bindPreOpen(logged("onPreOpen"))
+  discard mv.bindOpen(logged("onOpen"))
+  discard mv.bindPreDismiss(logged("onPreDismiss"))
+  discard mv.bindDismiss(logged("onDismiss"))
   proc inWindow(mv: ModalView): string =
     $(Window.children.find(WidgetBase(mv)) >= 0)
   log.emit "# open(animation = false)"

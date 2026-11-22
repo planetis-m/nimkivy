@@ -4,8 +4,9 @@
 ## Input: `(stmts properties (stmts (type ...)...))`, the untyped block of the
 ## `properties:` template. Output: the types with storage and observer fields
 ## in place of the property fields, then per type the accessors, setters,
-## bind/unbind procs, dispatchers, default handlers (base methods) and the
-## `initProps` chain, then the block's other statements as they are.
+## bind/unbind procs, dispatchers, default handlers (base methods), Animation
+## tracks (a `Track` subtype per numeric property) and the `initProps` chain,
+## then the block's other statements as they are.
 ##
 ## The generated code is written as Nim text below with placeholder names
 ## (`Owner`, `Base`, `PropT`, `prop...`, `...Prop...`), parsed once per use,
@@ -189,6 +190,12 @@ const
   propValid: bool
   propStop: bool
 """
+  # An alias without `cache` stores nothing (so its type may be a `ref`
+  # that has no default value).
+  uncachedFields = """
+  propObs: Observers[proc (v: PropT) {.closure.}]
+  propLinked: bool
+"""
   eventFields = """
   propObs: Observers[proc ($1): bool {.closure.}]
 """
@@ -292,12 +299,22 @@ proc linkProp(w: Owner) =
   if not w.propLinked:
     w.propLinked = true
 $1
+$2"""
+  aliasCachedTrigger = """
 proc triggerProp(w: Owner) =
   w.linkProp()
   let value = GetterF(w)
   if not w.propValid or w.propStore != value:
-$2
+    w.propValid = true
+    w.propStore = value
     w.dispatchProp()
+"""
+  # Kivy's trigger reads the value (`get`) before it dispatches.
+  aliasTrigger = """
+proc triggerProp(w: Owner) =
+  w.linkProp()
+  discard GetterF(w)
+  w.dispatchProp()
 """
   aliasCachedGet = """
 proc prop*(w: Owner): PropT =
@@ -345,6 +362,31 @@ method onProp*(w: Owner$1): bool {.base.} =
   handlerProc = """
 method onPropChanged*(w: Owner; v: PropT) {.base.} =
   discard
+"""
+
+  # An Animation's track (`props.Track`): `propTo(Owner, v)` animates the
+  # property to `v`; `capture` reads its start value on a target, `advance`
+  # sets the value at a point of the way. `$1` is the type's track name
+  # (`OwnerPropTrack`), `$2` "Owner.prop", which `trackKey` makes the key.
+  trackProcs = """
+type $1 = ref object of Track
+  target: nil Owner
+  a, b: PropT
+proc propKey*(t: typedesc[Owner]): TrackKey {.inline.} =
+  trackKey("$2")
+proc propTo*(t: typedesc[Owner]; v: PropT): Track =
+  $1(key: trackKey("$2"), target: nil, a: v, b: v)
+method capture(t: $1; target: RootRef): Track =
+  if target of Owner:
+    let w = Owner(target)
+    result = $1(key: t.key, target: w, a: w.prop, b: t.b)
+  else:
+    result = quitWrongTarget("$2")
+method advance(t: $1; progress: float) =
+  let w = t.target
+  if w != nil: w.prop = lerp(t.a, t.b, progress)
+method `$`(t: $1): string =
+  "$2 -> " & $t.b
 """
 
 proc fill(code: string; args: openArray[string]): string =
@@ -398,7 +440,9 @@ proc emitTypeDecl(dest: var NifBuilder; t: TypeInfo) =
           var s = Subst(owner: t.name, prop: p.name, trees: @[("PropT", p.typ)])
           case p.kind
           of kProp: dest.emitFields(propFields, s, p.info)
-          of kRefs, kAlias: dest.emitFields(linkedFields, s, p.info)
+          of kRefs: dest.emitFields(linkedFields, s, p.info)
+          of kAlias:
+            dest.emitFields(if p.cache: linkedFields else: uncachedFields, s, p.info)
           of kEvent:
             let (_, _, _, paramsAlone, trees) = eventArgs(p)
             for tr in trees: s.trees.add tr
@@ -411,6 +455,30 @@ proc linkLine(dep: string): string =
   # Binds the trigger into `dep`'s observers (linking `dep` first).
   "    discard w.bind" & capital(dep) & "(proc (v: typeof(w." & dep &
     ")) {.closure.} = w.triggerProp())\n"
+
+proc isFloat(n: NifCursor): bool =
+  n.kind == Ident and n.identText == "float"
+
+proc isNumericType(typ: NifCursor): bool =
+  # `float`, `(float, float)`, `array[N, float]` or `seq[float]`, as written:
+  # the plugin sees the syntax, not the type, so an alias of these is not
+  # recognised (a `color` or `varlist` property is, by its pragma).
+  if isFloat(typ):
+    return true
+  if typ.kind != TagLit:
+    return false
+  var kids: seq[NifCursor] = @[]
+  for c in typ.children: kids.add c
+  if typ.tagText == "at":
+    result = kids.len >= 2 and kids[0].kind == Ident and
+      kids[0].identText in ["array", "seq"] and isFloat(kids[^1])
+  else:
+    result = kids.len == 2 and isFloat(kids[0]) and isFloat(kids[1])
+
+proc animatable(p: Prop): bool =
+  # A property an Animation can move: a settable one of a numeric type.
+  let settable = p.kind in {kProp, kRefs} or (p.kind == kAlias and p.hasSetter)
+  result = settable and (p.color or p.varlist > 0 or isNumericType(p.typ))
 
 proc emitProcs(dest: var NifBuilder; t: TypeInfo; userMethods: seq[string]) =
   # `userMethods`: "Owner.name" of the methods the block declares; a default
@@ -447,9 +515,7 @@ proc emitProcs(dest: var NifBuilder; t: TypeInfo; userMethods: seq[string]) =
       var links = ""
       for d in p.deps: links.add linkLine(d)
       if links.len == 0: links = "    discard\n"
-      let update = if p.cache: "    w.propValid = true\n    w.propStore = value\n"
-                   else: ""
-      code = fill(aliasProcs, [links, update])
+      code = fill(aliasProcs, [links, if p.cache: aliasCachedTrigger else: aliasTrigger])
       code.add(if p.cache: aliasCachedGet else: aliasGet)
       if p.hasSetter:
         s.trees.add ("SetterF", p.setter)
@@ -464,6 +530,9 @@ proc emitProcs(dest: var NifBuilder; t: TypeInfo; userMethods: seq[string]) =
         code.add fill(eventDefault, [params])
     if p.handler and t.name & ".on" & capital(p.name) & "Changed" notin userMethods:
       code.add handlerProc
+    if animatable(p):
+      let what = t.name & "." & p.name
+      code.add fill(trackProcs, [t.name & "PropTrack", what])
     dest.emitStmts(exportAs(code, p.exported), s, p.info)
 
 proc emitInit(dest: var NifBuilder; t: TypeInfo) =

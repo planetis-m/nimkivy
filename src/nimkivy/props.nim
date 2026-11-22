@@ -53,6 +53,13 @@
 ## bool` and the default handler, the base method `onE(w; args): bool`. For
 ## each type: `initProps(w)`, which its constructor calls once.
 ##
+## For each settable property of type `float`, `(float, float)`,
+## `array[N, float]` or `seq[float]` as written (an alias of these is not
+## recognised), and each `color` and `varlist`, an Animation track:
+## `pTo(Owner, v): Track` (moves `p` to `v`) and `pKey(Owner): TrackKey`
+## (for `Animation.stopProperty`). `Owner` is the type that declares `p`,
+## not a subtype.
+##
 ## The block may declare a class's own default handlers, as Kivy's class
 ## defines `on_e` and `on_p`: `method onE*(w: Owner; args): bool {.base.}`
 ## and `method onPChanged*(w: Owner; v: T) {.base.}` replace the generated
@@ -95,6 +102,72 @@ func `==`*[T: Equatable](a, b: Opt[T]): bool =
 proc quitOutOfBounds*(what, value: string) =
   ## Stops the program: `value` is outside the bounds of property `what`.
   quit what & ": " & value & " is out of its bounds"
+
+# ------------------------------------------------------------------ tracks
+
+type
+  TrackKey* = distinct int
+    ## Which property a track moves (`propKey(Owner)`, for
+    ## `Animation.stopProperty`): `trackKey("Owner.prop")`.
+
+  Track* = ref object of RootObj
+    ## What an Animation moves: one property to one value
+    ## (`propTo(Owner, value)`, generated for each settable property of type
+    ## `float`, `(float, float)`, `array[N, float]` or `seq[float]`, and for
+    ## each `color` and `varlist`; `Owner` is the type that declares the
+    ## property). Kivy's `Animation(prop=value)` keyword.
+    # GAP: `propTo(Owner, v)` and `propKey(Owner)` take only the type that
+    # declares the property, not a subtype (`xTo(HintedWidget, ...)`, not
+    # `xTo(Widget, ...)`), because a `typedesc[Base]` parameter rejects a
+    # subtype (planetis-m/nimony-bugs-llms#342)
+    key*: TrackKey
+
+proc `==`*(a, b: TrackKey): bool {.borrow.}
+
+func trackKey*(what: string): TrackKey =
+  ## The key of the property `what` ("Owner.prop"): its FNV-1a hash.
+  var h = 0xcbf29ce484222325'u64
+  for c in what:
+    h = (h xor uint64(ord(c))) * 0x100000001b3'u64
+  result = TrackKey(int(h and 0x3FFF_FFFF_FFFF_FFFF'u64))
+
+method capture*(t: Track; target: RootRef): Track {.base.} =
+  ## The track running on `target`: its start value is the target's current
+  ## one. Animation._initialize
+  quit "Track.capture: not a property track"
+
+method advance*(t: Track; progress: float) {.base.} =
+  ## Sets the target's property `progress` (0 .. 1, after the transition)
+  ## of the way from the start value to the end value. Animation._update
+  discard
+
+method `$`*(t: Track): string {.base.} =
+  ## The property and its end value (`Widget.x -> 100.0`).
+  "track"
+
+proc quitWrongTarget*(what: string): Track =
+  ## Stops the program: a track of `what` was started on an object without
+  ## that property (Kivy raises AttributeError).
+  quit "a track of " & what & " was started on an object without that property"
+
+# Animation._calculate: a number, or each number of a list, interpolated.
+func lerp*(a, b: float; t: float): float =
+  ## `a` to `b`, `t` of the way.
+  (a * (1.0 - t)) + (b * t)
+
+func lerp*(a, b: (float, float); t: float): (float, float) =
+  ## Each number of a pair, `t` of the way.
+  (lerp(a[0], b[0], t), lerp(a[1], b[1], t))
+
+func lerp*[I](a, b: array[I, float]; t: float): array[I, float] =
+  ## Each number of an array, `t` of the way.
+  result = a
+  for i in 0 ..< a.len: result[i] = lerp(a[i], b[i], t)
+
+func lerp*(a, b: seq[float]; t: float): seq[float] =
+  ## Each number of `a` with the same place of `b`, `t` of the way.
+  result = @[]
+  for i in 0 ..< a.len: result.add lerp(a[i], b[i], t)
 
 proc initPropValues*(w: RootRef) =
   ## Nothing: where the generated `initPropValues` chain ends, for a base

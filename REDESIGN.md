@@ -116,10 +116,13 @@ runs, so a dispatch allocates nothing (phase 1 copies the list each time).
 
 ### Animation
 
-The plugin also generates, for each property of type `float`, a tuple or
-array of `float` or `seq[float]`, a typed track:
-`opacityTo(Widget, 1.0): Track` and its key `opacityKey(Widget): PropKey`
-(an integer the plugin derives from `Owner.p` at compile time).
+The plugin also generates, for each settable property of type `float`,
+`(float, float)`, `array[N, float]` or `seq[float]` (as written), and each
+`color` and `varlist`, a typed track: `opacityTo(Widget, 1.0): Track` and
+its key `opacityKey(Widget): TrackKey` (`trackKey("Widget.opacity")`, a hash;
+`PropKey` would be renamed by the plugin's `Prop` placeholder). `Owner` is
+the declaring type (`xTo(HintedWidget, ...)`): a `typedesc` parameter does
+not take a subtype in Nimony (step 5 notes).
 
 ```nim
 newAnimation([opacityTo(Widget, 1.0)], duration = 1.6).start(back)
@@ -271,7 +274,7 @@ the block).
 | 2 | **Layer 1 and 5 dispatchers** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master): metrics (aliases), clock, core/window (WindowBase, WidgetBase with typed hints, parent and children by hand: #337), input/motionevent (`claimedBy`), base, app, config typed | tclock, tmetrics, tmotionevent, twindow, tapp; traces `events`, `clock`, `touch` | no name lookups in these modules |
 | 3 | **Layer 6** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master): widget, layout, the four layouts (typed triggers, `PosHint`, `CanvasLayer`) | twidget, tlayout, trelativelayout; trace `properties`; layout scenes | geometry exact, pixels as before |
 | 4 | **Layer 7** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master): label (typed font options), image, ButtonBehavior as an owned properties object, no closures | tlabel, timage, tbutton; traces `label`, `touch`; label and image scenes | as before |
-| 5 | **Layers 8-9**: animation (tracks), screenmanager, modalview, audio | tanimation, tscreenmanager, tmodalview, taudio; traces `animation`, `screens`, `modal`; fade and modal scenes | as before |
+| 5 | **Layers 8-9** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master): animation (tracks), screenmanager, modalview, audio | tanimation, tscreenmanager, tmodalview, taudio; traces `animation`, `screens`, `modal`; fade and modal scenes | as before |
 | 6 | **Cleanup**: remove `Value`, `DispatcherClass`, the name APIs and every helper in the table above; rename the Python-style helpers | everything | `grep` finds none of the phase-1 names; PORTING.md's decisions 3 and 4 rewritten |
 | 7 | **`buildUi`** in `src/nimkivy/buildui.nim` + plugin; the showcase's trees written with it | tshowcase unchanged in behaviour; the prototype test as `tbuildui` | the showcase reads like a kv file and passes |
 | 8 | **Word-width cache** | ttext, label trace and scenes, tshowcase | outputs identical; `TTF_GetStringSize` calls down |
@@ -373,6 +376,27 @@ A subclass of ButtonBehavior in another module overrides `onPress` (a base
 method generated in button.nim) without meeting #175 (that needs the base
 method declared outside its class's module). `LabelClass` and `ImageClass`
 are names only, until step 6.
+
+Step 5 notes: Animation, Screen, TransitionBase (and NoTransition,
+ShaderTransition, FadeTransition), ScreenManager, ModalView and Sound are
+`properties:` blocks; nothing derived from WidgetBase declares phase-1
+properties any more, and nothing in src/, tests/ or examples/ binds,
+dispatches or reads by name (only `event.nim`, `properties.nim`,
+`texture.toValue` and the property-less `*Class` names are left for step
+6). **Tracks** (`props.Track`, `capture`/`advance`/`$` methods) are
+generated per numeric property; Color and Translate have hand-written ones
+in animation.nim. Three Nimony limits met: a `typedesc[Base]` parameter
+rejects `Sub` (#342, `bug-reports/15`), so a track names the
+declaring type; a `seq` of a block's type in a proc of the same block
+crashes (#337), so Animation's registry is a second block and
+`Screen.manager` is a `FloatLayout` (Screen and ScreenManager are in two
+blocks); and a non-nil `ref` property needs its store field in every object
+constructor, so ScreenManager's `transition` is an alias over a plain
+`nil` field (the plugin no longer gives an uncached alias a store). A
+block's procs may be called from its generated code (a default value may
+call a proc declared later in the block). ModalView's `_touch_started_inside`
+is the enum `TouchStart`; `transitionByName` is gone (transitions are procs
+only).
 
 The kiosk (philosykos-website) is written once on the result, after step 7;
 its own parity harness and Python app leave its tree then (ROADMAP.md).

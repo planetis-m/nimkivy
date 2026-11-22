@@ -29,7 +29,7 @@ Config.graphics.height = 600
 
 block testStartAnimation:
   cleanup()
-  let a = newAnimation({"x": 100.0}, duration = 1)
+  let a = newAnimation([xTo(HintedWidget, 100.0)], duration = 1)
   let w = newWidget()
   a.start(w)
   sleepTicking(1.5)
@@ -38,7 +38,7 @@ block testStartAnimation:
 
 block testAnimationDuration0:
   cleanup()
-  let a = newAnimation({"x": 100.0}, duration = 0)
+  let a = newAnimation([xTo(HintedWidget, 100.0)], duration = 0)
   let w = newWidget()
   a.start(w)
   sleepTicking(0.5)
@@ -46,8 +46,8 @@ block testAnimationDuration0:
 
 block testCancelAll:
   cleanup()
-  let a1 = newAnimation({"x": 100.0})
-  let a2 = newAnimation({"y": 100.0})
+  let a1 = newAnimation([xTo(HintedWidget, 100.0)])
+  let a2 = newAnimation([yTo(HintedWidget, 100.0)])
   let w1 = newWidget()
   let w2 = newWidget()
   a1.start(w1)
@@ -60,8 +60,8 @@ block testCancelAll:
 
 block testCancelAll2:
   cleanup()
-  let a1 = newAnimation({"x": 100.0})
-  let a2 = newAnimation({"y": 100.0})
+  let a1 = newAnimation([xTo(HintedWidget, 100.0)])
+  let a2 = newAnimation([yTo(HintedWidget, 100.0)])
   let w1 = newWidget()
   let w2 = newWidget()
   a1.start(w1)
@@ -69,14 +69,15 @@ block testCancelAll2:
   a2.start(w1)
   a2.start(w2)
   assert not noAnimationsBeingPlayed()
-  cancelAll(nil, "x", "z")
+  # Kivy cancels "x" and "z", a property Widget does not have.
+  cancelAll(nil, xKey(HintedWidget), trackKey("HintedWidget.z"))
   assert not noAnimationsBeingPlayed()
-  cancelAll(nil, "y")
+  cancelAll(nil, yKey(HintedWidget))
   assert noAnimationsBeingPlayed()
 
 block testStopAnimation:
   cleanup()
-  let a = newAnimation({"x": 100.0}, duration = 1)
+  let a = newAnimation([xTo(HintedWidget, 100.0)], duration = 1)
   let w = newWidget()
   a.start(w)
   sleepTicking(0.5)
@@ -87,7 +88,7 @@ block testStopAnimation:
 
 block testStopAll:
   cleanup()
-  let a = newAnimation({"x": 100.0}, duration = 1)
+  let a = newAnimation([xTo(HintedWidget, 100.0)], duration = 1)
   let w = newWidget()
   a.start(w)
   sleepTicking(0.5)
@@ -96,56 +97,62 @@ block testStopAll:
 
 block testStopAll2:
   cleanup()
-  let a = newAnimation({"x": 100.0}, duration = 1)
+  let a = newAnimation([xTo(HintedWidget, 100.0)], duration = 1)
   let w = newWidget()
   a.start(w)
   sleepTicking(0.5)
-  stopAll(w, "x")
+  stopAll(w, xKey(HintedWidget))
   assert noAnimationsBeingPlayed()
 
 block testDuration:
   cleanup()
-  let a = newAnimation({"x": 100.0}, duration = 1)
+  let a = newAnimation([xTo(HintedWidget, 100.0)], duration = 1)
   assert a.duration == 1
 
 block testTransition:
   cleanup()
-  let a = newAnimation({"x": 100.0}, transition = "out_bounce")
+  let a = newAnimation([xTo(HintedWidget, 100.0)], transition = outBounce)
   assert a.transition == outBounce
+
+proc animated(a: Animation): seq[string] =
+  # animated_properties: each track's property and end value.
+  result = @[]
+  for t in a.tracks: result.add $t
 
 block testAnimatedProperties:
   cleanup()
-  let a = newAnimation({"x": 100.0})
-  assert a.animatedProperties == @[("x", toValue(100.0))]
+  let a = newAnimation([xTo(HintedWidget, 100.0)])
+  assert a.animated == @["HintedWidget.x -> 100.0"]
+  assert a.tracks[0].key == xKey(HintedWidget)
 
 block testAnimatedInstruction:
   # Adapted: Scale is out of scope (SCOPE.md), so a Translate's x.
   cleanup()
-  let a = newAnimation({"x": 100.0}, duration = 1)
+  let a = newAnimation([xTo(Translate, 100.0)], duration = 1)
   let instruction = newTranslate(3, 3)
   a.start(instruction)
-  assert a.animatedProperties == @[("x", toValue(100.0))]
+  assert a.animated == @["Translate.x -> 100.0"]
   assert approx(instruction.x, 3)
   sleepTicking(1.5)
   assert approx(instruction.x, 100)
   assert noAnimationsBeingPlayed()
 
 block events:
-  # on_start, on_progress from 0 to 1, on_complete; stop fires on_complete,
-  # cancel does not; a list property (pos) and a Color's alpha.
+  # start, progress from 0 to 1, complete; stop dispatches complete, cancel
+  # does not; a list property (pos) and a Color's alpha.
   cleanup()
   var log: seq[string] = @[]
   var progress: seq[float] = @[]
   let w = newWidget()
-  let a = newAnimation({"pos": toValue([50.0, 60.0])}, duration = 0.1)
-  a.bind("on_start", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+  let a = newAnimation([posTo(HintedWidget, (50.0, 60.0))], duration = 0.1)
+  discard a.bindStart(proc (target: RootRef): bool {.closure.} =
     log.add "start"
     result = false)
-  a.bind("on_progress", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
-    progress.add args[1].num
+  discard a.bindProgress(proc (target: RootRef; p: float): bool {.closure.} =
+    progress.add p
     result = false)
-  a.bind("on_complete", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
-    assert args[0].obj == RootRef(w)
+  discard a.bindComplete(proc (target: RootRef): bool {.closure.} =
+    assert target == RootRef(w)
     log.add "complete"
     result = false)
   a.start(w)
@@ -161,7 +168,7 @@ block events:
   a.cancel(w)
   assert log == @["start", "complete", "start", "complete", "start"]
   let c = newColor(1, 1, 1, 1)
-  let fade = newAnimation({"a": 0.0}, duration = 0.1)
+  let fade = newAnimation([aTo(Color, 0.0)], duration = 0.1)
   fade.start(c)
   sleepTicking(0.3)
   assert c.a == 0
@@ -170,15 +177,15 @@ block events:
 block stopPropertyKeepsOthers:
   cleanup()
   let w = newWidget()
-  let a = newAnimation({"x": 100.0, "y": 100.0})
+  let a = newAnimation([xTo(HintedWidget, 100.0), yTo(HintedWidget, 100.0)])
   var completed = 0
-  a.bind("on_complete", proc (d: EventDispatcher; args: seq[Value]): bool {.closure.} =
+  discard a.bindComplete(proc (target: RootRef): bool {.closure.} =
     inc completed
     result = false)
   a.start(w)
-  a.stopProperty(w, "x")
+  a.stopProperty(w, xKey(HintedWidget))
   assert a.havePropertiesToAnimate(w) and completed == 0
-  a.stopProperty(w, "y")
+  a.stopProperty(w, yKey(HintedWidget))
   assert completed == 1 and noAnimationsBeingPlayed()
 
 block transitions:
@@ -222,9 +229,16 @@ block transitions:
     ("in_bounce", [0.0, 0.06937499999999996, 0.234375, 0.31937499999999985, 1.0]),
     ("out_bounce", [0.0, 0.6806249999999999, 0.765625, 0.930625, 1.0]),
     ("in_out_bounce", [0.0, 0.045000000000000095, 0.5, 0.9550000000000001, 1.0])]
+  # The same functions, in the same order (Kivy's names above).
+  let funcs: array[31, AnimationTransitionFunc] = [linear, inQuad, outQuad, inOutQuad,
+    inCubic, outCubic, inOutCubic, inQuart, outQuart, inOutQuart, inQuint, outQuint,
+    inOutQuint, inSine, outSine, inOutSine, inExpo, outExpo, inOutExpo, inCirc, outCirc,
+    inOutCirc, inElastic, outElastic, inOutElastic, inBack, outBack, inOutBack, inBounce,
+    outBounce, inOutBounce]
   const at = [0.0, 0.3, 0.5, 0.7, 1.0]
-  for (name, values) in expected:
-    let f = transitionByName(name)
+  for k in 0 ..< expected.len:
+    let (name, values) = expected[k]
+    let f = funcs[k]
     for i in 0 ..< at.len:
       assert abs(f(at[i]) - values[i]) <= 1e-12, name
 

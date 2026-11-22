@@ -11,16 +11,18 @@
 ## `loop`, plays the sound again on the next tick.
 ##
 ## Every `play` first stops the sound, so a playing sound that is played
-## again dispatches `on_stop` and then `on_play`, and so does each turn of a
-## loop. A missing or unreadable file still gives a Sound, with a log line,
-## whose `length` is 0 and whose `play` does nothing, as in Kivy.
+## again dispatches `stop` and then `play`, and so does each turn of a loop.
+## A missing or unreadable file still gives a Sound, with a log line, whose
+## `length` is 0 and whose `play` does nothing, as in Kivy.
 ##
 ## Out of scope (SCOPE.md): `pitch`, `get_pos`, `seek`, and every format but
 ## WAV.
 
 import std/[strutils, syncio]
-import ../[properties, clock, resources]
+import ../[props, clock, resources]
 import ../sdl3/sdl
+
+export props
 
 type
   SoundState* = enum
@@ -38,12 +40,6 @@ type
   ChunkContainer = ref ChunkContainerObj
     # The loaded file and the stream that plays it. audio_sdl2.pyx
     # ChunkContainer
-
-  Sound* = ref object of EventDispatcher
-    ## A sound loaded from a file. core/audio/__init__.py Sound and
-    ## audio_sdl2.pyx SoundSDL2
-    cc: ChunkContainer
-    checkPlayEv: nil ClockEvent    # Kivy's `_check_play_ev`
 
 proc audioIsInit(): bool =
   # Whether SDL's audio is up. SDL_Quit (Window.close) destroys every
@@ -70,72 +66,8 @@ proc log(level, category, msg: string) =
 proc sdlError(): string =
   result = fromCString(SDL_GetError())
 
-# ------------------------------------------------------------------ the class
-
-proc noHandler(d: EventDispatcher; args: seq[Value]): bool =
-  # Sound.on_play and Sound.on_stop: nothing.
-  false
-
-proc onSource(d: EventDispatcher; v: Value)
-proc onVolume(d: EventDispatcher; v: Value)
-
-proc newSoundClass(): DispatcherClass =
-  result = newDispatcherClass("Sound", EventDispatcherClass)
-  # StringProperty(None)
-  let source = newStringProperty("", allowNone = true)
-  source.defaultValue = noneValue()
-  result.addProperty("source", source)
-  discard result.addNumeric("volume", 1.0)
-  discard result.addOption("state", "stop", @["stop", "play"])
-  discard result.addBoolean("loop", false)
-  result.addEvent("on_play", noHandler)
-  result.addEvent("on_stop", noHandler)
-  result.addPropertyHandler("source", onSource)
-  result.addPropertyHandler("volume", onVolume)
-
-let SoundClass* = newSoundClass()
-  ## The class of `Sound`, with the properties `source`, `volume`, `state`
-  ## and `loop`, and the events `on_play` and `on_stop`.
-
-proc newSound(): Sound =
-  # SoundSDL2.__init__; the loader sets `source` after it.
-  result = Sound(cls: SoundClass, cc: ChunkContainer(spec: default(SDL_AudioSpec),
-    buf: nil, len: 0, stream: nil, playing: false), checkPlayEv: nil)
-  result.initEventDispatcher()
-
-# ------------------------------------------------------------------ accessors
-
-proc source*(s: Sound): string =
-  ## The file the sound was loaded from ("" for Kivy's None). Read only:
-  ## use `loadSound`.
-  let v = s.getProperty("source")
-  result = if v.kind == vkString: v.str else: ""
-
-proc volume*(s: Sound): float =
-  ## The volume, 0 (mute) to 1 (full, the default).
-  s.getProperty("volume").num
-proc `volume=`*(s: Sound; v: float) =
-  ## Sets the volume, also while the sound plays.
-  s.setProperty("volume", toValue(v))
-
-proc state*(s: Sound): SoundState =
-  ## `statePlay` from `play` until `stop` or the end of playback, else
-  ## `stateStop`. Read only.
-  if s.getProperty("state").str == "play": statePlay else: stateStop
-proc setState(s: Sound; v: SoundState) =
-  s.setProperty("state", toValue($v))
-
-proc loop*(s: Sound): bool =
-  ## Whether the sound plays again when it ends (default false).
-  s.getProperty("loop").flag
-proc `loop=`*(s: Sound; v: bool) =
-  ## Sets `loop`.
-  s.setProperty("loop", toValue(v))
-
-proc length*(s: Sound): float =
-  ## The length in seconds; 0 when nothing is loaded.
-  ## SoundSDL2._get_length
-  let cc = s.cc
+proc length(cc: ChunkContainer): float =
+  # SoundSDL2._get_length: the file's frames over its rate; 0 when empty.
   if cc.buf == nil or cc.spec.channels <= 0 or cc.spec.freq <= 0:
     return 0.0
   # SDL_AUDIO_BITSIZE: the low byte of the format is the bits per sample.
@@ -145,8 +77,6 @@ proc length*(s: Sound): float =
   let frames = int(cc.len) div bytesPerSample div int(cc.spec.channels)
   result = float(frames) / float(cc.spec.freq)
 
-# ------------------------------------------------------------------ playback
-
 proc setGain(cc: ChunkContainer; volume: float) =
   # Kivy sets the chunk's volume to int(volume * 128) of the mixer's 128.
   # Kivy's chunk volume is a Uint8, so a volume of 2 or more, or below 0,
@@ -155,139 +85,6 @@ proc setGain(cc: ChunkContainer; volume: float) =
   if st != nil and audioIsInit():
     let v = clamp(int(volume * 128), 0, 255)
     discard SDL_SetAudioStreamGain(st, cfloat(float(v) / 128))
-
-proc cancelCheck(s: Sound) =
-  # The interval stops: `return False` from _check_play.
-  let ev = s.checkPlayEv
-  if ev != nil:
-    ev.cancel()
-
-proc stop*(s: Sound) =
-  ## Stops playback and dispatches `on_stop`; nothing if it is not playing.
-  ## SoundSDL2.stop and Sound.stop
-  let cc = s.cc
-  if cc.buf == nil or not cc.playing:
-    return
-  # Mix_HaltChannel: pause the device and drop what is queued.
-  let st = cc.stream
-  if st != nil and audioIsInit():
-    discard SDL_PauseAudioStreamDevice(st)
-    discard SDL_ClearAudioStream(st)
-  cc.playing = false
-  s.cancelCheck()
-  s.checkPlayEv = nil
-  s.setState(stateStop)
-  discard s.dispatch("on_stop")
-
-proc play*(s: Sound)
-
-proc checkPlay(s: Sound) =
-  # SoundSDL2._check_play: at the end of playback, stop, or with `loop`
-  # play again on the next tick.
-  let cc = s.cc
-  let st = cc.stream
-  if not cc.playing or cc.buf == nil or st == nil:
-    s.cancelCheck()
-    return
-  # Mix_Playing: the stream still has data for the device.
-  if audioIsInit() and SDL_GetAudioStreamQueued(st) > 0:
-    return
-  if s.loop:
-    let snd = s
-    discard Clock.scheduleOnce(proc (dt: float) {.closure.} = snd.play())
-  else:
-    s.stop()
-  s.cancelCheck()
-
-proc play*(s: Sound) =
-  ## Plays the sound from the start (stopping it first if it plays) and
-  ## dispatches `on_play`; nothing if no file is loaded.
-  ## SoundSDL2.play and Sound.play
-  s.stop()
-  let cc = s.cc
-  let st = cc.stream
-  if cc.buf == nil or st == nil:
-    return
-  cc.setGain(s.volume)
-  # Mix_PlayChannel: the whole file, from the start. The flush marks the end
-  # of the data, or the resampler keeps its last bytes queued for good and
-  # the end is never seen.
-  if not (audioIsInit() and SDL_ClearAudioStream(st) and
-      SDL_PutAudioStreamData(st, cc.buf, cint(cc.len)) and
-      SDL_FlushAudioStream(st) and SDL_ResumeAudioStreamDevice(st)):
-    log "WARNING", "AudioSDL2", "Unable to play " & s.source & ": " & sdlError()
-    return
-  cc.playing = true
-  # Schedule an event to check whether the sound is still playing.
-  # GAP: the interval holds the sound strongly, where Kivy's Clock holds the
-  # bound method `_check_play` weakly, so a dropped sound plays to its end
-  # (and dispatches on_stop) before it is freed, because Nimony has no weak
-  # references
-  let snd = s
-  s.checkPlayEv = Clock.scheduleInterval(proc (dt: float) {.closure.} =
-    snd.checkPlay(), 0.1)
-  s.setState(statePlay)
-  discard s.dispatch("on_play")
-
-proc unload*(s: Sound) =
-  ## Stops the sound (dispatching `on_stop` if it plays), then frees the
-  ## file's data and closes its stream. SoundSDL2.unload
-  s.stop()
-  let cc = s.cc
-  let st = cc.stream
-  if st != nil:
-    if audioIsInit():
-      SDL_DestroyAudioStream(st)
-    cc.stream = nil
-  let b = cc.buf
-  if b != nil:
-    SDL_free(b)
-    cc.buf = nil
-    cc.len = 0
-
-proc load*(s: Sound) =
-  ## Loads `source` into memory and opens its stream; on failure, logs and
-  ## leaves the sound empty. Setting `source` calls it. SoundSDL2.load
-  s.unload()
-  let v = s.getProperty("source")
-  if v.kind != vkString:
-    return
-  var path = v.str
-  var spec = default(SDL_AudioSpec)
-  var buf: nil ptr uint8 = nil
-  var size = 0'u32
-  if not SDL_LoadWAV(path.toCString, addr spec, addr buf, addr size):
-    log "WARNING", "AudioSDL2", "Unable to load " & path & ": " & sdlError()
-    return
-  # The stream converts the file's format to the device's.
-  let st = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
-    addr spec, nil, nil)
-  if st == nil:
-    log "WARNING", "AudioSDL2", "Unable to load " & path & ": " & sdlError()
-    SDL_free(buf)
-    return
-  let cc = s.cc
-  cc.spec = spec
-  cc.buf = buf
-  cc.len = size
-  cc.stream = st
-  cc.setGain(s.volume)
-
-proc onSource(d: EventDispatcher; v: Value) =
-  # Sound.on_source
-  let s = Sound(d)
-  s.unload()
-  if v.kind != vkString:
-    return
-  s.load()
-
-proc onVolume(d: EventDispatcher; v: Value) =
-  # SoundSDL2.on_volume
-  let s = Sound(d)
-  if s.cc.buf != nil:
-    s.cc.setGain(v.num)
-
-# ------------------------------------------------------------------ loader
 
 proc mixInit() =
   # audio_sdl2.pyx mix_init: starts SDL's audio. Kivy also opens the
@@ -307,27 +104,188 @@ proc extensions(): seq[string] =
   # installed and core SDL3 loads only WAV (PORTING.md, decision 1)
   result = @["wav"]
 
-proc loadSound*(filename: string): nil Sound =
-  ## Kivy's `SoundLoader.load`: a Sound for `filename` (found as a path or in
-  ## the resource paths), or nil with a log line when the extension is not
-  ## WAV. A WAV that cannot be loaded still gives a Sound (logged), whose
-  ## `length` is 0 and whose `play` does nothing, as in Kivy.
-  ## core/audio/__init__.py SoundLoader.load
-  var name = filename
-  let rfn = resourceFind(filename)
-  if rfn.len > 0:
-    name = rfn
-  var ext = name
-  let dot = name.rfind('.')
-  if dot >= 0:
-    ext = name.substr(dot + 1)
-  ext = ext.toLowerAscii
-  let q = ext.find('?')
-  if q >= 0:
-    ext = ext.substr(0, q - 1)
-  if ext in extensions():
-    let s = newSound()
-    s.setProperty("source", toValue(name))
-    return s
-  log "WARNING", "Audio", "Unable to find a loader for <" & name & ">"
-  result = nil
+properties:
+  type
+    Sound* = ref object of RootObj
+      ## A sound loaded from a file. core/audio/__init__.py Sound and
+      ## audio_sdl2.pyx SoundSDL2
+      cc: ChunkContainer
+      checkPlayEv: nil ClockEvent    # Kivy's `_check_play_ev`
+      source* {.prop, handler.}: string = ""
+        ## the file the sound is loaded from ("" for Kivy's None); setting
+        ## it loads the file
+      volume* {.prop, handler.}: float = 1.0
+        ## the volume, 0 (mute) to 1 (full), also while the sound plays
+      state* {.prop.}: SoundState = stateStop
+        ## `statePlay` from `play` until `stop` or the end of playback
+      loop* {.prop.}: bool = false   ## the sound plays again when it ends
+      play* {.event.}: proc ()       ## the sound started playing
+      stop* {.event.}: proc ()       ## the sound stopped playing
+
+  proc newSound(): Sound =
+    # SoundSDL2.__init__; the loader sets `source` after it.
+    result = Sound(cc: ChunkContainer(spec: default(SDL_AudioSpec), buf: nil, len: 0,
+      stream: nil, playing: false), checkPlayEv: nil)
+    result.initProps()
+
+  proc length*(s: Sound): float =
+    ## The length in seconds; 0 when nothing is loaded.
+    ## SoundSDL2._get_length
+    s.cc.length
+
+  # -------------------------------------------------------------- playback
+
+  proc cancelCheck(s: Sound) =
+    # The interval stops: `return False` from _check_play.
+    let ev = s.checkPlayEv
+    if ev != nil:
+      ev.cancel()
+
+  proc stop*(s: Sound) =
+    ## Stops playback and dispatches `stop`; nothing if it is not playing.
+    ## SoundSDL2.stop and Sound.stop
+    let cc = s.cc
+    if cc.buf == nil or not cc.playing:
+      return
+    # Mix_HaltChannel: pause the device and drop what is queued.
+    let st = cc.stream
+    if st != nil and audioIsInit():
+      discard SDL_PauseAudioStreamDevice(st)
+      discard SDL_ClearAudioStream(st)
+    cc.playing = false
+    s.cancelCheck()
+    s.checkPlayEv = nil
+    s.state = stateStop
+    discard s.dispatchStop()
+
+  proc play*(s: Sound)
+
+  proc checkPlay(s: Sound) =
+    # SoundSDL2._check_play: at the end of playback, stop, or with `loop`
+    # play again on the next tick.
+    let cc = s.cc
+    let st = cc.stream
+    if not cc.playing or cc.buf == nil or st == nil:
+      s.cancelCheck()
+      return
+    # Mix_Playing: the stream still has data for the device.
+    if audioIsInit() and SDL_GetAudioStreamQueued(st) > 0:
+      return
+    if s.loop:
+      let snd = s
+      discard Clock.scheduleOnce(proc (dt: float) {.closure.} = snd.play())
+    else:
+      s.stop()
+    s.cancelCheck()
+
+  proc play*(s: Sound) =
+    ## Plays the sound from the start (stopping it first if it plays) and
+    ## dispatches `play`; nothing if no file is loaded.
+    ## SoundSDL2.play and Sound.play
+    s.stop()
+    let cc = s.cc
+    let st = cc.stream
+    if cc.buf == nil or st == nil:
+      return
+    cc.setGain(s.volume)
+    # Mix_PlayChannel: the whole file, from the start. The flush marks the
+    # end of the data, or the resampler keeps its last bytes queued for good
+    # and the end is never seen.
+    if not (audioIsInit() and SDL_ClearAudioStream(st) and
+        SDL_PutAudioStreamData(st, cc.buf, cint(cc.len)) and
+        SDL_FlushAudioStream(st) and SDL_ResumeAudioStreamDevice(st)):
+      log "WARNING", "AudioSDL2", "Unable to play " & s.source & ": " & sdlError()
+      return
+    cc.playing = true
+    # Schedule an event to check whether the sound is still playing.
+    # GAP: the interval holds the sound strongly, where Kivy's Clock holds the
+    # bound method `_check_play` weakly, so a dropped sound plays to its end
+    # (and dispatches `stop`) before it is freed, because Nimony has no weak
+    # references
+    let snd = s
+    s.checkPlayEv = Clock.scheduleInterval(proc (dt: float) {.closure.} =
+      snd.checkPlay(), 0.1)
+    s.state = statePlay
+    discard s.dispatchPlay()
+
+  proc unload*(s: Sound) =
+    ## Stops the sound (dispatching `stop` if it plays), then frees the
+    ## file's data and closes its stream. SoundSDL2.unload
+    s.stop()
+    let cc = s.cc
+    let st = cc.stream
+    if st != nil:
+      if audioIsInit():
+        SDL_DestroyAudioStream(st)
+      cc.stream = nil
+    let b = cc.buf
+    if b != nil:
+      SDL_free(b)
+      cc.buf = nil
+      cc.len = 0
+
+  proc load*(s: Sound) =
+    ## Loads `source` into memory and opens its stream; on failure, logs and
+    ## leaves the sound empty. Setting `source` calls it. SoundSDL2.load
+    s.unload()
+    if s.source.len == 0:
+      return
+    var path = s.source
+    var spec = default(SDL_AudioSpec)
+    var buf: nil ptr uint8 = nil
+    var size = 0'u32
+    if not SDL_LoadWAV(path.toCString, addr spec, addr buf, addr size):
+      log "WARNING", "AudioSDL2", "Unable to load " & path & ": " & sdlError()
+      return
+    # The stream converts the file's format to the device's.
+    let st = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
+      addr spec, nil, nil)
+    if st == nil:
+      log "WARNING", "AudioSDL2", "Unable to load " & path & ": " & sdlError()
+      SDL_free(buf)
+      return
+    let cc = s.cc
+    cc.spec = spec
+    cc.buf = buf
+    cc.len = size
+    cc.stream = st
+    cc.setGain(s.volume)
+
+  method onSourceChanged*(s: Sound; v: string) {.base.} =
+    ## Loads the new file. Sound.on_source
+    s.unload()
+    if v.len == 0:
+      return
+    s.load()
+
+  method onVolumeChanged*(s: Sound; v: float) {.base.} =
+    ## Applies the volume. SoundSDL2.on_volume
+    if s.cc.buf != nil:
+      s.cc.setGain(v)
+
+  # -------------------------------------------------------------- loader
+
+  proc loadSound*(filename: string): nil Sound =
+    ## Kivy's `SoundLoader.load`: a Sound for `filename` (found as a path or
+    ## in the resource paths), or nil with a log line when the extension is
+    ## not WAV. A WAV that cannot be loaded still gives a Sound (logged),
+    ## whose `length` is 0 and whose `play` does nothing, as in Kivy.
+    ## core/audio/__init__.py SoundLoader.load
+    var name = filename
+    let rfn = resourceFind(filename)
+    if rfn.len > 0:
+      name = rfn
+    var ext = name
+    let dot = name.rfind('.')
+    if dot >= 0:
+      ext = name.substr(dot + 1)
+    ext = ext.toLowerAscii
+    let q = ext.find('?')
+    if q >= 0:
+      ext = ext.substr(0, q - 1)
+    if ext in extensions():
+      let s = newSound()
+      s.source = name
+      return s
+    log "WARNING", "Audio", "Unable to find a loader for <" & name & ">"
+    result = nil
