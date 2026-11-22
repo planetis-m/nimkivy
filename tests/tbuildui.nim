@@ -2,7 +2,7 @@
 # nimkivy widgets, `as` handles and unnamed widgets, constructor arguments
 # and a component, canvas instructions bound to their widget (`self`),
 # bindings to a property of an object outside the tree and of a sibling,
-# a read that is not a property (evaluated, not followed), handlers with
+# a method call (evaluated, not followed), handlers with
 # and without parameters, one that stops the dispatch, one of an owned
 # ButtonBehavior and two of a property; generated callback parameters do
 # not hide the caller's names; and the update model: the tree is built once
@@ -31,6 +31,8 @@ properties:
       title* {.prop.}: string = ""
       index* {.prop.}: int = 0
       views*: int                ## a plain field
+
+  proc viewCount*(t: Topic): int = t.views
 
   proc newSlider*(): Slider =
     result = Slider(canvas: newCanvas())
@@ -85,7 +87,7 @@ proc main() =
       Caption("") as footer:
         text <- title.text & v
       Label as heading:
-        text <- topic.title & " (" & $topic.index & ") " & $topic.views
+        text <- topic.title & " (" & $topic.index & ") " & $topic.viewCount()
       Widget()
   # The tree: Kivy's children are newest first.
   assert root.children.len == 4

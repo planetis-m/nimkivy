@@ -14,10 +14,10 @@
 ##    (`w.canvas.before.add i`, ...); its children, each completed before
 ##    `w.addWidget(child)`; then its bindings (and its instructions') and
 ##    its handlers:
-##    - a binding: `w.prop = expr`, then for each `h.p` read by `expr` that
-##      is a property, `h.bindP(proc (v: typeof(h.p)) = w.prop = expr)`;
-##    - a handler: `w.bindEvent(proc (params): bool = result = false;
-##      stmts)`, or `w.bindProp(proc (v: T) = stmts)` for a property.
+##    - a binding: `w.prop = expr`, then for each `h.p` read by `expr` (not
+##      the callee of a call), `h.bindP(proc (v: typeof(h.p)) = w.prop = expr)`;
+##    - a handler: `w.bindName(proc (params): bool = result = false; stmts)`
+##      for an event or a property (`props` generates both overloads).
 ## 4. an `if` item becomes an `if` statement at its place among the
 ##    widget's children (or canvas instructions); each arm is a small
 ##    expansion of its own: its `let`s, its `prop = value` items, then its
@@ -48,7 +48,6 @@ type
     value: NifCursor           # the value, the expression or the body
     params: string             # ikOn: the parameters, types as `ArgT<i>`
     paramTypes: seq[NifCursor]
-    hasParams: bool
     info: LineInfo
 
   Layer = enum
@@ -91,14 +90,12 @@ discard DepV.bindDEP(proc (ParamV: typeof(DepV.dep)) {.closure.} =
 """
   canvasCode = "OwnerV.CANVAS.add HandleV\n"
   addCode = "OwnerV.addWidget(HandleV)\n"
+  # An event's and a property's handler alike: `props` binds a property
+  # with a `proc ([v]): bool` too.
   eventCode = """
-when compiles(RecvV.bindEVENT(proc (PARAMS): bool {.closure.} = false)):
-  discard RecvV.bindEVENT(proc (PARAMS): bool {.closure.} =
-    result = false
-    BodyV)
-else:
-  discard RecvV.bindEVENT(proc (PROPPARAMS) {.closure.} =
-    BodyV)
+discard RecvV.bindEVENT(proc (PARAMS): bool {.closure.} =
+  result = false
+  BodyV)
 """
 
 proc fail(t: var Tree; at: NifCursor) =
@@ -138,7 +135,6 @@ proc isCanvas(n: NifCursor): bool =
 
 proc readParams(t: var Tree; call: NifCursor; item: var Item) =
   # `touch(x, y: float)`: names, each group closed by its type.
-  item.hasParams = true
   var c = firstChild(call)
   skip c                       # the event
   var group = ""
@@ -407,7 +403,8 @@ proc paramDef(info: LineInfo): NifCursor =
   result = snapshot(b)
 
 proc deps(n: NifCursor; acc: var seq[(NifCursor, string)]) =
-  # Every `h.p` read by an expression as written (`h` a name, `self` too).
+  # Every `h.p` read by an expression as written (`h` a name, `self` too);
+  # the callee of `h.f(...)` is a call, not a read: only `h` is looked into.
   if n.kind != TagLit: return
   if n.exprKind == DotX:
     var c = firstChild(n)
@@ -419,8 +416,12 @@ proc deps(n: NifCursor; acc: var seq[(NifCursor, string)]) =
           if o.identText == obj.identText and p == c.identText: return
         acc.add (obj, c.identText)
         return
+  let call = isTag(n, "call") or isTag(n, "cmd")
+  var first = true
   for c in n.children:
-    deps(c, acc)
+    if call and first and isTag(c, "dot"): deps(firstChild(c), acc)
+    else: deps(c, acc)
+    first = false
 
 proc declared(node: Node; scope: int): bool =
   # A widget or an instruction that the block of `scope` declares.
@@ -456,7 +457,7 @@ proc emitSets(dest: var NifBuilder; t: Tree; scope: int) =
         dest.emitStmts(code, s, item.info)
 
 proc emitBinding(dest: var NifBuilder; t: Tree; node: Node; item: Item) =
-  # Set now, then follow every `h.p` of the expression that is a property.
+  # Set now, then follow every `h.p` the expression reads.
   let self = t.nodes[node.owner].handle
   let value = substituted(item.value, t.selfSubst(node))
   var s = Subst(trees: @[("HandleV", node.handle), ("ValueV", value)])
@@ -467,26 +468,19 @@ proc emitBinding(dest: var NifBuilder; t: Tree; node: Node; item: Item) =
     let (obj, prop) = acc[i]
     let dep = "Dep" & $i & "V"
     s.trees.add (dep, if obj.identText == "self": self else: obj)
-    let check = "compiles(" & dep & ".bind" & capital(prop) & "(proc (v: typeof(" & dep &
-      "." & prop & ")) {.closure.} = discard))"
     let code = bindCode.replace("DepV", dep).replace("bindDEP", "bind" & capital(prop)).
       replace(".dep", "." & prop).replace("PROP", item.name)
     var sd = s
     sd.trees.add ("ParamV", paramDef(item.info))
-    dest.emitStmts("when " & check & ":\n" & indent(code, 2), sd, item.info)
+    dest.emitStmts(code, sd, item.info)
 
 proc emitHandler(dest: var NifBuilder; t: Tree; node: Node; item: Item) =
   var recv = "HandleV"
   for p in item.path: recv.add "." & p
-  # A property handler without parameters gets the value in a parameter the
-  # body cannot name.
-  let propParams = if item.hasParams: item.params
-    else: "ParamV: typeof(RecvV." & item.name & ")"
-  let code = eventCode.replace("PROPPARAMS", propParams).replace("PARAMS", item.params).
-    replace("RecvV", recv).replace("EVENT", capital(item.name))
+  let code = eventCode.replace("PARAMS", item.params).replace("RecvV", recv).
+    replace("EVENT", capital(item.name))
   var s = Subst(trees: @[("HandleV", node.handle),
     ("BodyV", substituted(item.value, t.selfSubst(node)))])
-  s.trees.add ("ParamV", paramDef(item.info))
   for i in 0 ..< item.paramTypes.len:
     s.trees.add ("ArgT" & $i, item.paramTypes[i])
   dest.emitStmts(code, s, item.info)

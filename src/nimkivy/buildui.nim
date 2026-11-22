@@ -39,11 +39,11 @@
 ## - `as name` declares `let name` in the caller's scope. Every widget
 ##   exists before any item is applied, so an item may name any handle.
 ## - `prop <- expr` sets `prop` to `expr`, then binds (`bindP`) every
-##   `h.p` that `expr` reads and that is a property, so that a change of one
-##   sets `prop` again. As in kv, a read that is not a property (a plain
-##   field, a proc call such as `s.scale`) is evaluated but not followed, and
-##   `a.b.c` follows `a.b` only; a binding that follows no property is set
-##   once.
+##   `h.p` that `expr` reads, so that a change of one sets `prop` again;
+##   each must be a property (a plain field is a compile error). The callee
+##   of a call (`s.scale()`, `Fig.withAlpha(0.45)`) is evaluated but not
+##   followed, and `a.b.c` follows `a.b` only; a binding that reads no
+##   `h.p` is set once.
 ## - `on name[(params)]: stmts` binds a handler: to the event `name`
 ##   (`bindName`, the parameters are the event's, with their types;
 ##   `result` starts false, and setting it to true stops the dispatch), or

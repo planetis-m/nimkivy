@@ -248,13 +248,13 @@ belongs to. Expansion, in the caller's scope, nothing rebuilt later:
 3. each widget completed from the root down: its canvas instructions
    (`w.canvas.before.add i`), its children (each completed, then
    `w.addWidget(child)`), its bindings and its handlers:
-   - a binding: `w.prop = expr`, then for each `h.p` read by `expr` that
-     is a property: `discard h.bindP(proc (_: typeof(h.p)) = w.prop = expr)`
-     (kv's rule: other reads are evaluated, not followed; at least one must
-     be a property);
+   - a binding: `w.prop = expr`, then for each `h.p` read by `expr` (not
+     the callee of a call): `discard h.bindP(proc (_: typeof(h.p)) = w.prop
+     = expr)`; a read that is not a property is a compile error;
    - a handler: `discard w.bindName(proc (params): bool = result = false;
-     stmts)` for an event, else `w.bindName(proc (v: T) = stmts)` for a
-     property; `on part.name` binds `w.part`'s.
+     stmts)`, for an event or a property (`properties` generates
+     `bindP(proc ([v]): bool)` for each property); `on part.name` binds
+     `w.part`'s.
 
 So a child's handlers are bound before it is added (a Screen's `enter`
 fires when the ScreenManager makes it current), a widget's own after its
@@ -531,8 +531,9 @@ the item (later cut to the compiler's own errors and one plugin error,
 tree was assembled; now each widget's bindings and handlers are bound
 before it is added to its parent (after its own children), because a
 Screen's `enter` fires when the ScreenManager adds it. Bindings follow kv's
-rule (a read that is not a property is evaluated, not followed); generated
-callback parameters are generated symbols, so they hide no caller name.
+rule (a read that is not a property is evaluated, not followed; later a
+compile error, P2.11); generated callback parameters are generated
+symbols, so they hide no caller name.
 **The showcase**: its three screens and the picker are `buildUi` trees, with
 components `Pill`, `Panel`, `Tile`, `Caption`, `Paragraph`, `Choice` (procs
 `newX`); `paint`, `label`, `pressable`, `header`, `tile`, `choice`,
