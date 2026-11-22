@@ -190,8 +190,7 @@ block stopPropertyKeepsOthers:
 
 block transitions:
   # Every AnimationTransition function at 0, .3, .5, .7 and 1, as Kivy
-  # computes it (Python's math; Nimony's sin, cos and pow may differ in the
-  # last bits).
+  # computes it (Nimony's sin, cos and pow may differ in the last bits).
   const expected: array[31, (string, array[5, float])] = [
     ("linear", [0.0, 0.3, 0.5, 0.7, 1.0]),
     ("in_quad", [0.0, 0.09, 0.25, 0.48999999999999994, 1.0]),

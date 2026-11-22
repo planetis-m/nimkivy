@@ -33,9 +33,6 @@ type
     index: int
     x, y, w, h: float
 
-let BoxLayoutClass* = newDispatcherClass("BoxLayout", LayoutClass)
-  ## The class of `BoxLayout`, a name only (see `WidgetClass`).
-
 properties:
   type
     BoxLayout* = ref object of Layout
@@ -61,12 +58,12 @@ properties:
 
   proc newBoxLayout*(): BoxLayout =
     ## A horizontal box layout without spacing or padding.
-    result = BoxLayout(cls: BoxLayoutClass, canvas: newCanvas())
+    result = BoxLayout(canvas: newCanvas())
     result.initProps()
     result.initBoxLayout()
 
-  proc truthy(o: Opt[float]): bool {.inline.} =
-    # Python's truth value of a number or None.
+  proc nonZero(o: Opt[float]): bool {.inline.} =
+    # Whether a hint is set and not 0 (Kivy tests the hint itself: `if sh:`).
     o.isSome and o.get(0) != 0
 
   proc iterateLayout(b: BoxLayout; sizes: seq[ChildSizes]): seq[Placement] =
@@ -97,7 +94,7 @@ properties:
           minimumSizeNone += s.w
         else:
           hint[i] = s.shw
-          if truthy(s.shwMin):
+          if nonZero(s.shwMin):
             hasBound = true
             minimumSizeBounded += s.shwMin.get(0)
           elif s.shwMax.isSome:
@@ -105,7 +102,7 @@ properties:
           stretchSum += s.shw.get(0)
         if s.shh.isNone:
           minimumSizeY = max(minimumSizeY, s.h)
-        elif truthy(s.shhMin):
+        elif nonZero(s.shhMin):
           minimumSizeY = max(minimumSizeY, s.shhMin.get(0))
       minimumSizeX = minimumSizeBounded + minimumSizeNone
       minimumSizeY += paddingY
@@ -117,7 +114,7 @@ properties:
           minimumSizeNone += s.h
         else:
           hint[i] = s.shh
-          if truthy(s.shhMin):
+          if nonZero(s.shhMin):
             hasBound = true
             minimumSizeBounded += s.shhMin.get(0)
           elif s.shhMax.isSome:
@@ -125,7 +122,7 @@ properties:
           stretchSum += s.shh.get(0)
         if s.shw.isNone:
           minimumSizeX = max(minimumSizeX, s.w)
-        elif truthy(s.shwMin):
+        elif nonZero(s.shwMin):
           minimumSizeX = max(minimumSizeX, s.shwMin.get(0))
       minimumSizeY = minimumSizeBounded + minimumSizeNone
       minimumSizeX += paddingX
@@ -177,9 +174,9 @@ properties:
         var w = s.w
         var h = s.h
         var cy = selfy + paddingBottom
-        if truthy(sh):
+        if nonZero(sh):
           w = max(0.0, stretchSpace * sh.get(0) / stretchSum)
-        if truthy(s.shh):
+        if nonZero(s.shh):
           h = max(0.0, s.shh.get(0) * sizeY)
         for e in s.posHint.entries:
           if e.key in {phY, phTop, phCenterY}:
@@ -202,9 +199,9 @@ properties:
         var w = s.w
         var h = s.h
         var cx = selfx + paddingLeft
-        if truthy(sh):
+        if nonZero(sh):
           h = max(0.0, stretchSpace * sh.get(0) / stretchSum)
-        if truthy(s.shw):
+        if nonZero(s.shw):
           w = max(0.0, s.shw.get(0) * sizeX)
         for e in s.posHint.entries:
           if e.key in {phX, phRight, phCenterX}:
@@ -217,6 +214,10 @@ properties:
               cx += posx - w / 2.0
         result.add Placement(index: i, x: cx, y: y, w: w, h: h)
         y += h + spacing
+
+  method isAbstract*(b: BoxLayout): bool =
+    ## A box layout can be used.
+    false
 
   method doLayout*(b: BoxLayout) =
     ## Places the children. BoxLayout.do_layout

@@ -11,7 +11,7 @@ import nimkivy/graphics/[instructions, context_instructions, vertex_instructions
   stencil_instructions, renderer]
 
 proc className(i: Instruction): string =
-  # Kivy's type(x).__name__ for the instructions used here.
+  # The instruction's type, as the fixture names it (Kivy's class names).
   if i of Canvas: "Canvas"
   elif i of CanvasBase: "CanvasBase"
   elif i of BindTexture: "BindTexture"

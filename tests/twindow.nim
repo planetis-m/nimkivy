@@ -61,7 +61,7 @@ method onTouchUp(c: Child; t: MotionEvent): bool =
   result = c.ret
 
 proc newChild(tag: string; log: Log; ret = false): Child =
-  result = Child(cls: WidgetBaseClass, canvas: newCanvas(), tag: tag, log: log, ret: ret)
+  result = Child(canvas: newCanvas(), tag: tag, log: log, ret: ret)
   result.initWidgetBase()
 
 proc cwd(): string =
@@ -83,7 +83,7 @@ proc removeFile(f: string) =
 block screenshot_numbering:
   # kivy/core/window/__init__.py WindowBase.screenshot: the first free
   # number, `<stem>0001.<ext>`, in the current directory unless absolute.
-  let w = WindowBase(cls: WindowBaseClass, canvas: newCanvas())
+  let w = WindowBase(canvas: newCanvas())
   w.initWindowBase()
   assert w.screenshot() == cwd() / "screenshot0001.png"
   let dir = outDir()
@@ -101,7 +101,7 @@ block screenshot_numbering:
 
 block window_properties:
   # The window object exists before its system window, sized from Config.
-  let w = WindowBase(cls: WindowBaseClass, canvas: newCanvas())
+  let w = WindowBase(canvas: newCanvas())
   w.initWindowBase()
   assert w.size == (800.0, 600.0) and w.width == 800 and w.height == 600
   assert w.center == (400.0, 300.0)
@@ -123,7 +123,7 @@ block window_properties:
 
 block children_dispatch_order:
   # WindowBase.on_touch_*: children newest first, stop at the first true.
-  let w = WindowBase(cls: WindowBaseClass, canvas: newCanvas())
+  let w = WindowBase(canvas: newCanvas())
   w.initWindowBase()
   let log = Log(lines: @[])
   let a = newChild("a", log)
@@ -149,7 +149,7 @@ block children_dispatch_order:
   assert w.canvas.after.indexof(d.canvas) == -1
 
 block observer_before_default_handler:
-  let w = WindowBase(cls: WindowBaseClass, canvas: newCanvas())
+  let w = WindowBase(canvas: newCanvas())
   w.initWindowBase()
   let log = Log(lines: @[])
   w.addWidget(newChild("child", log))
@@ -163,7 +163,7 @@ block observer_before_default_handler:
   assert log.lines == @["stopper"]
 
 block key_27_without_exit_on_escape:
-  let w = WindowBase(cls: WindowBaseClass, canvas: newCanvas())
+  let w = WindowBase(canvas: newCanvas())
   w.initWindowBase()
   let log = Log(lines: @[])
   var stopped = 0
@@ -179,7 +179,7 @@ block key_27_without_exit_on_escape:
   assert log.lines.len == 0 and stopped == 0
 
 block key_27_with_exit_on_escape:
-  let w = WindowBase(cls: WindowBaseClass, canvas: newCanvas())
+  let w = WindowBase(canvas: newCanvas())
   w.initWindowBase()
   let log = Log(lines: @[])
   var stopped = 0
@@ -261,7 +261,7 @@ block headless_run:
   Config.graphics.width = 320
   Config.graphics.height = 240
   Config.kivy.exitOnEscape = true
-  let root = Recorder(cls: WidgetBaseClass, canvas: newCanvas(), lines: @[])
+  let root = Recorder(canvas: newCanvas(), lines: @[])
   root.initWidgetBase()
   root.canvas.add newColor(0, 0, 1)
   root.canvas.add newRectangle((10.0, 10.0), (100.0, 50.0))

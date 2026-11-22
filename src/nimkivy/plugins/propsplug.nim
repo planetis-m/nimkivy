@@ -12,11 +12,10 @@
 ## (`Owner`, `Base`, `PropT`, `prop...`, `...Prop...`), parsed once per use,
 ## and copied with the placeholders replaced (`codegen`).
 ##
-## Observer order is phase 1's (`event.nim`, `properties.nim`), which is
-## Kivy's: a ReferenceList or alias binds a trigger into each property it
-## depends on when it is first used (read, set, bound or dispatched), or, for
-## an `eager` alias with dependencies, when the instance is initialised; the
-## `handler`s are bound after the eager links.
+## Observer order is Kivy's: a ReferenceList or alias binds a trigger into
+## each property it depends on when it is first used (read, set, bound or
+## dispatched), or, for an `eager` alias with dependencies, when the
+## instance is initialised; the `handler`s are bound after the eager links.
 
 import std/[algorithm, strutils]
 import plugins, nimparser
@@ -202,7 +201,7 @@ const
 
   # Shared by every property kind. A dispatch passes a copy of the value: an
   # observer may replace the stored one while the later observers still need
-  # it (phase 1, planetis-m/nimony-bugs-llms#334).
+  # it (planetis-m/nimony-bugs-llms#334).
   bindProcs = """
 proc bindProp*(w: Owner; cb: proc (v: PropT) {.closure.}): Binding =
   $1
@@ -536,7 +535,7 @@ proc emitProcs(dest: var NifBuilder; t: TypeInfo; userMethods: seq[string]) =
     dest.emitStmts(exportAs(code, p.exported), s, p.info)
 
 proc emitInit(dest: var NifBuilder; t: TypeInfo) =
-  # Phase 1's `initEventDispatcher` order: the defaults (no dispatch, as Kivy
+  # Kivy's order (_event.pyx `__init__`): the defaults (no dispatch, as Kivy
   # sets them before any observer exists), base first, then this type's,
   # then the overrides; then the eager alias links, base first; then the
   # handlers, base first and in name order within a type.

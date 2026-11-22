@@ -568,7 +568,7 @@ properties:
       running.add t.capture(target)
     let i = a.find(target)
     let entry = AnimatedTarget(target: target, tracks: running, time: 0, hasTime: false)
-    # A dict keeps the place of a key that is assigned again.
+    # A target started again keeps its place (Kivy's `_widgets` dict).
     if i >= 0: a.widgets[i] = entry
     else: a.widgets.add entry
     a.clockInstall()

@@ -7,7 +7,7 @@
 ## shares space among hints with minimums and maximums (BoxLayout).
 
 import std/[algorithm, assertions, opt, syncio]
-import ../[properties, clock]
+import ../clock
 import widget
 
 export widget
@@ -22,19 +22,21 @@ type
     triggerLayout*: nil ClockEvent  ## runs `doLayout` before the next frame
     childUnbinds: seq[(WidgetBase, seq[Unbind])]  # undo what each child is bound with
 
-let LayoutClass* = newDispatcherClass("Layout", WidgetClass)
-  ## The class of `Layout`, abstract, a name only: the base of the layouts'
-  ## classes.
-
 method doLayout*(l: Layout) {.base.} =
   ## Places the children. Each layout overrides it. Layout.do_layout
-  quit "NotImplementedError: Must be implemented in subclasses."
+  quit "doLayout is not implemented for this layout"
+
+method isAbstract*(l: Layout): bool {.base.} =
+  ## Whether the layout is a plain `Layout`, which cannot be used. Each
+  ## layout that derives from `Layout` overrides it to return false (Kivy
+  ## compares the instance's class with Layout).
+  true
 
 proc initLayout*(l: Layout) =
   ## Sets up a new layout: the layout trigger, then the widget.
   ## Layout.__init__
-  if l.cls == LayoutClass:
-    quit "Exception: The Layout class is abstract and cannot be used directly."
+  if l.isAbstract():
+    quit "The Layout class is abstract and cannot be used directly."
   l.childUnbinds = @[]
   l.triggerLayout = Clock.createTrigger(proc (dt: float) {.closure.} = l.doLayout(), -1)
   l.initWidget()
@@ -99,8 +101,8 @@ method removeWidget*(l: Layout; widget: WidgetBase) =
       inc i
   procCall removeWidget(Widget(l), widget)
 
-proc isclose(a, b: float; relTol = 1e-9; absTol = 0.0): bool =
-  # Python's math.isclose (kivy.compat.isclose).
+proc isClose(a, b: float; relTol = 1e-9; absTol = 0.0): bool =
+  # kivy.compat.isclose: equal within a relative or an absolute tolerance.
   if a == b:
     return true
   let diff = abs(b - a)
@@ -116,7 +118,7 @@ proc layoutHintWithBounds*(l: Layout; shSum, availableSpace, minBoundedSize: flo
     return
   let n = hint.len
   let stretchRatio = shSum / availableSpace
-  if availableSpace <= minBoundedSize or isclose(availableSpace, minBoundedSize):
+  if availableSpace <= minBoundedSize or isClose(availableSpace, minBoundedSize):
     for i in 0 ..< n:
       if hint[i].isSome:
         let shMin = shMinVals[i]
@@ -173,7 +175,7 @@ proc layoutHintWithBounds*(l: Layout; shSum, availableSpace, minBoundedSize: flo
         notMaxedContrib[i] = max(0.0, diff)
 
   var margin = oversizeAmt - undersizeAmt
-  if isclose(oversizeAmt, undersizeAmt, absTol = 1e-15):
+  if isClose(oversizeAmt, undersizeAmt, absTol = 1e-15):
     return
 
   var contribIn: seq[bool] = @[]
@@ -225,7 +227,7 @@ proc layoutHintWithBounds*(l: Layout; shSum, availableSpace, minBoundedSize: flo
   var contribHeight = newSeq[float](n)
   for i in items:
     contribHeight[i] = contribAmt[i] / (contribProportion[i] / contribPropSum)
-  # A stable sort by height, as Python's sorted.
+  # A stable sort by height, as Kivy's sorted().
   var byHeight: seq[(float, int)] = @[]
   for i in items:
     byHeight.add (contribHeight[i], i)

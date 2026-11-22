@@ -11,7 +11,7 @@
 # touches are logged by it too.
 
 import std/[dirs, formatfloat, os, paths, strutils, syncio]
-import nimkivy/[properties, props, clock, config, base, animation]
+import nimkivy/[props, clock, config, base, animation]
 import nimkivy/core/text
 import nimkivy/uix/[boxlayout, floatlayout, label, screenmanager, modalview]
 import nimkivy/uix/behaviors/button
@@ -23,7 +23,7 @@ type Log = ref object
 let log = Log(lines: @[])
 
 proc emit(log: Log; parts: varargs[string]) =
-  # Python's log(*parts): the parts joined by spaces.
+  # traces.py log: the parts joined by spaces.
   var line = ""
   for i, p in parts:
     if i > 0: line.add " "
@@ -159,7 +159,7 @@ proc traceEvents() =
     result = true)
   log.emit("dispatch ->", $d.dispatchGo(8))
   d.unbindGo(b)
-  log.emit("dispatch after unbindUid ->", $d.dispatchGo(9))
+  log.emit("dispatch after unbind ->", $d.dispatchGo(9))
   log.save "events"
 
 # ------------------------------------------------------------------ clock
@@ -355,8 +355,6 @@ type
     tag: string
     button: BtnPart
 
-let BtnClass = newDispatcherClass("Btn", WidgetClass)
-
 proc r(p: (float, float)): string =
   # traces.py r(): numbers with 3 decimals.
   "(" & formatFloat(p[0], ffDecimal, 3) & ", " & formatFloat(p[1], ffDecimal, 3) & ")"
@@ -380,7 +378,7 @@ proc newBtnPart(tag: string): BtnPart =
   result.initButtonBehavior()
 
 proc newBtn(tag: string; x, y, w, h: float): Btn =
-  result = Btn(cls: BtnClass, canvas: newCanvas(), tag: tag, button: newBtnPart(tag))
+  result = Btn(canvas: newCanvas(), tag: tag, button: newBtnPart(tag))
   result.initProps()
   result.initWidget()
   result.sizeHint = (none[float](), none[float]())

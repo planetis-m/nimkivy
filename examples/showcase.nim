@@ -85,8 +85,6 @@ type
     ## it owns a ButtonBehavior (PORTING.md, decision 4).
     button: ButtonBehavior
 
-let PressableClass = newDispatcherClass("Pressable", BoxLayoutClass)
-
 method onTouchDown(p: Pressable; t: MotionEvent): bool =
   result = procCall onTouchDown(BoxLayout(p), t)
   if not result: result = p.button.touchDown(p, t)
@@ -131,7 +129,7 @@ proc label(text: string; size: float; color: array[4, float]; bold = false;
   else: result.boxedText()
 
 proc pressable(vertical = false): Pressable =
-  result = Pressable(cls: PressableClass, canvas: newCanvas(), button: newButtonBehavior())
+  result = Pressable(canvas: newCanvas(), button: newButtonBehavior())
   result.initProps()
   result.initBoxLayout()
   if vertical: result.orientation = orientationVertical

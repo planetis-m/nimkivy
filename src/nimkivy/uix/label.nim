@@ -22,16 +22,13 @@
 ## deprecated `padding_x` and `padding_y`.
 
 import std/[opt, syncio]
-import ../[properties, props, clock, metrics]
+import ../[props, clock, metrics]
 import ../graphics/[texture, context_instructions, vertex_instructions]
 import ../core/text
 import ../core/text/text_sdl3
 import widget
 
 export widget, text
-
-let LabelClass* = newDispatcherClass("Label", WidgetClass)
-  ## The class of `Label`, a name only (see `WidgetClass`).
 
 properties:
   type
@@ -161,7 +158,7 @@ properties:
     ## of (0, 0). Label.texture_update
     let core = l.coreLabel
     l.texture = nil
-    if core.text.len == 0 or (l.halign == halignJustify and pyStrip(core.text).len == 0):
+    if core.text.len == 0 or (l.halign == halignJustify and stripUnicodeSpace(core.text).len == 0):
       l.textureSize = (0.0, 0.0)
     else:
       core.refresh()
@@ -172,8 +169,8 @@ properties:
         l.textureSize = (float(w), float(h))
 
   proc place(l: Label; rect: Rectangle) =
-    # The texture's position: int(center - texture_size / 2). Python's int()
-    # rounds toward zero, as Nim's conversion does.
+    # The texture's position: Kivy's int(center - texture_size / 2), rounded
+    # toward zero as Nim's conversion does.
     let (tw, th) = l.textureSize
     rect.pos = (float(int(l.centerX - tw / 2.0)), float(int(l.centerY - th / 2.0)))
 
@@ -214,7 +211,7 @@ properties:
 
   proc newLabel*(): Label =
     ## A label with no text, rendered before the next frame.
-    result = Label(cls: LabelClass, canvas: newCanvas(), core: nil, triggerTexture: nil)
+    result = Label(canvas: newCanvas(), core: nil, triggerTexture: nil)
     result.initProps()
     result.initLabel()
 

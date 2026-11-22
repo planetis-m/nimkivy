@@ -142,7 +142,7 @@ proc graphicsLine(): Widget =
 
 proc addTextured(c: Canvas; v: VertexInstruction; name: string) =
   # Adds an instruction with `source = a(name)` (scenes.py). Kivy sets the
-  # source from the kwargs before building the geometry; here it is set
+  # source in the constructor, before building the geometry; here it is set
   # before the first draw, which builds it.
   v.source = a(name)
   c.add v
@@ -372,13 +372,12 @@ const Lorem = "Figs have been grown in Greece for thousands of years. The fruit 
   # scenes.py LOREM
 
 proc sizeToTextSize(l: Label) =
-  # lb.bind(size=lambda w, v: setattr(w, "text_size", v))
+  # scenes.py: the text size follows the label's size.
   discard l.bindSize(proc (v: (float, float)) {.closure.} = l.textSize = v)
 
 proc fitHeight(l: Label) =
   # fit=True in the kiosk: as tall as its wrapped text.
-  # lb.bind(width=lambda w, v: setattr(w, "text_size", (v, None)),
-  #         texture_size=lambda w, v: setattr(w, "height", v[1]))
+  # scenes.py: the text width follows the width, the height the texture's.
   discard l.bindWidth(proc (v: float) {.closure.} = l.textSize = (some(v), none[float]()))
   discard l.bindTextureSize(proc (v: (float, float)) {.closure.} = l.height = v[1])
 
@@ -645,6 +644,19 @@ proc fmt(p: (float, float)): string =
   # scenes.py fmt: "(x, y)" with 3 decimals.
   "(" & formatFloat(p[0], ffDecimal, 3) & ", " & formatFloat(p[1], ffDecimal, 3) & ")"
 
+proc typeName(w: Widget): string =
+  # The widget's type, as the geometry fixtures name it: most derived first.
+  if w of ModalView: "ModalView"
+  elif w of Screen: "Screen"
+  elif w of ScreenManager: "ScreenManager"
+  elif w of RelativeLayout: "RelativeLayout"
+  elif w of AnchorLayout: "AnchorLayout"
+  elif w of BoxLayout: "BoxLayout"
+  elif w of FloatLayout: "FloatLayout"
+  elif w of Label: "Label"
+  elif w of Image: "Image"
+  else: "Widget"
+
 proc timeRedraws(name: string) =
   # With SCENES_REDRAW=<n> (tools/profile.sh): the scene is drawn n more
   # times, uncapped, and the frame times are printed: the drawing cost of a
@@ -700,7 +712,7 @@ proc shoot(name: string) =
   for top in Window.children:
     if top of Widget:
       for wid in Widget(top).walk():
-        var line = wid.cls.name & " pos=" & fmt(wid.pos) & " size=" & fmt(wid.size)
+        var line = typeName(wid) & " pos=" & fmt(wid.pos) & " size=" & fmt(wid.size)
         # scenes.py: textureSize and normImageSize where the widget has them.
         if wid of Label:
           line.add " textureSize=" & fmt(Label(wid).textureSize)

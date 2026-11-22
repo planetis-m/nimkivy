@@ -17,9 +17,6 @@ type
     ## uix/relativelayout.py RelativeLayout
     translate*: nil Translate  ## the canvas translation that follows `pos`
 
-let RelativeLayoutClass* = newDispatcherClass("RelativeLayout", FloatLayoutClass)
-  ## The class of `RelativeLayout`, a name only (see `WidgetClass`).
-
 proc applyStyle(r: RelativeLayout) =
   # data/style.kv <RelativeLayout>: canvas.before: PushMatrix, Translate
   # (xy: self.pos); canvas.after: PopMatrix. The kv binding `xy: self.pos`
@@ -40,7 +37,7 @@ proc initRelativeLayout*(r: RelativeLayout) =
 
 proc newRelativeLayout*(): RelativeLayout =
   ## An empty relative layout.
-  result = RelativeLayout(cls: RelativeLayoutClass, canvas: newCanvas(), translate: nil)
+  result = RelativeLayout(canvas: newCanvas(), translate: nil)
   result.initProps()
   result.initRelativeLayout()
 

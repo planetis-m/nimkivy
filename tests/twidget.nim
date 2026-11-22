@@ -2,9 +2,10 @@
 # the add_widget index tests of test_uix_widget.py, plus walk, opacity and
 # the touch dispatch of a disabled widget.
 #
-# A WidgetException stops the program (it is a programming error, as in
-# core/window), so test_invalid_add_widget runs this program again with a
-# case name and checks that it stopped with Kivy's message.
+# Adding a widget where Kivy raises WidgetException stops the program (it is
+# a programming error, as in core/window), so test_invalid_add_widget runs
+# this program again with a case name and checks that it stopped with the
+# message.
 
 import std/[assertions, cmdline, os, osproc, sequtils, strutils, syncio]
 import nimkivy/uix/widget
@@ -47,9 +48,9 @@ block test_add_remove_widget:
 block test_invalid_add_widget:
   # kivy/tests/test_widget.py::test_invalid_add_widget. Adapted: Nim's types
   # rule out None and classes; adding a widget to itself and adding one that
-  # already has a parent raise WidgetException.
-  expectQuit("add-self", "WidgetException: Widget instances cannot be added to themselves.")
-  expectQuit("add-with-parent", "WidgetException: Cannot add <Widget>, it already has a parent")
+  # already has a parent stop the program.
+  expectQuit("add-self", "a widget cannot be added to itself")
+  expectQuit("add-with-parent", "cannot add a widget that already has a parent")
 
 block test_clear_widgets:
   # kivy/tests/test_widget.py::test_clear_widgets

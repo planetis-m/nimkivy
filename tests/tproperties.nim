@@ -108,7 +108,7 @@ properties:
     TraceBox = ref object of TraceWidget
       padding {.varlist: 4.}: array[4, float]
 
-  # def _get_prop(self): self.getter_called += 1; return 5
+  # The test's getter: counts its calls and returns 5.
   proc getFive(w: Counted): int =
     inc w.getterCalled
     result = 5
@@ -125,7 +125,7 @@ properties:
     inc w.setterCalled
     result = true
 
-  # def callback(widget, value): widget.callback_called += 1. A proc, not a
+  # The test's callback: counts its calls. A proc, not a
   # literal in the test templates: a proc literal in an {.untyped.} template
   # crashes nimsem (planetis-m/nimony-bugs-llms#338).
   proc countCalls[T](w: Counted): proc (v: T) {.closure.} =
@@ -474,7 +474,7 @@ block bounds_varlist_always_dispatch:
   assert level == 1 and k.log == @["handler 10", "handler 10"]
 
 block handler_and_eager_order:
-  # Phase 1's initEventDispatcher order: the eager alias links first, then
+  # Kivy's order (_event.pyx `__init__`): the eager alias links first, then
   # the class's handler, so the handler runs after the alias trigger and
   # before any later observer; a lazy alias links when it is first bound.
   let k = Kinds()

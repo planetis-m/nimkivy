@@ -117,7 +117,7 @@ properties:
 
   proc stopNow(app: App) =
     # App._stop. Like Kivy, it walks the window's children while removing
-    # them, so every second root widget stays (Python list iteration).
+    # them, so every second root widget stays.
     discard app.dispatchStop()
     stopTouchApp()
     let w = app.appWindow

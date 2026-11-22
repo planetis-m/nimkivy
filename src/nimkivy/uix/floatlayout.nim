@@ -17,9 +17,6 @@ type
     posBinding: Binding      # its own `pos` binding (RelativeLayout drops it)
     posHintBinding: Binding  # and its own `posHint` binding
 
-let FloatLayoutClass* = newDispatcherClass("FloatLayout", LayoutClass)
-  ## The class of `FloatLayout`, a name only (see `WidgetClass`).
-
 proc initFloatLayout*(f: FloatLayout) =
   ## Sets up a new float layout: the layout, then the trigger on its own
   ## properties. FloatLayout.__init__
@@ -32,7 +29,7 @@ proc initFloatLayout*(f: FloatLayout) =
 
 proc newFloatLayout*(): FloatLayout =
   ## An empty float layout.
-  result = FloatLayout(cls: FloatLayoutClass, canvas: newCanvas(),
+  result = FloatLayout(canvas: newCanvas(),
     posBinding: Binding(0), posHintBinding: Binding(0))
   result.initProps()
   result.initFloatLayout()
@@ -89,6 +86,10 @@ proc layoutIn*(f: FloatLayout; size, pos: (float, float)) =
       of phCenter: c.center = (x + e.pair[0] * w, y + e.pair[1] * h)
       of phCenterX: c.centerX = x + e.value * w
       of phCenterY: c.centerY = y + e.value * h
+
+method isAbstract*(f: FloatLayout): bool =
+  ## A float layout can be used.
+  false
 
 method doLayout*(f: FloatLayout) =
   ## Sizes and places the children in the layout's box.

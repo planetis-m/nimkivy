@@ -13,7 +13,7 @@ import nimkivy/uix/[boxlayout, anchorlayout, floatlayout]
 
 if paramCount() > 0:
   if paramStr(1) == "layout":
-    let l = Layout(cls: LayoutClass, canvas: newCanvas())
+    let l = Layout(canvas: newCanvas())
     l.initLayout()
   quit 0
 

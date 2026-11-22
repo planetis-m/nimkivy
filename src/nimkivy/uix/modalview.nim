@@ -18,7 +18,7 @@
 ##
 ## Out of scope (SCOPE.md): the deprecated `attach_to`, and Popup.
 
-import ../[properties, props, animation]
+import ../[props, animation]
 import ../graphics/[context_instructions, vertex_instructions]
 import ../core/image
 import anchorlayout
@@ -32,9 +32,6 @@ type
     startUnknown               ## no touch down seen
     startOutside               ## outside the view
     startInside                ## inside the view
-
-let ModalViewClass* = newDispatcherClass("ModalView", AnchorLayoutClass)
-  ## The class of `ModalView`, a name only (see `WidgetClass`).
 
 properties:
   type
@@ -123,7 +120,7 @@ properties:
 
   proc newModalView*(): ModalView =
     ## A modal view that fills the window (size_hint 1, 1) until hinted.
-    result = ModalView(cls: ModalViewClass, canvas: newCanvas(),
+    result = ModalView(canvas: newCanvas(),
       touchStartedInside: startUnknown, windowBindings: [Binding(0), Binding(0)])
     result.initProps()
     result.initModalView()

@@ -22,9 +22,6 @@ type
     anchorCenterY = "center"
     anchorBottom = "bottom"
 
-let AnchorLayoutClass* = newDispatcherClass("AnchorLayout", LayoutClass)
-  ## The class of `AnchorLayout`, a name only (see `WidgetClass`).
-
 properties:
   type
     AnchorLayout* = ref object of Layout
@@ -47,9 +44,13 @@ properties:
 
   proc newAnchorLayout*(): AnchorLayout =
     ## An anchor layout that centres its children.
-    result = AnchorLayout(cls: AnchorLayoutClass, canvas: newCanvas())
+    result = AnchorLayout(canvas: newCanvas())
     result.initProps()
     result.initAnchorLayout()
+
+  method isAbstract*(a: AnchorLayout): bool =
+    ## An anchor layout can be used.
+    false
 
   method doLayout*(a: AnchorLayout) =
     ## Sizes and places the children. AnchorLayout.do_layout

@@ -1,8 +1,8 @@
 ## Typed observer lists: the run-time half of the typed properties (`props`).
 ##
 ## `Observers[F]` keeps the callbacks of one property or event of one object,
-## in bind order. `F` is the callback's proc type, so every callback is typed:
-## no `Value` boxing, no lookup by name. The `properties` plugin declares one
+## in bind order. `F` is the callback's proc type, so every callback is typed
+## and none is looked up by name. The `properties` plugin declares one
 ## per property and event and generates the code that calls them.
 ##
 ## Dispatch keeps Kivy's rules (`_event.pyx` EventObservers): a callback bound

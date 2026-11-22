@@ -13,10 +13,9 @@
 ## modes, `blit_buffer` and reload observers.
 
 import ../sdl3/sdl
-import ../event
 
 type
-  TextureObj* = object of RootObj
+  TextureObj* = object
     ## The texture's data; use `Texture`.
     width, height: int
     uvx, uvy, uvw, uvh: float32
@@ -27,8 +26,7 @@ type
 
   Texture* = ref TextureObj
     ## A texture. Kivy's tex_coords are kept per texture; vertex instructions
-    ## copy them when the texture is set. It is a `RootRef`, so a property
-    ## (Label's and Image's `texture`) can hold it.
+    ## copy them when the texture is set.
 
 proc `=wasMoved`(t: var TextureObj) =
   t.surface = nil
@@ -148,14 +146,3 @@ proc handle*(t: Texture; renderer: SDL_Renderer): nil SDL_Texture =
         t.owner = renderer
   result = t.handle
 
-proc toValue*(t: nil Texture): Value =
-  ## The texture as a property value; nil is None.
-  if t == nil: noneValue() else: toValue(RootRef(t))
-
-proc toTexture*(v: Value): nil Texture =
-  ## The texture a property value holds; nil for None.
-  result = nil
-  if v.kind == vkObject:
-    let o = v.obj
-    if o != nil and o of Texture:
-      result = Texture(o)

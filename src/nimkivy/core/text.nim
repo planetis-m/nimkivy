@@ -242,7 +242,7 @@ proc defaultLineOptions(lines: seq[LayoutLine]): nil LabelOptions =
       return line.words[0].options
 
 proc splitSpaces(line: string): seq[string] =
-  # Python's re.split('( +)', line): the pieces between runs of spaces, and
+  # Kivy's re.split('( +)', line): the pieces between runs of spaces, and
   # the runs, alternately.
   result = @[]
   var start = 0
@@ -365,7 +365,7 @@ proc render*(l: LabelBase): (int, int) =
   let (uw, uh) = l.textSize
   var text = l.text
   if strip:
-    text = pyStrip(text)
+    text = stripUnicodeSpace(text)
   l.cachedLines = @[]
   if text.len == 0:
     return (0, 0)
@@ -377,7 +377,7 @@ proc render*(l: LabelBase): (int, int) =
     var center = -1   # the position of a newline
     let chars = runeLen(text)
     if chars > 1:
-      # Python counts characters: find the byte offset of the middle one.
+      # Kivy counts characters: find the byte offset of the middle one.
       let middle = runeOffset(text, chars div 2)
       let left = if middle > 0: text.rfind('\n', 0, middle - 1) else: -1
       let right = if middle >= 0: text.find('\n', middle) else: -1

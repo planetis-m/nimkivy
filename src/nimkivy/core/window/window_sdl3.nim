@@ -19,7 +19,7 @@
 
 import std/[strutils, syncio, tables]
 from std/unicode import Rune, toUTF8
-import ../../[properties, props, clock, config, metrics]
+import ../../[props, clock, config, metrics]
 import ../../sdl3/[sdl, image]
 import ../../graphics/[instructions, renderer]
 import ../../input/motionevent
@@ -264,13 +264,10 @@ proc newKeyMap(): Table[uint32, int] =
     # Map the Android back button to Escape.
     result[uint32(SDLK_AC_BACK)] = 27
 
-let WindowSDLClass* = newDispatcherClass("WindowSDL", WindowBaseClass)
-  ## The class of `WindowSDL` (a name only: its properties are typed).
-
 proc newWindowSDL*(): WindowSDL =
   ## The window object, before its system window exists.
   ## window_sdl2.py WindowSDL.__init__
-  result = WindowSDL(cls: WindowSDLClass, canvas: newCanvas(), sdlWindow: nil,
+  result = WindowSDL(canvas: newCanvas(), sdlWindow: nil,
     sdlRenderer: nil, renderer: nil, pauseLoop: false, mouseX: -1, mouseY: -1,
     mouseButtonsDown: @[], keyMap: newKeyMap(), commandKeys: @CommandKeys,
     doResizeEv: nil, motionProvider: newSDLMotionEventProvider())

@@ -21,9 +21,6 @@ type
   Blocker = ref object of Widget
     # A child that takes every touch down.
 
-let TButtonClass = newDispatcherClass("TButton", WidgetClass)
-let BlockerClass = newDispatcherClass("Blocker", WidgetClass)
-
 method onPress(b: TButtonPart): bool =
   b.log.add "press"
   result = false
@@ -54,7 +51,7 @@ proc newTButtonPart(): TButtonPart =
 
 proc newTButton(): TButton =
   # A 100 x 100 button at (100, 100), in the window.
-  result = TButton(cls: TButtonClass, canvas: newCanvas(), button: newTButtonPart())
+  result = TButton(canvas: newCanvas(), button: newTButtonPart())
   result.initProps()
   result.initWidget()
   result.sizeHint = (none[float](), none[float]())
@@ -148,7 +145,7 @@ block trigger_action:
 block children_first:
   # A child that takes the touch keeps the button from being pressed.
   let b = newTButton()
-  let child = Blocker(cls: BlockerClass, canvas: newCanvas())
+  let child = Blocker(canvas: newCanvas())
   child.initProps()
   child.initWidget()
   child.pos = (100.0, 100.0)

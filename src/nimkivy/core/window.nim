@@ -15,9 +15,8 @@
 ## methods. Widget (layer 6) is a `HintedWidget`, a `WidgetBase` with the
 ## box (`x`, `y`, `width`, `height`, `pos`, `size`, `right`, `top`,
 ## `center`) and the size and position hints, which the window reads and
-## binds typed; the window is a `WidgetBase`,
-## since a widget's parent can be the window (Python needs no common base
-## for that).
+## binds typed; the window is a `WidgetBase`, since a widget's parent can
+## be the window.
 ##
 ## Kivy calls `stopTouchApp` and `App.get_running_app` from inside this
 ## module; here those are below it (`base`, `app`), so `base` and `app` fill
@@ -29,11 +28,11 @@
 ## event managers, window position and opacity, shaped windows and icons.
 
 import std/[os, sequtils, strutils, syncio]
-import ../[properties, props, clock, config, metrics]
+import ../[props, clock, config, metrics]
 import ../graphics/instructions
 import ../input/motionevent
 
-export properties, props, motionevent
+export props, motionevent
 
 type
   CanvasLayer* = enum
@@ -59,9 +58,9 @@ type
     pair*: (float, float)      ## the hint for `phPos` and `phCenter`
 
   PosHint* = object
-    ## A widget's position hints in the order they were given, as Python's
-    ## dict keeps them. Two are equal with the same keys and values in any
-    ## order, as dicts compare.
+    ## A widget's position hints in the order they were given, as Kivy's
+    ## `pos_hint` dict keeps them. Two are equal with the same keys and values
+    ## in any order.
     entries*: seq[PosHintEntry]
 
   TouchCallback* = proc (touch: MotionEvent): bool {.closure.}
@@ -71,15 +70,11 @@ type
   # the hints are on its subtype `HintedWidget`, because a type declared by
   # a module-level template cannot refer to itself through `seq`
   # (`children`) (planetis-m/nimony-bugs-llms#337)
-  WidgetBase* = ref object of EventDispatcher
+  WidgetBase* = ref object of RootObj
     ## What every widget and the window have: `parent` and `children`
     ## properties, a canvas, the touch events `touchDown`, `touchMove` and
-    ## `touchUp`, and coordinate methods. Build it with `T(cls: ...,
-    ## canvas: newCanvas())`, then call `initWidgetBase`. It stays an
-    ## EventDispatcher (`cls` names the class) while widgets below it
-    ## still declare phase-1 properties on their classes (ScreenManager
-    ## and ModalView until step 5); step 6 makes it a `ref object of
-    ## RootObj`.
+    ## `touchUp`, and coordinate methods. Build it with
+    ## `T(canvas: newCanvas())`, then call `initWidgetBase`.
     canvas*: Canvas
     parentStore: nil WidgetBase
     parentObs: Observers[proc (v: nil WidgetBase) {.closure.}]
@@ -98,13 +93,10 @@ type
     child: WidgetBase
     bindings: array[6, Binding]  # posHint, sizeHint, sizeHintMax, sizeHintMin, size, pos
 
-let WidgetBaseClass* = newDispatcherClass("WidgetBase")
-  ## The class of `WidgetBase`: its subclasses' classes derive from it.
-
 # ------------------------------------------------------------------ PosHint
 
 func `==`*(a, b: PosHint): bool =
-  ## Python's dict equality: the same keys with equal values, in any order.
+  ## The same keys with equal values, in any order (Kivy compares dicts).
   if a.entries.len != b.entries.len:
     return false
   result = true
@@ -122,7 +114,7 @@ func len*(h: PosHint): int {.inline.} =
 
 func add*(h: var PosHint; key: PosKey; value: float) =
   ## Sets the hint for `key` (not `phPos` or `phCenter`); a key already
-  ## given keeps its place, as in a Python dict.
+  ## given keeps its place.
   for e in h.entries.mitems:
     if e.key == key:
       e.value = value
@@ -139,7 +131,7 @@ func add*(h: var PosHint; key: PosKey; pair: (float, float)) =
 
 func toPosHint*(hints: openArray[(PosKey, float)]): PosHint =
   ## Numeric hints, for example `toPosHint({phTop: 0.9})`. A key given twice
-  ## keeps its first place and its last value, as in a Python dict literal.
+  ## keeps its first place and its last value.
   result = PosHint(entries: @[])
   for (key, value) in hints:
     result.add(key, value)
@@ -148,7 +140,6 @@ func toPosHint*(hints: openArray[(PosKey, float)]): PosHint =
 
 proc initWidgetBase*(w: WidgetBase) =
   ## Sets up a new widget or window: no parent, no children.
-  w.initEventDispatcher()
   w.parentStore = nil
   w.childrenStore = @[]
 
@@ -214,7 +205,7 @@ proc unbindTouchDown*(w: WidgetBase; b: Binding) =
 
 proc dispatchTouchDown*(w: WidgetBase; touch: MotionEvent): bool =
   ## Dispatches `touchDown`: the observers, then `onTouchDown`, until one
-  ## returns true. _event.pyx EventDispatcher.dispatch
+  ## returns true. _event.pyx dispatch
   result = false
   for cb in w.touchDownObs.liveReversed:
     if not result: result = cb(touch)
@@ -732,8 +723,7 @@ properties:
     ## WindowBase.add_widget
     let old = widget.parent
     if old != nil:
-      quit "cannot add " & widget.cls.name & " to the window: it already has a parent, " &
-        old.cls.name
+      quit "cannot add a widget to the window: it already has a parent"
     widget.parent = w
     var cs = w.children
     cs.insert([widget], 0)
@@ -800,6 +790,3 @@ properties:
     ## WindowBase._reset_metrics_dpi
     Metrics.platformDpi = w.dpi
     Metrics.resetDpi()
-
-let WindowBaseClass* = newDispatcherClass("WindowBase", WidgetBaseClass)
-  ## The class of `WindowBase` (a name only: its properties are typed).

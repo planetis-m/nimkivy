@@ -22,7 +22,7 @@
 ## WipeTransition, FallOutTransition, RiseInTransition and custom shaders.
 
 import std/[opt, syncio]
-import ../[properties, props, clock, animation]
+import ../[props, clock, animation]
 import ../graphics/[context_instructions, vertex_instructions, stencil_instructions,
   renderer]
 import relativelayout
@@ -40,9 +40,6 @@ proc warn(msg: string) =
   stderr.writeLine "[WARNING] [ScreenManager] " & msg
 
 # ------------------------------------------------------------------ Screen
-
-let ScreenClass* = newDispatcherClass("Screen", RelativeLayoutClass)
-  ## The class of `Screen`, a name only (see `WidgetClass`).
 
 properties:
   type
@@ -70,7 +67,7 @@ properties:
 
   proc newScreen*(): Screen =
     ## An empty screen named "".
-    result = Screen(cls: ScreenClass, canvas: newCanvas(), translate: nil)
+    result = Screen(canvas: newCanvas(), translate: nil)
     result.initProps()
     result.initScreen()
 
@@ -85,9 +82,6 @@ properties:
     result = s
 
 # ------------------------------------------------------------------ transitions and ScreenManager
-
-let ScreenManagerClass* = newDispatcherClass("ScreenManager", FloatLayoutClass)
-  ## The class of `ScreenManager`, a name only (see `WidgetClass`).
 
 properties:
   type
@@ -199,7 +193,7 @@ properties:
     ## Starts the transition from `screenOut` to `screenIn`; stops the
     ## program if it is already running. TransitionBase.start
     if t.isActive:
-      quit "ScreenManagerException: start() is called twice!"
+      quit "the transition is already running"
     t.manager = manager
     let a = newAnimation(newSeq[Track](), duration = t.duration, step = 0)
     t.anim = a
@@ -385,7 +379,7 @@ properties:
 
   proc newScreenManager*(): ScreenManager =
     ## A manager without screens, with a NoTransition.
-    result = ScreenManager(cls: ScreenManagerClass, canvas: newCanvas(), nameBindings: @[],
+    result = ScreenManager(canvas: newCanvas(), nameBindings: @[],
       transitionValue: nil)
     result.initProps()
     result.initScreenManager()
@@ -412,7 +406,7 @@ properties:
     for s in sm.screens:
       if s.name == name: matches.add s
     if matches.len == 0:
-      quit "ScreenManagerException: No Screen with name \"" & name & "\"."
+      quit "no screen called \"" & name & "\""
     if matches.len > 1:
       warn "Multiple screens named \"" & name & "\""
     result = matches[0]
@@ -475,14 +469,14 @@ properties:
     ## have no manager are accepted (else the program stops with Kivy's
     ## ScreenManagerException). ScreenManager.add_widget
     if not (widget of Screen):
-      quit "ScreenManagerException: ScreenManager accepts only Screen widget."
+      quit "a ScreenManager takes only Screens"
     let s = Screen(widget)
     let m = s.manager
     if m != nil:
       if m == FloatLayout(sm):
-        quit "ScreenManagerException: Screen already managed by this ScreenManager " &
-          "(are you calling `switch_to` when you should be setting `current`?)"
-      quit "ScreenManagerException: Screen already managed by another ScreenManager."
+        quit "the screen is already managed by this ScreenManager " &
+          "(call switchTo only with a new screen; set current to show a managed one)"
+      quit "the screen is already managed by another ScreenManager"
     s.manager = sm
     # ScreenManager._screen_name_changed, bound to the screen's `name`.
     let b = s.bindName(proc (v: string) {.closure.} =
@@ -500,7 +494,7 @@ properties:
     ## Stops managing a screen; if it is shown, the next one is shown, or
     ## none if it was the only one. ScreenManager.remove_widget
     if not (widget of Screen):
-      quit "ScreenManagerException: ScreenManager uses remove_widget only for removing Screens."
+      quit "a ScreenManager removes only Screens"
     let s = Screen(widget)
     if sm.screens.find(s) < 0:
       return

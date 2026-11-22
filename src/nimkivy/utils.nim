@@ -12,7 +12,7 @@ proc getColorFromHex*(s: string): seq[float] =
   ## Like Kivy, the string is cut into pairs of hex digits
   ## (`re.split('([0-9a-f]{2})')`), so `#rgb` gives two numbers (`rg` and
   ## `b`), not a short CSS colour. A part that is not hex stops the program,
-  ## as Kivy's ValueError does.
+  ## where Kivy raises ValueError.
   var t = s
   while t.startsWith("#"): t = t.substr(1)
   t = t.toLowerAscii
@@ -36,7 +36,7 @@ proc getColorFromHex*(s: string): seq[float] =
     var n = 0
     for c in p:
       if not isHexDigit(c):
-        quit "ValueError: invalid literal for int() with base 16: '" & p & "'"
+        quit "not a hex colour: '" & p & "'"
       n = n * 16 + (if c <= '9': ord(c) - ord('0') else: ord(c) - ord('a') + 10)
     result.add float(n) / 255.0
   if result.len == 3:

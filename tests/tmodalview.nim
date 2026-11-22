@@ -19,8 +19,6 @@ type
     button: ButtonBehavior
     modal: nil ModalView
 
-let ModalButtonClass = newDispatcherClass("ModalButton", WidgetClass)
-
 proc checkClosed(b: ModalButton) =
   let m = b.modal
   if m != nil:
@@ -44,7 +42,7 @@ method onTouchUp(b: ModalButton; t: MotionEvent): bool =
   else: result = procCall onTouchUp(Widget(b), t)
 
 proc newModalButton(): ModalButton =
-  result = ModalButton(cls: ModalButtonClass, canvas: newCanvas(),
+  result = ModalButton(canvas: newCanvas(),
     button: newButtonBehavior(), modal: nil)
   result.initProps()
   result.initWidget()

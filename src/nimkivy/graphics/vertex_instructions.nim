@@ -663,7 +663,7 @@ proc prebuildRoundedRectangle(l: Line) =
     float(c3), float(c4), resolution]
   l.rectangle = @[]
   l.circle = @[]
-  # `PI / resolution` divides in Python (a double), stored as a float.
+  # Kivy divides `PI / resolution` as a double and stores a float.
   let step = float32(float(Pi32) / resolution)
   let maxA = float32(float(Pi32) / 2.0 - float(step))
   # top-left

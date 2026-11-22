@@ -12,7 +12,7 @@
 ## `opacity` and `disabled` are Widget's own.
 ##
 ## Build a widget with `newWidget()`. A subclass's constructor makes the
-## object (`T(cls: TClass, canvas: newCanvas())`), calls `initProps` once
+## object (`T(canvas: newCanvas())`), calls `initProps` once
 ## (for its own type: this sets every property's default, the base types'
 ## too), then `initWidget` (or its base's `init` proc, which calls it). As
 ## in Kivy, creating a widget opens the window (`EventLoop.ensureWindow`).
@@ -22,14 +22,10 @@
 ## `proxy_ref`, `get_parent_window` and `get_window_matrix`.
 
 import std/[opt, sequtils, syncio]
-import ../[properties, base]
+import ../base
 import ../graphics/instructions
 
 export opt, base, instructions
-
-let WidgetClass* = newDispatcherClass("Widget", WidgetBaseClass)
-  ## The class of `Widget`, a name only (its properties are typed): the
-  ## base of the classes of widgets that still declare phase-1 properties.
 
 properties:
   type
@@ -74,7 +70,7 @@ properties:
 
   proc newWidget*(): Widget =
     ## A plain widget at (0, 0), 100 x 100.
-    result = Widget(cls: WidgetClass, canvas: newCanvas(), disabledCount: 0,
+    result = Widget(canvas: newCanvas(), disabledCount: 0,
       disabledValue: false)
     result.initProps()
     result.initWidget()
@@ -161,16 +157,15 @@ properties:
     ## after the canvas of the child it is placed above, into `canvas.before`
     ## or `canvas.after` when `canvas` says so and `index` is 0. Adding a
     ## non-widget, the widget itself or a widget that has a parent stops the
-    ## program with Kivy's WidgetException. Widget.add_widget
+    ## program (Kivy raises WidgetException). Widget.add_widget
     if not (widget of Widget):
-      quit "WidgetException: add_widget() can be used only with instances of the Widget class."
+      quit "only a Widget can be added to a widget"
     let child = Widget(widget)
     if child == w:
-      quit "WidgetException: Widget instances cannot be added to themselves."
+      quit "a widget cannot be added to itself"
     let parent = child.parent
     if parent != nil:
-      quit "WidgetException: Cannot add <" & child.cls.name & ">, it already has a parent <" &
-        parent.cls.name & ">"
+      quit "cannot add a widget that already has a parent"
     child.parent = w
     child.incDisabled(w.disabledCount)
     var children = w.children
@@ -184,7 +179,7 @@ properties:
     else:
       # Kivy places the child in `self.canvas` here, whatever `canvas` says.
       let c = w.canvas
-      # A negative index counts from the end, as Python's list indexing does.
+      # A negative index counts from the end, as in Kivy.
       var i = Natural(max(0, if index < 0: children.len + index else: index))
       var nextIndex = 0
       if i >= children.len:

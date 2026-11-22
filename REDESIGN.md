@@ -275,7 +275,7 @@ the block).
 | 3 | **Layer 6** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master): widget, layout, the four layouts (typed triggers, `PosHint`, `CanvasLayer`) | twidget, tlayout, trelativelayout; trace `properties`; layout scenes | geometry exact, pixels as before |
 | 4 | **Layer 7** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master): label (typed font options), image, ButtonBehavior as an owned properties object, no closures | tlabel, timage, tbutton; traces `label`, `touch`; label and image scenes | as before |
 | 5 | **Layers 8-9** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master): animation (tracks), screenmanager, modalview, audio | tanimation, tscreenmanager, tmodalview, taudio; traces `animation`, `screens`, `modal`; fade and modal scenes | as before |
-| 6 | **Cleanup**: remove `Value`, `DispatcherClass`, the name APIs and every helper in the table above; rename the Python-style helpers | everything | `grep` finds none of the phase-1 names; PORTING.md's decisions 3 and 4 rewritten |
+| 6 | **Cleanup** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master): remove `Value`, `DispatcherClass`, the name APIs and every helper in the table above; rename the Python-style helpers | everything | `grep` finds none of the phase-1 names; PORTING.md's decisions 3 and 4 rewritten |
 | 7 | **`buildUi`** in `src/nimkivy/buildui.nim` + plugin; the showcase's trees written with it | tshowcase unchanged in behaviour; the prototype test as `tbuildui` | the showcase reads like a kv file and passes |
 | 8 | **Word-width cache** | ttext, label trace and scenes, tshowcase | outputs identical; `TTF_GetStringSize` calls down |
 | 9 | **Profile again** with `tools/profile.sh` and `tools/callcounts.sh` on the same machine and settings | — | PROFILE.md gets an "after" section with the same tables: frame times, Ir by area, `doDispatch` (same count), `getPropertyStorage` (0), `rawAlloc` per drawn frame, `TTF_GetStringSize` calls; compared with "before" |
@@ -397,6 +397,27 @@ block's procs may be called from its generated code (a default value may
 call a proc declared later in the block). ModalView's `_touch_started_inside`
 is the enum `TouchStart`; `transitionByName` is gone (transitions are procs
 only).
+
+Step 6 notes: `event.nim` and `properties.nim` are gone, and with them
+`Value`, the class tables and every name API; `WidgetBase` is a `ref object
+of RootObj` (no `cls`), `graphics/texture` has no `toValue`/`toTexture`
+and `TextureObj` is a plain `object` again. Where phase 1 printed a class
+name, the messages now say what is wrong without it (`cannot add a widget
+that already has a parent`); `tests/scenes.nim` names a widget's type for
+the geometry files with an `of` chain, as `tinstructions` does (Nimony
+has no run-time type name: `$typeof` is static and #340). Layout's
+abstract check is the `isAbstract` method (BoxLayout, FloatLayout and
+AnchorLayout override it). Renamed: `pyStrip`/`pyLstrip`/`pyRstrip` to
+`stripUnicodeSpace(s, leading, trailing)`, `pyInsert`/`pyRemove` to
+`insertAt`/`removeFirst`, `truthy` (BoxLayout) to `nonZero`, `isclose` to
+`isClose`; Python exception names left the `quit` messages
+(ScreenManagerException, WidgetException, ValueError, NotImplementedError,
+Exception), and comments that explained Python now describe the Nim code
+or cite Kivy. The `events` trace's step label `dispatch after unbindUid` is
+`dispatch after unbind` (fixture too). `tools/callcounts.sh` no longer
+lists the phase-1 functions (`doDispatch`, `getPropertyStorage`, ...): step
+9 compares against PROFILE.md's "before" numbers and has to count typed
+dispatches another way (they are inlined setters now).
 
 The kiosk (philosykos-website) is written once on the result, after step 7;
 its own parity harness and Python app leave its tree then (ROADMAP.md).

@@ -19,7 +19,7 @@
 ## `mipmap`, `nocache`, and the deprecated `allow_stretch` and `keep_ratio`.
 
 import std/syncio
-import ../[properties, props]
+import ../props
 import ../graphics/[texture, context_instructions, vertex_instructions,
   stencil_instructions]
 import ../core/image as coreimage
@@ -35,9 +35,6 @@ type
     fitFill = "fill"            ## stretched to the widget
     fitContain = "contain"      ## fit inside, larger or smaller
     fitCover = "cover"          ## fill the widget, keeping the ratio (clipped)
-
-let ImageClass* = newDispatcherClass("Image", WidgetClass)
-  ## The class of `Image`, a name only (see `WidgetClass`).
 
 properties:
   type
@@ -197,7 +194,7 @@ properties:
 
   proc newImage*(): Image =
     ## An image with no source: a white box.
-    result = Image(cls: ImageClass, canvas: newCanvas(), coreImage: nil)
+    result = Image(canvas: newCanvas(), coreImage: nil)
     result.initProps()
     result.initImage()
 

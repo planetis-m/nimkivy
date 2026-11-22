@@ -7,7 +7,7 @@
 ## the line. It only measures, through the `getExtents` it is given, so the
 ## line breaks follow the font metrics of the text provider.
 ##
-## Python indexes a string by code points and Nim by bytes. Positions here
+## Kivy indexes a string by characters (code points), Nim by bytes. Positions here
 ## are byte offsets: a space is one byte in UTF-8 and never part of another
 ## character, so searching for spaces gives the same cuts, and where Kivy
 ## steps one character (splitting a long word) the code steps one UTF-8
@@ -99,7 +99,7 @@ proc newLabelOptions*(): LabelOptions =
     padding: [0.0, 0, 0, 0], textSize: (none[float](), none[float]()), spaceWidth: 0)
 
 proc copy*(o: LabelOptions): LabelOptions =
-  ## A copy of the options (Python's `copy(options)`).
+  ## A copy of the options (Kivy's `copy(options)`).
   result = LabelOptions()
   result[] = o[]
 
@@ -113,27 +113,22 @@ proc newLayoutLine*(x = 0; y = 0; w = 0; h = 0; isLastLine = false;
   LayoutLine(x: x, y: y, w: w, h: h, isLastLine: isLastLine, lineWrap: lineWrap,
     words: words)
 
-const PyWhitespace = [Rune(0x09), Rune(0x0A), Rune(0x0B), Rune(0x0C), Rune(0x0D),
+const UnicodeSpace = [Rune(0x09), Rune(0x0A), Rune(0x0B), Rune(0x0C), Rune(0x0D),
   Rune(0x1C), Rune(0x1D), Rune(0x1E), Rune(0x1F), Rune(0x20), Rune(0x85), Rune(0xA0),
   Rune(0x1680), Rune(0x2000), Rune(0x2001), Rune(0x2002), Rune(0x2003), Rune(0x2004),
   Rune(0x2005), Rune(0x2006), Rune(0x2007), Rune(0x2008), Rune(0x2009), Rune(0x200A),
   Rune(0x2028), Rune(0x2029), Rune(0x202F), Rune(0x205F), Rune(0x3000)]
-  # The characters Python's str.isspace accepts, which str.strip removes.
+  # The white space characters Kivy's `str.strip()` removes (Unicode White_Space
+  # and the separators U+001C .. U+001F).
 
 # `unicode.strip(s, runes = ...)` with a string is an "ambiguous call"
 # (planetis-m/nimony-bugs-llms#331), so the strips pass the string as an
 # openArray, which is the same call.
-proc pyStrip*(s: string): string {.inline.} =
-  ## Python's `s.strip()`.
-  unicode.strip(s.toOpenArray(0, s.high), runes = PyWhitespace)
-
-proc pyLstrip*(s: string): string {.inline.} =
-  ## Python's `s.lstrip()`.
-  unicode.strip(s.toOpenArray(0, s.high), trailing = false, runes = PyWhitespace)
-
-proc pyRstrip*(s: string): string {.inline.} =
-  ## Python's `s.rstrip()`.
-  unicode.strip(s.toOpenArray(0, s.high), leading = false, runes = PyWhitespace)
+proc stripUnicodeSpace*(s: string; leading = true; trailing = true): string {.inline.} =
+  ## `s` without the `UnicodeSpace` characters at its start (`leading`) and
+  ## its end (`trailing`): Kivy's `strip`, `lstrip` and `rstrip`, on which
+  ## its layout depends.
+  unicode.strip(s.toOpenArray(0, s.high), leading, trailing, UnicodeSpace)
 
 proc charLen(s: string; i: int): int =
   # The bytes of the UTF-8 character at byte `i`: where Kivy steps one
@@ -141,7 +136,7 @@ proc charLen(s: string; i: int): int =
   if i >= 0: runeLenAt(s, i) else: 1
 
 proc findSpace(s: string; start: int): int =
-  # Python's `s.find(' ', start)`; `start` is never negative.
+  # Kivy's `s.find(' ', start)`; `start` is never negative.
   if start >= 0: s.find(' ', start) else: -1
 
 proc toInt(v: Opt[float]): int =
@@ -157,8 +152,8 @@ proc finalStrip(line: LayoutLine) =
     if lastWord.text.len == 0:
       line.w -= lastWord.lw
     else:
-      let stripped = pyRstrip(lastWord.text)
-      # Python counts the stripped characters, not bytes.
+      let stripped = stripUnicodeSpace(lastWord.text, leading = false)
+      # Kivy counts the stripped characters, not bytes.
       let diff = (runeLen(lastWord.text) - runeLen(stripped)) * lastWord.options.spaceWidth
       line.w = max(0, line.w - diff)
       line.words.add newLayoutWord(lastWord.options, max(0, lastWord.lw - diff),
@@ -220,9 +215,9 @@ proc layoutTextUnrestricted(text: string; lines: var seq[LayoutLine]; w0, h0: in
     let ends = complete or (dwn and n > 1) or (not dwn and pos > 1)
     if strip:
       if line.w == 0:
-        ln = pyLstrip(ln)
+        ln = stripUnicodeSpace(ln, trailing = false)
       if ends:
-        ln = pyRstrip(ln)
+        ln = stripUnicodeSpace(ln, leading = false)
     let (lw, lh) = getExtents(ln)
     let oldLh = line.h
     var addH = 0
@@ -252,10 +247,10 @@ proc layoutTextUnrestricted(text: string; lines: var seq[LayoutLine]; w0, h0: in
     var ln = newLines[i]
     if strip:
       if complete or (dwn and i < n - 1) or (not dwn and i > s):
-        ln = pyStrip(ln)
+        ln = stripUnicodeSpace(ln)
       else:
         # The last line is only stripped on the left.
-        ln = pyLstrip(ln)
+        ln = stripUnicodeSpace(ln, trailing = false)
     let (lw, lh) = getExtents(ln)
     let lhh = int(float32(lh) * lineHeight)
     # The first line always gets the full font height.
@@ -353,9 +348,9 @@ proc layoutText*(text: string; lines: var seq[LayoutLine]; size: (int, int);
     var ln = newLines[i]
     # No text before it, so strip leading spaces.
     if line.w == 0 and (strip or (refStrip and line.lineWrap)):
-      ln = pyLstrip(ln)
+      ln = stripUnicodeSpace(ln, trailing = false)
     if strip and endsLine:
-      ln = pyRstrip(ln)
+      ln = stripUnicodeSpace(ln, leading = false)
 
     k = ln.len
     if k == 0:
@@ -405,7 +400,7 @@ proc layoutText*(text: string; lines: var seq[LayoutLine]; size: (int, int);
         if s != m:
           doLastLine = true
           if (strip or refStrip) and ln[m - 1] == ' ':
-            text = pyRstrip(ln.substr(s, m - 1))
+            text = stripUnicodeSpace(ln.substr(s, m - 1), leading = false)
             (lww, lhh) = getExtents(text)
           else:
             text = ln.substr(s, m - 1)
@@ -426,7 +421,7 @@ proc layoutText*(text: string; lines: var seq[LayoutLine]; size: (int, int);
         # Try to fit the word on the new line; if it does not fit, break it
         # over as many lines as needed.
         if strip or (refStrip and line.lineWrap):
-          s = e - pyLstrip(ln.substr(s, e - 1)).len
+          s = e - stripUnicodeSpace(ln.substr(s, e - 1), trailing = false).len
         if s == e:   # it was only a stripped space
           m = s
           continue

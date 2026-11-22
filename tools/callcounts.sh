@@ -20,7 +20,7 @@ END {
   for (id in calls) {
     nm = names[id]
     if (nm ~ /^(SDL_RenderGeometry|SDL_RenderLines|SDL_RenderTexture|SDL_RenderPresent|SDL_RenderClear|SDL_SetRenderTarget|SDL_SetRenderClipRect|SDL_CreateTexture|SDL_CreateTextureFromSurface|SDL_UpdateTexture|SDL_PollEvent|IMG_Load|TTF_OpenFont|TTF_GetStringSize|TTF_Render[A-Za-z_]*|malloc|free|calloc|realloc|rawAlloc_.*|rawDealloc_.*)$/ ||
-        nm ~ /^(doDispatch|dispatch|dispatchValue|dispatchEvent|setProperty|getProperty|getPropertyStorage|set|get|doLayout|draw|drawTriangles|drawLineStrip|apply|render|renderLines|renderText|getExtents|layoutText|textureUpdate|loadTexture|newTexture|handle|blit|onDraw|idle|tick|tickDraw)_[0-9]+_[a-z0-9]+$/)
+        nm ~ /^(dispatch|set|get|doLayout|draw|drawTriangles|drawLineStrip|apply|render|renderLines|renderText|getExtents|layoutText|textureUpdate|loadTexture|newTexture|handle|blit|onDraw|idle|tick|tickDraw)_[0-9]+_[a-z0-9]+$/)
       printf "%12d  %s\n", calls[id], nm
   }
 }' "$1" | sort -k2

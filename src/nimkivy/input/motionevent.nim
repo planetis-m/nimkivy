@@ -88,7 +88,7 @@ type
 let uniqId = Counter(value: 0)
 
 proc time(): float =
-  # Python's time.time() as Kivy uses it here: only differences matter.
+  # Kivy's time.time(): only differences matter.
   float(getMonoTime().ticks) / 1e9
 
 # ------------------------------------------------------------------ MotionEvent

@@ -1,8 +1,8 @@
 ## Graphics instructions: Kivy's `kivy/graphics/instructions.pyx`
 ## (Instruction, InstructionGroup, ContextInstruction, VertexInstruction,
 ## CanvasBase, Canvas), plus `BindTexture` from `context_instructions.pyx`,
-## which every vertex instruction owns and which Python could import
-## circularly but a Nim module cannot.
+## which every vertex instruction owns: in Kivy the two modules import each
+## other, which Nim modules cannot.
 ##
 ## A canvas is a list of instructions, drawn in order: `before`, then its own
 ## children (a child widget's canvas is one of them), then `after`. A vertex
@@ -95,9 +95,9 @@ proc parent*(i: Instruction): nil InstructionGroup {.inline.} =
   ## The group `i` is in, or nil.
   i.parent
 
-proc pyInsert[T](s: var seq[T]; index: int; x: T) =
-  # Python's list.insert: a negative index counts from the end, and an index
-  # out of range is clamped.
+proc insertAt[T](s: var seq[T]; index: int; x: T) =
+  # Inserts at Kivy's list index: a negative index counts from the end, and
+  # an index out of range is clamped.
   var i = index
   if i < 0:
     i = max(0, s.len + i)
@@ -105,8 +105,9 @@ proc pyInsert[T](s: var seq[T]; index: int; x: T) =
     i = s.len
   s.insert([x], i)
 
-proc pyRemove(s: var seq[Instruction]; x: Instruction) =
-  # Python's list.remove for an instruction (identity): the first one.
+proc removeFirst(s: var seq[Instruction]; x: Instruction) =
+  # Removes the first occurrence of the instruction (by identity), as Kivy's
+  # list.remove.
   let i = s.find(x)
   if i >= 0:
     s.delete(i)
@@ -117,14 +118,14 @@ method radd*(i: Instruction; ig: InstructionGroup) {.base.} =
   i.parent = ig
 
 method rinsert*(i: Instruction; ig: InstructionGroup; index: int) {.base.} =
-  ## Inserts `i` into `ig`'s children at a Python index (Kivy's `rinsert`).
-  ig.children.pyInsert(index, i)
+  ## Inserts `i` into `ig`'s children at `index`; a negative one counts from the end (Kivy's `rinsert`).
+  ig.children.insertAt(index, i)
   i.parent = ig
 
 method rremove*(i: Instruction; ig: InstructionGroup) {.base.} =
   ## Removes `i` from `ig`'s children (Kivy's `rremove`).
   if i.parent != nil:
-    ig.children.pyRemove(i)
+    ig.children.removeFirst(i)
     i.parent = nil
 
 # ---------------------------------------------------------------- InstructionGroup
@@ -140,7 +141,7 @@ proc add*(ig: InstructionGroup; c: Instruction) =
   ig.flagUpdate()
 
 proc insert*(ig: InstructionGroup; index: int; c: Instruction) =
-  ## Inserts an instruction at a Python index.
+  ## Inserts an instruction at `index`; a negative one counts from the end.
   c.rinsert(ig, index)
   ig.flagUpdate()
 
@@ -283,15 +284,15 @@ method rinsert*(v: VertexInstruction; ig: InstructionGroup; index: int) =
   ## Inserts the BindTexture, then the instruction at the same index. As in
   ## Kivy, the instruction ends up before its BindTexture when the index is
   ## not negative, and then draws with the texture bound before it.
-  ig.children.pyInsert(index, Instruction(v.textureBinding))
-  ig.children.pyInsert(index, Instruction(v))
+  ig.children.insertAt(index, Instruction(v.textureBinding))
+  ig.children.insertAt(index, Instruction(v))
   v.textureBinding.parent = ig
   v.parent = ig
 
 method rremove*(v: VertexInstruction; ig: InstructionGroup) =
   ## Removes the BindTexture and the instruction.
-  ig.children.pyRemove(v.textureBinding)
-  ig.children.pyRemove(v)
+  ig.children.removeFirst(v.textureBinding)
+  ig.children.removeFirst(v)
   v.textureBinding.parent = nil
   v.parent = nil
 
