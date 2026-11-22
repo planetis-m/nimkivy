@@ -43,12 +43,13 @@ type
   FontRegistry = ref object
     fonts: Table[string, array[4, string]]   # LabelBase._fonts
     fontsCache: Table[string, string]        # LabelBase._fonts_cache
+    generation: int                          # bumped by every `register`
 
   Texture1px = ref object
     texture: nil Texture
 
 let fontRegistry = FontRegistry(fonts: initTable[string, array[4, string]](),
-  fontsCache: initTable[string, string]())
+  fontsCache: initTable[string, string](), generation: 0)
 let texture1px = Texture1px(texture: nil)
 
 proc logError(msg: string) =
@@ -77,6 +78,12 @@ proc register*(name, fnRegular: string; fnItalic = ""; fnBold = "";
       fonts[i] = fonts[0]   # the regular file again
     inc i
   fontRegistry.fonts[name] = fonts
+  inc fontRegistry.generation
+
+proc fontsGeneration*(): int {.inline.} =
+  ## A number that changes whenever a font name is (re)registered, so a
+  ## provider can drop what it measured with the old files.
+  fontRegistry.generation
 
 proc resolveFontName*(l: LabelBase) =
   ## Sets `options.fontNameR` to the file of `options.fontName` with the

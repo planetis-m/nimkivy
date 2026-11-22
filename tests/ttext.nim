@@ -3,7 +3,7 @@
 # tests/traces.nim compares texture sizes with Kivy's.
 
 import std/[assertions, files, dirs, paths, strutils, tempfiles]
-import nimkivy/sdl3/sdl
+import nimkivy/sdl3/[sdl, ttf]
 import nimkivy/graphics/texture
 import nimkivy/core/text
 import nimkivy/core/text/text_sdl3
@@ -165,3 +165,34 @@ block halign_center:
   l.refresh()
   let line = l.cachedLines[0]
   assert line.x == (100 - line.w) div 2
+
+block extents_follow_font_state:
+  # Measured sizes are remembered per open font; they must stay those of
+  # `TTF_GetStringSize` on the font in its current state, also after a render
+  # sets another hinting and kerning, and after a font is registered.
+  let l = newLabelSDL3()
+  l.options.fontSize = 37
+  l.text = "AVATAR WAVE To"
+  var file = l.options.fontNameR
+  let reference = TTF_OpenFont(file.toCString, 37.0)
+  assert reference != nil
+  proc measured(f: TTF_Font; text: string): (int, int) =
+    var w = 0.cint
+    var h = 0.cint
+    var t = text
+    discard TTF_GetStringSize(f, t.toCString, csize_t(t.len), addr w, addr h)
+    result = (int(w), int(h))
+  for word in ["AVATAR", "WAVE", "To", "AVATAR WAVE To"]:
+    assert l.getExtents(word) == measured(reference, word)
+    assert l.getExtents(word) == measured(reference, word)   # remembered
+  l.options.fontHinting = hintingMono
+  l.options.fontKerning = false
+  l.refresh()   # sets the hinting and kerning on the shared font
+  TTF_SetFontHinting(reference, TTF_HINTING_MONO)
+  TTF_SetFontKerning(reference, false)
+  discard TTF_SetFontDirection(reference, TTF_DIRECTION_LTR)
+  for word in ["AVATAR", "WAVE", "To", "AVATAR WAVE To"]:
+    assert l.getExtents(word) == measured(reference, word)
+  register("Deja", "data/fonts/DejaVuSans.ttf")
+  assert l.getExtents("AVATAR") == measured(reference, "AVATAR")
+  TTF_CloseFont(reference)

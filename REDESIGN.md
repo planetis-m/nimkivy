@@ -301,7 +301,7 @@ the block).
 | 5 | **Layers 8-9** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master): animation (tracks), screenmanager, modalview, audio | tanimation, tscreenmanager, tmodalview, taudio; traces `animation`, `screens`, `modal`; fade and modal scenes | as before |
 | 6 | **Cleanup** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master): remove `Value`, `DispatcherClass`, the name APIs and every helper in the table above; rename the Python-style helpers | everything | `grep` finds none of the phase-1 names; PORTING.md's decisions 3 and 4 rewritten |
 | 7 | **`buildUi`** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master) in `src/nimkivy/buildui.nim` + plugin; the showcase's trees written with it | tshowcase unchanged in behaviour; the prototype test as `tbuildui` | the showcase reads like a kv file and passes |
-| 8 | **Word-width cache** | ttext, label trace and scenes, tshowcase | outputs identical; `TTF_GetStringSize` calls down |
+| 8 | **Word-width cache** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master) | ttext, label trace and scenes, tshowcase | outputs identical; `TTF_GetStringSize` calls down |
 | 9 | **Profile again** with `tools/profile.sh` and `tools/callcounts.sh` on the same machine and settings | — | PROFILE.md gets an "after" section with the same tables: frame times, Ir by area, `doDispatch` (same count), `getPropertyStorage` (0), `rawAlloc` per drawn frame, `TTF_GetStringSize` calls; compared with "before" |
 
 Step 1 notes: `tproperties` runs test_properties.py typed and replays the
@@ -473,6 +473,18 @@ made (adding the first one fires its `enter`, which uses the state).
 For the kiosk: make the state its handlers reach (the kiosk's `Kiosk`
 logic) before the trees, and the widgets a screen's procs need are `as`
 handles kept in its object.
+
+Step 8 notes: the cache is per open font (`OpenFont` in
+`core/text/text_sdl3`: the font cache's key is the file, size, bold and
+italic), keyed by the text, and emptied when the font's hinting, kerning,
+direction or style differs from when it measured (read back from SDL3_ttf
+with `stateOf`, since `renderText` changes them on the shared font), when a
+font is registered, and at 4096 texts. Counted with an LD_PRELOAD counter
+(same uncapped run): tshowcase 1,073 -> 508 `TTF_GetStringSize` calls,
+scenes 894 -> 333, traces 930 -> 128, tlabel 358 -> 111; every rendered
+word, surface and blit identical. Step 9's callgrind run counts the calls
+with `tools/callcounts.sh` against PROFILE.md's 997 (a different run:
+capped at 60 fps, under valgrind).
 
 The kiosk (philosykos-website) is written once on the result, after step 7;
 its own parity harness and Python app leave its tree then (ROADMAP.md).

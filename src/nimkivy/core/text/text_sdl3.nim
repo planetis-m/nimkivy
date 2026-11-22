@@ -4,8 +4,9 @@
 ## `LabelSDL3` is the core label that the widgets use. Fonts are opened at
 ## `int(fontSize)` points and cached by size, file, bold and italic, at most
 ## 64 at a time, the oldest closed first. A word is measured with
-## `TTF_GetStringSize` and rendered blended (or solid) in the label's
-## colour, then copied into the label's RGBA image at its position.
+## `TTF_GetStringSize`, remembered per open font (`getExtents`), and
+## rendered blended (or solid) in the label's colour, then copied into the
+## label's RGBA image at its position.
 
 import std/[tables, syncio]
 import ../../sdl3/[sdl, ttf]
@@ -18,8 +19,18 @@ type
   TtfContainer = ref TtfContainerObj
     # An open font, closed when the cache drops it. _text_sdl2.pyx _TTFContainer
 
+  FontState = (TTF_HintingFlags, bool, TTF_Direction, TTF_FontStyleFlags, int)
+    # What a measurement depends on besides the file, the size and the text:
+    # the font's hinting, kerning, direction and style, and `fontsGeneration`.
+
+  OpenFont = ref object
+    # An open font and the sizes of the texts measured with it.
+    ttf: TtfContainer
+    words: Table[string, (int, int)]   # text -> (w, h), measured in `state`
+    state: FontState
+
   FontCache = ref object
-    fonts: Table[string, nil TtfContainer]   # sdl2_cache
+    fonts: Table[string, nil OpenFont]       # sdl2_cache
     order: seq[string]                   # sdl2_cache_order
 
   LabelSDL3* = ref object of LabelBase
@@ -34,21 +45,27 @@ proc `=destroy`(c: TtfContainerObj) =
   if f != nil:
     TTF_CloseFont(f)
 
-let fontCache = FontCache(fonts: initTable[string, nil TtfContainer](), order: @[])
+let fontCache = FontCache(fonts: initTable[string, nil OpenFont](), order: @[])
 
-const MaxOpenFonts = 64
+const
+  MaxOpenFonts = 64
+  MaxWords = 4096   # texts remembered per open font; the table is emptied when full
 
 proc newLabelSDL3*(): LabelSDL3 =
   ## A label with Kivy's default options and no text.
   result = LabelSDL3(options: newLabelOptions(), surface: nil)
   result.initLabelBase()
 
-proc getFont(l: LabelBase): nil TTF_Font =
+proc stateOf(font: TTF_Font): FontState =
+  (TTF_GetFontHinting(font), TTF_GetFontKerning(font), TTF_GetFontDirection(font),
+    TTF_GetFontStyle(font), fontsGeneration())
+
+proc getOpenFont(l: LabelBase): nil OpenFont =
   # _text_sdl2.pyx _get_font: the label's font from the cache, or opened.
   let fontid = l.fontid
   let cached = fontCache.fonts.getOrDefault(fontid)
   if cached != nil:
-    return cached.font
+    return cached
   if TTF_WasInit() == 0:
     discard TTF_Init()
   var fontname = l.options.fontNameR
@@ -65,28 +82,55 @@ proc getFont(l: LabelBase): nil TTF_Font =
     return nil
   # Underline and strikethrough are out (SCOPE.md).
   TTF_SetFontStyle(font, TTF_STYLE_NORMAL)
-  fontCache.fonts[fontid] = TtfContainer(font: font)
+  let opened = OpenFont(ttf: TtfContainer(font: font),
+    words: initTable[string, (int, int)](), state: stateOf(font))
+  fontCache.fonts[fontid] = opened
   fontCache.order.add fontid
   # Not too many open files: at most 64 fonts.
   while fontCache.order.len > MaxOpenFonts:
     let popid = fontCache.order[0]
     fontCache.order.delete(0)
     fontCache.fonts.del(popid)
-  result = font
+  result = opened
+
+proc getFont(l: LabelBase): nil TTF_Font =
+  let f = getOpenFont(l)
+  result = nil
+  if f != nil:
+    result = f.ttf.font
 
 method getExtents*(l: LabelSDL3; text: string): (int, int) =
   ## The width and height of `text`. _text_sdl2.pyx _get_extents
   # GAP: widths and glyph pixels can differ by a pixel from Kivy's (hinting,
   # kerning, shaping), which can move a line break, because SDL3_ttf 3.2
   # replaces the SDL2_ttf bundled with Kivy 2.3.2.
-  let font = getFont(l)
+  #
+  # A measurement is a pure function of the open font (file, size, bold,
+  # italic: the cache key), its state (`FontState`) and the text, so each
+  # open font remembers its texts' sizes; they are forgotten when the state
+  # changes (`renderText` sets the hinting, kerning and direction), when a
+  # font is registered, and all at once when `MaxWords` are remembered.
+  let f = getOpenFont(l)
+  if f == nil:
+    return (0, 0)
+  let font = f.ttf.font
   if font == nil:
     return (0, 0)
+  let state = stateOf(font)
+  if state != f.state:
+    f.words.clear()
+    f.state = state
+  result = f.words.getOrDefault(text, (-1, -1))
+  if result[0] >= 0:
+    return result
   var w = 0.cint
   var h = 0.cint
   var t = text
   discard TTF_GetStringSize(font, t.toCString, csize_t(t.len), addr w, addr h)
   result = (int(w), int(h))
+  if f.words.len >= MaxWords:
+    f.words.clear()
+  f.words[text] = result
 
 method getAscent*(l: LabelSDL3): int =
   ## The font's ascent in pixels. _text_sdl2.pyx _get_fontascent

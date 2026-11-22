@@ -19,10 +19,10 @@ type
   TTF_FontStyleFlags* = distinct uint32 ## Bold, italic and lines.
   TTF_Direction* = distinct cint ## Direction of shaped text.
 
-proc `==`*(a, b: TTF_HintingFlags): bool {.borrow.}
-proc `==`*(a, b: TTF_FontStyleFlags): bool {.borrow.}
+func `==`*(a, b: TTF_HintingFlags): bool {.borrow.}
+func `==`*(a, b: TTF_FontStyleFlags): bool {.borrow.}
 proc `or`*(a, b: TTF_FontStyleFlags): TTF_FontStyleFlags {.borrow.}
-proc `==`*(a, b: TTF_Direction): bool {.borrow.}
+func `==`*(a, b: TTF_Direction): bool {.borrow.}
 
 const
   TTF_HINTING_INVALID* = TTF_HintingFlags(-1)
@@ -82,6 +82,10 @@ proc TTF_GetFontHinting*(font: TTF_Font): TTF_HintingFlags
   ## The current hinter.
 proc TTF_GetFontKerning*(font: TTF_Font): bool
   ## Whether kerning is on.
+proc TTF_GetFontStyle*(font: TTF_Font): TTF_FontStyleFlags
+  ## The current style.
+proc TTF_GetFontDirection*(font: TTF_Font): TTF_Direction
+  ## The direction text is shaped in.
 proc TTF_SetFontDirection*(font: TTF_Font; direction: TTF_Direction): bool
   ## Sets the direction text is shaped in.
 proc TTF_SetFontScript*(font: TTF_Font; script: uint32): bool

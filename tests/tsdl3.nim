@@ -107,6 +107,8 @@ block smoke:
   assert TTF_WasInit() > 0
   assert TTF_GetFontHinting(font) == TTF_HINTING_NORMAL
   assert TTF_GetFontKerning(font)
+  assert TTF_GetFontStyle(font) == TTF_STYLE_NORMAL
+  assert TTF_GetFontDirection(font) == TTF_DIRECTION_LTR
   let canvas = SDL_CreateSurface(64, 64, SDL_PIXELFORMAT_RGBA32)
   assert canvas != nil, fromCString(SDL_GetError())
   assert pixel(canvas, 0, 0) == [0'u8, 0, 0, 0]
