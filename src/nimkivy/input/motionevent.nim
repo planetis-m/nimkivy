@@ -113,8 +113,8 @@ method depack*(me: MotionEvent; sx, sy: float) {.base.} =
   me.dsy = me.sy - me.psy
   me.dsz = me.sz - me.psz
 
-proc initMotionEvent*(me: MotionEvent; device, id: string; sx, sy: float;
-    isTouch = false; typeId = "") =
+proc initMotionEvent*(me: MotionEvent; device, id: sink string; sx, sy: float;
+    isTouch = false; typeId: sink string = "") =
   ## Sets up a new motion event of a subtype, built with `T()` first, at the
   ## normalized position (`sx`, `sy`). motionevent.py MotionEvent.__init__
   inc uniqId.value
@@ -145,7 +145,7 @@ proc initMotionEvent*(me: MotionEvent; device, id: string; sx, sy: float;
   me.firstDispatchDone = false
   me.depack(sx, sy)
 
-proc grab*(me: MotionEvent; widget: RootRef; exclusive = false) =
+proc grab*(me: MotionEvent; widget: sink RootRef; exclusive = false) =
   ## Grabs the event: `widget` gets its later moves and its end, with
   ## `grabCurrent` set to it. An exclusive grab cannot be joined; a second
   ## grab then stops the program, as Kivy raises.

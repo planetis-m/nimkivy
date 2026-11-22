@@ -55,11 +55,11 @@ properties:
     ## The touches currently down or moving.
     el.meList
 
-  proc setWindow*(el: EventLoopBase; window: WindowSDL) =
+  proc setWindow*(el: EventLoopBase; window: sink WindowSDL) =
     ## Sets the window the loop draws and dispatches to.
     el.window = window
 
-  proc addInputProvider*(el: EventLoopBase; provider: MotionEventProvider;
+  proc addInputProvider*(el: EventLoopBase; provider: sink MotionEventProvider;
       autoRemove = false) =
     ## Adds a source of motion events.
     if provider notin el.inputProviders:
@@ -76,7 +76,7 @@ properties:
       if k >= 0:
         el.inputProvidersAutoremove.delete(k)
 
-  proc addEventListener*(el: EventLoopBase; listener: WindowBase) =
+  proc addEventListener*(el: EventLoopBase; listener: sink WindowBase) =
     ## Adds a receiver of `motion` (the window).
     if listener notin el.eventListeners:
       el.eventListeners.add listener
@@ -145,7 +145,7 @@ properties:
     el.stop()
     el.status = loopClosed
 
-  proc postDispatchInput*(el: EventLoopBase; action: MotionAction; me: MotionEvent) =
+  proc postDispatchInput*(el: EventLoopBase; action: MotionAction; me: sink MotionEvent) =
     ## Dispatches one motion event: to the listeners (the window's
     ## `motion`), then to each widget that grabbed it, in that widget's
     ## coordinates and with `grabCurrent` set. base.py post_dispatch_input
@@ -268,7 +268,7 @@ let EventLoop* = newEventLoopBase()
 
 proc stopTouchApp*()
 
-proc prepareTouchApp(widget: nil WidgetBase) =
+proc prepareTouchApp(widget: sink nil WidgetBase) =
   # base.py _runTouchApp_prepare
   if widget != nil:
     EventLoop.ensureWindow()
@@ -284,7 +284,7 @@ proc prepareTouchApp(widget: nil WidgetBase) =
   stderr.writeLine "[INFO   ] [Base        ] Start application main loop"
   EventLoop.start()
 
-proc runTouchApp*(widget: nil WidgetBase = nil; embedded = false) =
+proc runTouchApp*(widget: sink nil WidgetBase = nil; embedded = false) =
   ## Starts the application loop: opens the window (with a widget, which
   ## becomes a root widget), starts the input providers and runs frames
   ## until the loop stops. `embedded` only prepares; the caller then runs

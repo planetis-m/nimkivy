@@ -198,7 +198,7 @@ const
   # observer may replace the stored one while the later observers still need
   # it (planetis-m/nimony-bugs-llms#334).
   bindProcs = """
-proc bindProp*(w: Owner; cb: proc (v: PropT) {.closure.}): Binding =
+proc bindProp*(w: Owner; cb: sink proc (v: PropT) {.closure.}): Binding =
   $1
   w.propObs.add(cb)
 proc unbindProp*(w: Owner; b: Binding) =
@@ -212,12 +212,12 @@ proc dispatchProp*(w: Owner) =
   propProcs = """
 proc prop*(w: Owner): PropT {.inline.} =
   w.propStore
-proc `prop=`*(w: Owner; v: PropT) =
+proc `prop=`*(w: Owner; v: sink PropT) =
   $1
   if $2w.propStore != v:
     w.propStore = v
     w.dispatchProp()
-proc initProp*(w: Owner; v: PropT) =
+proc initProp*(w: Owner; v: sink PropT) =
   w.propStore = v
 """
   boundsCheck = """if v < LowV or v > HighV:
@@ -262,7 +262,7 @@ proc prop*(w: Owner): PropT =
   w.propStore = $1
   w.propValid = true
   w.propStore
-proc `prop=`*(w: Owner; v: PropT) =
+proc `prop=`*(w: Owner; v: sink PropT) =
   w.linkProp()
   if $4w.propValid and w.propStore == v: return
   w.propStop = true
@@ -274,7 +274,7 @@ $3
   for cb in w.propObs.live: cb(value)
 """
   refsDispatch = """
-proc bindProp*(w: Owner; cb: proc (v: PropT) {.closure.}): Binding =
+proc bindProp*(w: Owner; cb: sink proc (v: PropT) {.closure.}): Binding =
   w.linkProp()
   w.propObs.add(cb)
 proc unbindProp*(w: Owner; b: Binding) =
@@ -337,7 +337,7 @@ $2
 """
 
   eventProcs = """
-proc bindProp*(w: Owner; cb: proc ($4): bool {.closure.}): Binding =
+proc bindProp*(w: Owner; cb: sink proc ($4): bool {.closure.}): Binding =
   w.propObs.add(cb)
 proc unbindProp*(w: Owner; b: Binding) =
   w.propObs.remove(b)
@@ -368,9 +368,9 @@ type $1 = ref object of Track
   a, b: PropT
 proc propKey*(t: typedesc[Owner]): TrackKey {.inline.} =
   trackKey("$2")
-proc propTo*(t: typedesc[Owner]; v: PropT): Track =
+proc propTo*(t: typedesc[Owner]; v: sink PropT): Track =
   $1(key: trackKey("$2"), target: nil, a: v, b: v)
-method capture(t: $1; target: RootRef): Track =
+method capture(t: $1; target: sink RootRef): Track =
   if target of Owner:
     let w = Owner(target)
     result = $1(key: t.key, target: w, a: w.prop, b: t.b)

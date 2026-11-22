@@ -246,7 +246,7 @@ properties:
       else:
         c.size = (p.w, p.h)
 
-  method addWidget*(b: BoxLayout; widget: WidgetBase; index = 0; canvas = layerCanvas) =
+  method addWidget*(b: BoxLayout; widget: sink WidgetBase; index = 0; canvas = layerCanvas) =
     ## Binds the layout to the child's `posHint`, then adds it as Layout
     ## does. BoxLayout.add_widget
     b.bindChildPosHint(widget)

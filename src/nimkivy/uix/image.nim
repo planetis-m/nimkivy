@@ -198,7 +198,7 @@ properties:
     result.initProps()
     result.initImage()
 
-  proc newImage*(source: string): Image =
+  proc newImage*(source: sink string): Image =
     ## An image showing the file `source`.
     result = newImage()
     result.source = source

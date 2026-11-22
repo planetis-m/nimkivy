@@ -95,12 +95,12 @@ proc parent*(i: Instruction): nil InstructionGroup {.inline.} =
   ## The group `i` is in, or nil.
   i.parent
 
-proc setParent*(i: Instruction; parent: nil InstructionGroup) {.inline.} =
+proc setParent*(i: Instruction; parent: sink nil InstructionGroup) {.inline.} =
   ## Sets the group `i` is in, for an `radd`, `rinsert` or `rremove` that
   ## adds or removes several instructions (Kivy's `set_parent`).
   i.parent = parent
 
-proc insertAt*[T](s: var seq[T]; index: int; x: T) =
+proc insertAt*[T](s: var seq[T]; index: int; x: sink T) =
   ## Inserts at Kivy's list index: a negative index counts from the end, and
   ## an index out of range is clamped.
   var i = index
@@ -117,6 +117,9 @@ proc removeFirst*(s: var seq[Instruction]; x: Instruction) =
   if i >= 0:
     s.delete(i)
 
+# GAP: `i` of `radd` and `rinsert` is not sink, because
+# planetis-m/nimony-bugs-llms#346 (VertexInstruction's overrides convert a
+# field of it, and an override keeps its base's signature)
 method radd*(i: Instruction; ig: InstructionGroup) {.base.} =
   ## Appends `i` to `ig`'s children (Kivy's `radd`).
   ig.children.add i
@@ -139,13 +142,13 @@ proc newInstructionGroup*(): InstructionGroup =
   ## An empty group.
   InstructionGroup(parent: nil, children: @[])
 
-proc add*(ig: InstructionGroup; c: Instruction) =
+proc add*(ig: InstructionGroup; c: sink Instruction) =
   ## Appends an instruction. instructions.pyx InstructionGroup.add; for a
   ## Canvas, see the `add` below.
   c.radd(ig)
   ig.flagUpdate()
 
-proc insert*(ig: InstructionGroup; index: int; c: Instruction) =
+proc insert*(ig: InstructionGroup; index: int; c: sink Instruction) =
   ## Inserts an instruction at `index`; a negative one counts from the end.
   c.rinsert(ig, index)
   ig.flagUpdate()
@@ -180,7 +183,7 @@ proc newCanvas*(): Canvas =
   ## An empty canvas with opacity 1.
   Canvas(parent: nil, children: @[], opacity: 1, before: nil, after: nil)
 
-proc add*(c: Canvas; i: Instruction) =
+proc add*(c: Canvas; i: sink Instruction) =
   ## Appends an instruction, before the `after` group if there is one.
   ## instructions.pyx Canvas.add
   if c.after == nil:
@@ -249,7 +252,7 @@ proc texture*(b: BindTexture): nil Texture {.inline.} =
   ## The bound texture; nil is the default texture.
   b.texture
 
-proc `texture=`*(b: BindTexture; t: nil Texture) =
+proc `texture=`*(b: BindTexture; t: sink nil Texture) =
   ## Sets the bound texture.
   if b.texture != t:
     b.texture = t
@@ -259,7 +262,7 @@ proc source*(b: BindTexture): string {.inline.} =
   ## The file the texture was loaded from ("" when none).
   b.source
 
-proc setSource*(b: BindTexture; filename: string; t: nil Texture) =
+proc setSource*(b: BindTexture; filename: sink string; t: sink nil Texture) =
   ## Records the file name and binds `t`, the texture loaded from it. The
   ## setter `source=` that loads the file is in `core/image`, because a
   ## graphics module cannot import the image loader above it.
@@ -310,7 +313,7 @@ proc texture*(v: VertexInstruction): nil Texture {.inline.} =
   ## The texture drawn with; nil is the default texture.
   v.textureBinding.texture
 
-proc `texture=`*(v: VertexInstruction; t: nil Texture) =
+proc `texture=`*(v: VertexInstruction; t: sink nil Texture) =
   ## Sets the texture, and the texture coordinates to the texture's.
   ## instructions.pyx VertexInstruction.texture
   v.textureBinding.texture = t

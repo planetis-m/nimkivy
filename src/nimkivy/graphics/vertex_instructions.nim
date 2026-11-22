@@ -1429,6 +1429,9 @@ proc adjustParams(r: Rectangle; delta: float) =
       radius[corner] = (max(0.0, rx + delta), max(0.0, ry + delta))
     `radius=`(rr, radius)
 
+# GAP: `target` and `aa` of `smoothRadd` and `smoothRinsert` are not sink,
+# because planetis-m/nimony-bugs-llms#346 (their `textureBinding` is converted
+# to an Instruction)
 proc smoothRadd(ig: InstructionGroup; target: VertexInstruction; aa: AntiAliasingLine) =
   # vertex_instructions.pyx radd_instructions: the shape's BindTexture, the
   # shape, the line's BindTexture, the line. As in Kivy, the parent of the
@@ -1464,7 +1467,7 @@ proc smoothRremove(ig: InstructionGroup; target: VertexInstruction; aa: AntiAlia
   aa.setParent(nil)
   target.setParent(nil)
 
-proc line(a: nil AntiAliasingLine): AntiAliasingLine =
+proc line(a: sink nil AntiAliasingLine): AntiAliasingLine =
   # A smooth shape's line, which its constructor sets.
   assert a != nil, "a smooth shape without its antialiasing line"
   result = a

@@ -103,12 +103,12 @@ proc copy*(o: LabelOptions): LabelOptions =
   result = LabelOptions()
   result[] = o[]
 
-proc newLayoutWord*(options: LabelOptions; lw, lh: int; text: string): LayoutWord =
+proc newLayoutWord*(options: sink LabelOptions; lw, lh: int; text: sink string): LayoutWord =
   ## A word. text_layout.pyx LayoutWord.__cinit__
   LayoutWord(options: options, lw: lw, lh: lh, text: text)
 
 proc newLayoutLine*(x = 0; y = 0; w = 0; h = 0; isLastLine = false;
-    lineWrap = false; words: seq[LayoutWord] = @[]): LayoutLine =
+    lineWrap = false; words: sink seq[LayoutWord] = @[]): LayoutLine =
   ## A line. text_layout.pyx LayoutLine.__cinit__
   LayoutLine(x: x, y: y, w: w, h: h, isLastLine: isLastLine, lineWrap: lineWrap,
     words: words)
@@ -159,8 +159,8 @@ proc finalStrip(line: LayoutLine) =
       line.words.add newLayoutWord(lastWord.options, max(0, lastWord.lw - diff),
         lastWord.lh, stripped)
 
-proc addLine(text: string; lw, lh: int; line: LayoutLine; lines: var seq[LayoutLine];
-    options: LabelOptions; lineHeight: float32; xpad: int; w, h: var int; pos: int;
+proc addLine(text: sink string; lw, lh: int; line: sink LayoutLine; lines: var seq[LayoutLine];
+    options: sink LabelOptions; lineHeight: float32; xpad: int; w, h: var int; pos: int;
     strip: bool): LayoutLine =
   # text_layout.pyx add_line: adds the text to the line, the line to `lines`
   # (at `pos`, or at the end when -1), grows w and h, and returns a new line.
@@ -184,7 +184,7 @@ proc addLine(text: string; lw, lh: int; line: LayoutLine; lines: var seq[LayoutL
   result = newLayoutLine()
 
 proc layoutTextUnrestricted(text: string; lines: var seq[LayoutLine]; w0, h0: int;
-    uh: int; options: LabelOptions; getExtents: Extents; dwn, complete: bool;
+    uh: int; options: sink LabelOptions; getExtents: Extents; dwn, complete: bool;
     xpad, maxLines: int; lineHeight: float32; strip: bool): (int, int, bool) =
   # text_layout.pyx layout_text_unrestricted: no width limit, so each
   # paragraph is one line.
@@ -278,6 +278,8 @@ proc layoutTextUnrestricted(text: string; lines: var seq[LayoutLine]; w0, h0: in
       val = i != 0
   result = (w, h, val)
 
+# GAP: `options` of `layoutText` is not sink, because
+# planetis-m/nimony-bugs-llms#346 (`float32(options.lineHeight)`)
 proc layoutText*(text: string; lines: var seq[LayoutLine]; size: (int, int);
     textSize: TextSize; options: LabelOptions; getExtents: Extents;
     appendDown, complete: bool): (int, int, bool) =

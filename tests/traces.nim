@@ -164,7 +164,7 @@ proc traceEvents() =
 
 # ------------------------------------------------------------------ clock
 
-proc caller(name: string): ClockCallback =
+proc caller(name: sink string): ClockCallback =
   result = proc (dt: float) {.closure.} = log.emit("call", name)
 
 proc traceClock() =
@@ -372,12 +372,12 @@ method onRelease(b: BtnPart): bool =
   log.emit(b.tag, "onRelease")
   result = false
 
-proc newBtnPart(tag: string): BtnPart =
+proc newBtnPart(tag: sink string): BtnPart =
   result = BtnPart(tag: tag)
   result.initProps()
   result.initButtonBehavior()
 
-proc newBtn(tag: string; x, y, w, h: float): Btn =
+proc newBtn(tag: sink string; x, y, w, h: float): Btn =
   result = Btn(canvas: newCanvas(), tag: tag, button: newBtnPart(tag))
   result.initProps()
   result.initWidget()
@@ -465,7 +465,7 @@ proc logScreenEvent(s: Screen; shown: string): proc (): bool {.closure.} =
     log.emit(s.name, shown)
     result = false
 
-proc newS(name: string): Screen =
+proc newS(name: sink string): Screen =
   # traces.py trace_screens: class S(Screen) logging its four events.
   result = newScreen(name)
   discard result.bindPreEnter(result.logScreenEvent("onPreEnter"))

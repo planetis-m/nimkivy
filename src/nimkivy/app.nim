@@ -42,11 +42,11 @@ properties:
     if w != nil:
       w.setTitle(v.get(""))
 
-  proc `title=`*(app: App; title: string) =
+  proc `title=`*(app: App; title: sink string) =
     ## Sets the window title.
     app.title = some(title)
 
-  proc initApp*(app: App; className = "App") =
+  proc initApp*(app: App; className: sink string = "App") =
     ## Sets up a new app of the class `className` (a subtype's name); it
     ## becomes the running app. App.__init__
     # GAP: the class name is given here, where Kivy reads the object's class,

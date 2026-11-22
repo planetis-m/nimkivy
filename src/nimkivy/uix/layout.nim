@@ -47,7 +47,7 @@ proc triggerNow*(l: Layout) =
   let t = l.triggerLayout
   if t != nil: t.trigger()
 
-proc keepUnbind*(l: Layout; child: WidgetBase; unbind: Unbind) =
+proc keepUnbind*(l: Layout; child: sink WidgetBase; unbind: sink Unbind) =
   ## Remembers how to undo a binding on a child; `removeWidget` does it.
   var i = 0
   while i < l.childUnbinds.len and l.childUnbinds[i][0] != child:
@@ -56,14 +56,14 @@ proc keepUnbind*(l: Layout; child: WidgetBase; unbind: Unbind) =
     l.childUnbinds.add (child, newSeq[Unbind]())
   l.childUnbinds[i][1].add unbind
 
-proc bindChildPos*(l: Layout; child: WidgetBase) =
+proc bindChildPos*(l: Layout; child: sink WidgetBase) =
   ## Binds the layout trigger to a child's `pos`; `removeWidget` unbinds it.
   if child of HintedWidget:
     let h = HintedWidget(child)
     let b = h.bindPos(proc (v: (float, float)) {.closure.} = l.triggerNow())
     l.keepUnbind(child, proc () {.closure.} = h.unbindPos(b))
 
-proc bindChildPosHint*(l: Layout; child: WidgetBase) =
+proc bindChildPosHint*(l: Layout; child: sink WidgetBase) =
   ## Binds the layout trigger to a child's `posHint`; `removeWidget`
   ## unbinds it.
   if child of HintedWidget:
@@ -71,7 +71,7 @@ proc bindChildPosHint*(l: Layout; child: WidgetBase) =
     let b = h.bindPosHint(proc (v: PosHint) {.closure.} = l.triggerNow())
     l.keepUnbind(child, proc () {.closure.} = h.unbindPosHint(b))
 
-method addWidget*(l: Layout; widget: WidgetBase; index = 0; canvas = layerCanvas) =
+method addWidget*(l: Layout; widget: sink WidgetBase; index = 0; canvas = layerCanvas) =
   ## Binds the layout to the child's size and size hints, then adds it.
   ## Layout.add_widget
   if widget of HintedWidget:

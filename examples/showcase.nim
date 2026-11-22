@@ -269,14 +269,14 @@ proc applyLanguage(s: Showcase) =
   s.listenLabel.text = if snd != nil and snd.state == statePlay: t.stop else: t.listen
   s.showCard(s.card, animate = false)
 
-proc setLanguage*(s: Showcase; lang: string) =
+proc setLanguage*(s: Showcase; lang: sink string) =
   ## Switches every text to `lang` and closes the picker.
   s.lang = lang
   s.applyLanguage()
   s.picker.dismiss()
   s.log.add "lang " & lang
 
-proc go*(s: Showcase; screen: string) =
+proc go*(s: Showcase; screen: sink string) =
   ## Changes screen (with the fade).
   if s.sm.current.get("") != screen:
     s.sm.current = screen

@@ -96,7 +96,7 @@ method doLayout*(f: FloatLayout) =
   ## FloatLayout.do_layout
   f.layoutIn(f.size, f.pos)
 
-method addWidget*(f: FloatLayout; widget: WidgetBase; index = 0; canvas = layerCanvas) =
+method addWidget*(f: FloatLayout; widget: sink WidgetBase; index = 0; canvas = layerCanvas) =
   ## Binds the layout to the child's `pos` and `posHint`, then adds it as
   ## Layout does. FloatLayout.add_widget
   f.bindChildPos(widget)

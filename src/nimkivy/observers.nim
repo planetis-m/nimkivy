@@ -46,7 +46,7 @@ when defined(countDispatches):
     {.cast(assumeSync).}:
       inc eventDispatches
 
-func add*[F](obs: var Observers[F]; cb: F): Binding =
+func add*[F](obs: var Observers[F]; cb: sink F): Binding =
   ## Binds `cb` last; returns its binding.
   inc obs.lastUid
   obs.entries.add Observer[F](uid: obs.lastUid, cb: cb)

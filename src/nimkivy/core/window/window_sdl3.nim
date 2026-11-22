@@ -125,8 +125,8 @@ method depack*(me: MouseMotionEvent; sx, sy: float) =
     me.profile = if me.isTouch: {mpPos, mpButton} else: {mpPos}
   procCall depack(MotionEvent(me), sx, sy)
 
-proc newMouseMotionEventProvider*(device: string; options: set[MouseOption];
-    window: WindowSDL): MouseMotionEventProvider =
+proc newMouseMotionEventProvider*(device: sink string; options: set[MouseOption];
+    window: sink WindowSDL): MouseMotionEventProvider =
   ## The mouse provider with Config's `input.mouseOptions` (Kivy's
   ## `mouse,<options>`); the options for other providers and hover have no
   ## effect. mouse.py MouseMotionEventProvider.__init__
@@ -368,7 +368,7 @@ method createWindow*(w: WindowSDL) =
     # WindowBase.__init__: dpi changes after the window exists reset Metrics.
     discard w.bindDpi(proc (v: float) {.closure.} = w.resetMetricsDpi())
 
-method setTitle*(w: WindowSDL; title: string) =
+method setTitle*(w: WindowSDL; title: sink string) =
   ## Shows `title` on the system window (window_sdl2.py set_title, which,
   ## unlike WindowBase's, leaves the `title` property as it is).
   let win = w.sdlWindow

@@ -95,7 +95,7 @@ properties:
     ## button's, not the children's.
     touch.grabCurrent == RootRef(w)
 
-  proc touchDown*(b: ButtonBehavior; w: Widget; touch: MotionEvent): bool =
+  proc touchDown*(b: ButtonBehavior; w: Widget; touch: sink MotionEvent): bool =
     ## A touch down that the widget's children did not take: on the widget,
     ## not a scroll and not seen before, it is grabbed and presses the
     ## button. The widget, as the key, claims the touch (Kivy's
@@ -120,6 +120,8 @@ properties:
     ## `super()`
     RootRef(w) in touch.claimedBy
 
+  # GAP: `touch` is not sink, because planetis-m/nimony-bugs-llms#346
+  # (`touch.pos[0]`)
   proc touchUp*(b: ButtonBehavior; w: Widget; touch: MotionEvent): bool =
     ## The end of the `grabbed` touch: ungrabs it and releases the button,
     ## with `release` when the touch is still on the widget (or

@@ -99,7 +99,7 @@ proc getFont(l: LabelBase): nil TTF_Font =
   if f != nil:
     result = f.ttf.font
 
-method getExtents*(l: LabelSDL3; text: string): (int, int) =
+method getExtents*(l: LabelSDL3; text: sink string): (int, int) =
   ## The width and height of `text`. _text_sdl2.pyx _get_extents
   # GAP: widths and glyph pixels can differ by a pixel from Kivy's (hinting,
   # kerning, shaping), which can move a line break, because SDL3_ttf 3.2

@@ -14,7 +14,7 @@ Config.graphics.height = 600
 
 proc a(name: string): string = "tests/assets/" & name
 
-proc sized(source: string; mode: FitMode; w, h: float): Image =
+proc sized(source: sink string; mode: FitMode; w, h: float): Image =
   result = newImage(source)
   result.fitMode = mode
   result.size = (w, h)

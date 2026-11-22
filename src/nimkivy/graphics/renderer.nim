@@ -348,7 +348,7 @@ proc newRenderTarget*(r: Renderer; width, height: int): nil Texture =
   t.flipVertical()
   result = t
 
-proc setTarget*(r: Renderer; target: nil Texture): bool =
+proc setTarget*(r: Renderer; target: sink nil Texture): bool =
   ## Draws into `target` from now on (a texture from `newRenderTarget`), or
   ## into the window when nil; false on failure.
   if target == nil:
@@ -369,7 +369,7 @@ proc saveState(r: Renderer): RenderState =
     opacityStack: r.opacityStack, tx: r.tx, ty: r.ty, matrixStack: r.matrixStack,
     texture: r.texture, phase: r.phase, mask: r.mask, clipStack: r.clipStack)
 
-proc restoreState(r: Renderer; s: RenderState) =
+proc restoreState(r: Renderer; s: sink RenderState) =
   discard r.setTarget(s.target)
   r.height = s.height
   r.color = s.color
@@ -414,7 +414,7 @@ proc applyFbo(r: Renderer; f: Fbo) =
       r.restoreState(saved)
   f.flagUpdateDone()
 
-proc newFadeMix*(fboOut, fboIn: Fbo; pos, size: (float, float)): FadeMix =
+proc newFadeMix*(fboOut, fboIn: sink Fbo; pos, size: (float, float)): FadeMix =
   ## The mix of the two textures in a rectangle at `pos` of `size`, at t 0.
   result = FadeMix(fboOut: fboOut, fboIn: fboIn, x: pos[0], y: pos[1], w: size[0],
     h: size[1], t: 0)

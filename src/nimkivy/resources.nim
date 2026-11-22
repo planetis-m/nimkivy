@@ -25,7 +25,7 @@ type
 
 let resourcePaths = ResourcePaths(paths: @[".", getAppDir()], dataDir: "", fixed: false)
 
-proc setDataDir*(path: string) =
+proc setDataDir*(path: sink string) =
   ## Sets the data directory, for a program that does not run from the
   ## directory that holds `data` and does not have it beside its executable.
   ## `KIVY_DATA_DIR` still comes first. Call it before the first widget,
@@ -88,7 +88,7 @@ proc resourceFind*(filename: string): string =
     if exists(candidate):
       return candidate
 
-proc resourceAddPath*(path: string) =
+proc resourceAddPath*(path: sink string) =
   ## Adds a directory to search, unless it is already there.
   ## resources.py resource_add_path
   if path notin resourcePaths.paths:

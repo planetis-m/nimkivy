@@ -129,7 +129,7 @@ func trackKey*(what: string): TrackKey =
     h = (h xor uint64(ord(c))) * 0x100000001b3'u64
   result = TrackKey(int(h and 0x3FFF_FFFF_FFFF_FFFF'u64))
 
-method capture*(t: Track; target: RootRef): Track {.base.} =
+method capture*(t: Track; target: sink RootRef): Track {.base.} =
   ## The track running on `target`: its start value is the target's current
   ## one. Animation._initialize
   quit "Track.capture: not a property track"

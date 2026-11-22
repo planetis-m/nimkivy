@@ -284,7 +284,7 @@ type
 proc colorTrack(part: ColorPart; v: array[4, float]): Track =
   ColorTrack(key: trackKey("Color." & $part), part: part, target: nil, a: v, b: v)
 
-method capture(t: ColorTrack; target: RootRef): Track =
+method capture(t: ColorTrack; target: sink RootRef): Track =
   if target of Color:
     let c = Color(target)
     result = ColorTrack(key: t.key, part: t.part, target: c, a: c.rgba, b: t.b)
@@ -348,7 +348,7 @@ proc rgbaKey*(t: typedesc[Color]): TrackKey = trackKey("Color.rgba")
 proc translateTrack(part: TranslatePart; v: (float, float)): Track =
   TranslateTrack(key: trackKey("Translate." & $part), part: part, target: nil, a: v, b: v)
 
-method capture(t: TranslateTrack; target: RootRef): Track =
+method capture(t: TranslateTrack; target: sink RootRef): Track =
   if target of Translate:
     let tr = Translate(target)
     result = TranslateTrack(key: t.key, part: t.part, target: tr, a: tr.xy, b: t.b)
@@ -461,7 +461,7 @@ properties:
     if result:
       a.widgets.delete(i)
 
-  proc register(a: Animation) =
+  proc register(a: sink Animation) =
     # Animation._register: `_instances.add(self)`.
     if a notin registry.instances:
       registry.instances.add a
@@ -560,7 +560,7 @@ properties:
     a.updateEv = Clock.scheduleInterval(proc (dt: float) {.closure.} = a.update(dt), a.step)
     a.clockInstalled = true
 
-  proc initialize(a: Animation; target: RootRef) =
+  proc initialize(a: Animation; target: sink RootRef) =
     # Animation._initialize: the current values become the start values.
     var running: seq[Track] = @[]
     let tracks = a.tracks
@@ -573,7 +573,7 @@ properties:
     else: a.widgets.add entry
     a.clockInstall()
 
-  proc start*(a: Animation; target: RootRef) =
+  proc start*(a: Animation; target: sink RootRef) =
     ## Starts the animation on `target` (an object with the tracks'
     ## properties), stopping it there first. Animation.start
     a.stop(target)

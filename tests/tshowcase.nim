@@ -45,10 +45,11 @@ const Patience = 10.0
 
 proc always(): bool = true
 
-proc add(sc: Script; delay: float; name: string; action: proc () {.closure.}) =
+proc add(sc: Script; delay: float; name: sink string; action: sink proc () {.closure.}) =
   sc.steps.add Step(delay: delay, name: name, ready: always, action: action)
 
-proc add(sc: Script; delay: float; name: string; ready: Ready; action: proc () {.closure.}) =
+proc add(sc: Script; delay: float; name: sink string; ready: sink Ready;
+    action: sink proc () {.closure.}) =
   sc.steps.add Step(delay: delay, name: name, ready: ready, action: action)
 
 # ------------------------------------------------------------------ input
@@ -66,7 +67,7 @@ proc centre(w: Widget): (float, float) =
 
 type Point = proc (): (float, float) {.closure.}
 
-proc tap(sc: Script; delay: float; name: string; at: Point) =
+proc tap(sc: Script; delay: float; name: string; at: sink Point) =
   # Down now, up two frames' worth later.
   sc.add(delay, name & " (down)", proc () {.closure.} =
     let (x, y) = at()

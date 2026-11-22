@@ -25,7 +25,7 @@ type
     last: nil Sound
     lengthB: string
 
-proc note(c: Check; msg: string) =
+proc note(c: Check; msg: sink string) =
   let line = formatFloat(time() - c.start, ffDecimal, 2) & " " & msg
   c.log.add msg
   stderr.writeLine "[audiodevice] " & line

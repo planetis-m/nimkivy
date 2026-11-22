@@ -53,7 +53,7 @@ block testSwitchingDoesNotAffectAListOfScreens:
 type Log = ref object
   lines: seq[string]
 
-proc logEvent(s: Screen; log: Log; e: string): proc (): bool {.closure.} =
+proc logEvent(s: Screen; log: Log; e: sink string): proc (): bool {.closure.} =
   # An observer logging the screen's name and `e`; one closure per call.
   result = proc (): bool {.closure.} =
     log.lines.add s.name & " " & e

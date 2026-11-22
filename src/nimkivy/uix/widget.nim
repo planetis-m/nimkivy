@@ -149,10 +149,10 @@ properties:
 
   # ------------------------------------------------------------------ tree
 
-  proc addChildCanvas(group: InstructionGroup; c: Canvas) =
+  proc addChildCanvas(group: InstructionGroup; c: sink Canvas) =
     group.add(c)
 
-  method addWidget*(w: Widget; widget: WidgetBase; index = 0; canvas = layerCanvas) =
+  method addWidget*(w: Widget; widget: sink WidgetBase; index = 0; canvas = layerCanvas) =
     ## Adds a child at `index` in `children` (0: on top). Its canvas goes
     ## after the canvas of the child it is placed above, into `canvas.before`
     ## or `canvas.after` when `canvas` says so and `index` is 0. Adding a

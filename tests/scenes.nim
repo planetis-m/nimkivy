@@ -54,7 +54,7 @@ proc frame(widget: Widget; rgba: array[4, float]) =
   widget.canvas.before.add rect
   widget.follow(rect)
 
-proc place(root, child: Widget; x, y, w, h: float) =
+proc place(root: Widget; child: sink Widget; x, y, w, h: float) =
   # scenes.py place
   child.sizeHint = (none[float](), none[float]())
   child.pos = (x, y)
@@ -203,7 +203,7 @@ proc graphicsLine(): Widget =
   c.add newLine([660.0, 20, 780, 80], width = 1.5, cap = capRound)
   result = w
 
-proc addTextured(c: Canvas; v: VertexInstruction; name: string) =
+proc addTextured(c: Canvas; v: sink VertexInstruction; name: string) =
   # Adds an instruction with `source = a(name)` (scenes.py). Kivy sets the
   # source in the constructor, before building the geometry; here it is set
   # before the first draw, which builds it.
@@ -520,7 +520,7 @@ proc labelWrap(): Widget =
 proc labelDefault(): Widget =
   # scenes.py label_default
   let root = newFloatLayout()
-  proc add(root: Widget; text: string; size: float; color: array[4, float];
+  proc add(root: Widget; text: sink string; size: float; color: array[4, float];
       bg: array[4, float]; x, y, w, h: float; disabled = false) =
     let lb = newLabel(text)
     if size > 0: lb.fontSize = size

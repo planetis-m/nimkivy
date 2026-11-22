@@ -58,7 +58,7 @@ proc loadTexture(filename: string): nil Texture =
   textureCache.textures[uid] = t
   result = t
 
-proc newCoreImage*(filename: string): CoreImage =
+proc newCoreImage*(filename: sink string): CoreImage =
   ## Loads `filename`, searched with `resourceFind`. The texture is nil when
   ## the file is missing or cannot be decoded. core/image/__init__.py
   ## Image(filename) and Image._set_filename

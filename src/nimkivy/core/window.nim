@@ -147,14 +147,14 @@ proc parent*(w: WidgetBase): nil WidgetBase {.inline.} =
   ## The parent widget or window, or nil.
   w.parentStore
 
-proc `parent=`*(w: WidgetBase; p: nil WidgetBase) =
+proc `parent=`*(w: WidgetBase; p: sink nil WidgetBase) =
   ## Sets the parent (nil: none); its observers run if it changed.
   if w.parentStore != p:
     w.parentStore = p
     let value = w.parentStore
     for cb in w.parentObs.live: cb(value)
 
-proc bindParent*(w: WidgetBase; cb: proc (v: nil WidgetBase) {.closure.}): Binding =
+proc bindParent*(w: WidgetBase; cb: sink proc (v: nil WidgetBase) {.closure.}): Binding =
   ## Calls `cb` with the new parent whenever it changes.
   w.parentObs.add(cb)
 
@@ -166,14 +166,14 @@ proc children*(w: WidgetBase): seq[WidgetBase] {.inline.} =
   ## The children, newest first.
   w.childrenStore
 
-proc `children=`*(w: WidgetBase; children: seq[WidgetBase]) =
+proc `children=`*(w: WidgetBase; children: sink seq[WidgetBase]) =
   ## Sets the children; their observers run if they changed.
   if w.childrenStore != children:
     w.childrenStore = children
     let value = w.childrenStore
     for cb in w.childrenObs.live: cb(value)
 
-proc bindChildren*(w: WidgetBase; cb: proc (v: seq[WidgetBase]) {.closure.}): Binding =
+proc bindChildren*(w: WidgetBase; cb: sink proc (v: seq[WidgetBase]) {.closure.}): Binding =
   ## Calls `cb` with the new children whenever they change.
   w.childrenObs.add(cb)
 
@@ -194,7 +194,7 @@ method onTouchUp*(w: WidgetBase; touch: MotionEvent): bool {.base.} =
   ## The default `touchUp` handler.
   false
 
-proc bindTouchDown*(w: WidgetBase; cb: TouchCallback): Binding =
+proc bindTouchDown*(w: WidgetBase; cb: sink TouchCallback): Binding =
   ## Observes `touchDown`; observers run last bound first, before the
   ## default handler, and one that returns true stops the touch.
   w.touchDownObs.add(cb)
@@ -211,7 +211,7 @@ proc dispatchTouchDown*(w: WidgetBase; touch: MotionEvent): bool =
     if not result: result = cb(touch)
   if not result: result = w.onTouchDown(touch)
 
-proc bindTouchMove*(w: WidgetBase; cb: TouchCallback): Binding =
+proc bindTouchMove*(w: WidgetBase; cb: sink TouchCallback): Binding =
   ## Observes `touchMove`.
   w.touchMoveObs.add(cb)
 
@@ -226,7 +226,7 @@ proc dispatchTouchMove*(w: WidgetBase; touch: MotionEvent): bool =
     if not result: result = cb(touch)
   if not result: result = w.onTouchMove(touch)
 
-proc bindTouchUp*(w: WidgetBase; cb: TouchCallback): Binding =
+proc bindTouchUp*(w: WidgetBase; cb: sink TouchCallback): Binding =
   ## Observes `touchUp`.
   w.touchUpObs.add(cb)
 
@@ -260,7 +260,7 @@ method toWindow*(w: WidgetBase; x, y: float; initial = true;
   ## This widget's coordinates to window coordinates; unchanged here.
   (x, y)
 
-method addWidget*(w: WidgetBase; widget: WidgetBase; index = 0;
+method addWidget*(w: WidgetBase; widget: sink WidgetBase; index = 0;
     canvas = layerCanvas) {.base.} =
   ## Adds a child. Widget (layer 6) and the window override it.
   discard
@@ -714,7 +714,7 @@ properties:
       discard w.dispatchPreResize(s[0], s[1])
     w.updateViewport()
 
-  method addWidget*(w: WindowBase; widget: WidgetBase; index = 0;
+  method addWidget*(w: WindowBase; widget: sink WidgetBase; index = 0;
       canvas = layerCanvas) =
     ## Adds a root widget: newest first in `children`, its canvas in the
     ## window's canvas (or `before`/`after`), sized from its hints now and
@@ -780,7 +780,7 @@ properties:
     ## The window itself.
     w
 
-  method setTitle*(w: WindowBase; title: string) {.base.} =
+  method setTitle*(w: WindowBase; title: sink string) {.base.} =
     ## Sets the `title` property. The system window overrides it to show the
     ## title instead. WindowBase.set_title
     w.title = title

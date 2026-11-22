@@ -215,7 +215,7 @@ properties:
     result.initProps()
     result.initLabel()
 
-  proc newLabel*(text: string): Label =
+  proc newLabel*(text: sink string): Label =
     ## A label showing `text`.
     result = newLabel()
     result.text = text

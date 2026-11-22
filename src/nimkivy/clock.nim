@@ -66,7 +66,7 @@ proc onSchedule(c: ClockBase; ev: ClockEvent) =
   # CyClockBase.on_schedule: a hook for interrupting clocks; nothing here.
   discard
 
-proc append(c: ClockBase; ev: ClockEvent) =
+proc append(c: ClockBase; ev: sink ClockEvent) =
   # Puts `ev` last in the list of scheduled events.
   ev.isTriggered = true
   let last = c.lastEvent
@@ -78,7 +78,7 @@ proc append(c: ClockBase; ev: ClockEvent) =
     ev.prev = last
     c.lastEvent = ev
 
-proc newClockEvent(c: ClockBase; loop: bool; callback: ClockCallback;
+proc newClockEvent(c: ClockBase; loop: bool; callback: sink ClockCallback;
     timeout, starttime: float; trigger: bool): ClockEvent =
   # _clock.pyx ClockEvent.__init__
   result = ClockEvent(clock: c, loop: loop, callback: callback, timeout: timeout,
@@ -159,7 +159,7 @@ proc stopClock*(c: ClockBase) =
   ## Stops the clock. Lifecycle-aware callbacks are out of scope.
   c.hasEnded = true
 
-proc createTrigger*(c: ClockBase; callback: ClockCallback; timeout = 0.0;
+proc createTrigger*(c: ClockBase; callback: sink ClockCallback; timeout = 0.0;
     interval = false): ClockEvent =
   ## An event that is not scheduled yet: `trigger` it as often as wanted, it
   ## runs once per tick.
@@ -168,12 +168,12 @@ proc createTrigger*(c: ClockBase; callback: ClockCallback; timeout = 0.0;
   # keeps it alive, because Nimony has no weak references
   result = c.newClockEvent(interval, callback, timeout, 0.0, false)
 
-proc scheduleOnce*(c: ClockBase; callback: ClockCallback; timeout = 0.0): ClockEvent =
+proc scheduleOnce*(c: ClockBase; callback: sink ClockCallback; timeout = 0.0): ClockEvent =
   ## Runs `callback` once: on the next `tick` (timeout 0), before the next
   ## frame (-1, in `tickDraw`), or on the first tick `timeout` seconds later.
   result = c.newClockEvent(false, callback, timeout, c.lastTick, true)
 
-proc scheduleInterval*(c: ClockBase; callback: ClockCallback; timeout: float): ClockEvent =
+proc scheduleInterval*(c: ClockBase; callback: sink ClockCallback; timeout: float): ClockEvent =
   ## Runs `callback` every `timeout` seconds until it is cancelled.
   result = c.newClockEvent(true, callback, timeout, c.lastTick, true)
 

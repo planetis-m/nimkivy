@@ -63,7 +63,7 @@ proc logError(msg: string) =
 
 proc registerDefaults()
 
-proc register*(name, fnRegular: string; fnItalic = ""; fnBold = "";
+proc register*(name: sink string; fnRegular: string; fnItalic = ""; fnBold = "";
     fnBoldItalic = "") =
   ## Registers a font name with the files of its styles, each searched with
   ## `resourceFind`. A missing style uses the regular file; it is not
@@ -146,7 +146,7 @@ proc initLabelBase*(l: LabelBase) =
   l.texture = nil
   l.resolveFontName()
 
-method getExtents*(l: LabelBase; text: string): (int, int) {.base.} =
+method getExtents*(l: LabelBase; text: sink string): (int, int) {.base.} =
   ## The width and height of `text` in pixels.
   (0, 0)
 
@@ -179,7 +179,7 @@ proc text*(l: LabelBase): string {.inline.} =
   ## The text.
   l.text
 
-proc `text=`*(l: LabelBase; text: string) {.inline.} =
+proc `text=`*(l: LabelBase; text: sink string) {.inline.} =
   ## Sets the text; `refresh` renders it.
   l.text = text
 

@@ -18,22 +18,22 @@ import stubs
 type Log = ref object
   lines: seq[string]
 
-proc logger(log: Log; tag: string; ret: bool): proc (): bool {.closure.} =
+proc logger(log: Log; tag: sink string; ret: bool): proc (): bool {.closure.} =
   result = proc (): bool {.closure.} =
     log.lines.add tag
     result = ret
 
-proc touchLogger(log: Log; tag: string; ret: bool): TouchCallback =
+proc touchLogger(log: Log; tag: sink string; ret: bool): TouchCallback =
   result = proc (t: MotionEvent): bool {.closure.} =
     log.lines.add tag
     result = ret
 
-proc closeLogger(log: Log; tag: string; ret: bool): proc (keyboard: bool): bool {.closure.} =
+proc closeLogger(log: Log; tag: sink string; ret: bool): proc (keyboard: bool): bool {.closure.} =
   result = proc (keyboard: bool): bool {.closure.} =
     log.lines.add tag
     result = ret
 
-proc keyLogger(log: Log; tag: string; ret: bool): proc (key, scancode: int;
+proc keyLogger(log: Log; tag: sink string; ret: bool): proc (key, scancode: int;
     codepoint: string; modifiers: set[Modifier]): bool {.closure.} =
   result = proc (key, scancode: int; codepoint: string;
       modifiers: set[Modifier]): bool {.closure.} =
@@ -60,7 +60,7 @@ method onTouchUp(c: Child; t: MotionEvent): bool =
   c.log.lines.add c.tag & " up"
   result = c.ret
 
-proc newChild(tag: string; log: Log; ret = false): Child =
+proc newChild(tag: sink string; log: sink Log; ret = false): Child =
   result = Child(canvas: newCanvas(), tag: tag, log: log, ret: ret)
   result.initWidgetBase()
 

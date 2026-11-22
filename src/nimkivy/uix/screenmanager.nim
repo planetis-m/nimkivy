@@ -71,12 +71,12 @@ properties:
     result.initProps()
     result.initScreen()
 
-  proc newScreen*(name: string): Screen =
+  proc newScreen*(name: sink string): Screen =
     ## An empty screen called `name`.
     result = newScreen()
     result.name = name
 
-  proc mustScreen(s: nil Screen; what: string): Screen =
+  proc mustScreen(s: sink nil Screen; what: string): Screen =
     # A transition's screen, which must be set while it runs.
     if s == nil: quit "TransitionBase: no " & what & " while running"
     result = s
@@ -157,10 +157,10 @@ properties:
     if m == nil: quit "TransitionBase: no manager while running"
     result = m
 
-  proc realAddWidget*(sm: ScreenManager; screen: Screen)
+  proc realAddWidget*(sm: ScreenManager; screen: sink Screen)
   proc realRemoveWidget*(sm: ScreenManager; screen: Screen)
 
-  method addScreen*(t: TransitionBase; screen: Screen) {.base.} =
+  method addScreen*(t: TransitionBase; screen: sink Screen) {.base.} =
     ## Puts the screen coming in into the manager. TransitionBase.add_screen
     t.mustManager.realAddWidget(screen)
 
@@ -269,7 +269,7 @@ properties:
       if m.canvas.indexof(sOut.canvas) >= 0 and m.children.find(WidgetBase(sOut)) < 0:
         m.canvas.remove(sOut.canvas)
 
-  method addScreen*(t: ShaderTransition; screen: Screen) =
+  method addScreen*(t: ShaderTransition; screen: sink Screen) =
     ## Draws the screens into textures and shows their mix; neither screen
     ## is a child of the manager meanwhile. ShaderTransition.add_screen
     let m = t.mustManager
@@ -319,7 +319,7 @@ properties:
     result = @[]
     for s in sm.screens: result.add s.name
 
-  proc `current=`*(sm: ScreenManager; name: string) =
+  proc `current=`*(sm: ScreenManager; name: sink string) =
     ## Shows the screen called `name`, through the transition.
     sm.current = some(name)
 
@@ -330,7 +330,7 @@ properties:
     if t == nil: quit "ScreenManager: initScreenManager was not called"
     result = t
 
-  proc setTransition(sm: ScreenManager; t: TransitionBase): bool =
+  proc setTransition(sm: ScreenManager; t: sink TransitionBase): bool =
     # ObjectProperty.set: a dispatch when the object changes.
     result = sm.transitionValue != t
     sm.transitionValue = t
@@ -384,7 +384,7 @@ properties:
     result.initProps()
     result.initScreenManager()
 
-  proc realAddWidget*(sm: ScreenManager; screen: Screen) =
+  proc realAddWidget*(sm: ScreenManager; screen: sink Screen) =
     ## Adds the screen as a child, taking it from its previous parent first.
     ## ScreenManager.real_add_widget
     let parent = screen.parent
@@ -464,7 +464,7 @@ properties:
       discard screen.dispatchPreEnter()
       discard screen.dispatchEnter()
 
-  method addWidget*(sm: ScreenManager; widget: WidgetBase; index = 0; canvas = layerCanvas) =
+  method addWidget*(sm: ScreenManager; widget: sink WidgetBase; index = 0; canvas = layerCanvas) =
     ## Manages a screen; the first one becomes `current`. Only screens that
     ## have no manager are accepted (else the program stops with Kivy's
     ## ScreenManagerException). ScreenManager.add_widget
@@ -539,7 +539,8 @@ properties:
         break
       inc i
 
-  proc switchTo*(sm: ScreenManager; screen: Screen; transition: nil TransitionBase = nil) =
+  proc switchTo*(sm: ScreenManager; screen: sink Screen;
+      transition: sink nil TransitionBase = nil) =
     ## Adds the screen if it is not managed yet (renamed if its name is
     ## taken) and shows it, with `transition` if given; the screen shown
     ## before is removed when the transition completes. Kivy's other options
