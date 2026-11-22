@@ -1,6 +1,8 @@
 ## Vertex instructions: Kivy's `kivy/graphics/vertex_instructions.pyx`
-## (Triangle, Rectangle, BorderImage, Ellipse, RoundedRectangle) and
-## `vertex_instructions_line.pxi` (Line).
+## (Triangle, Quad, Rectangle, BorderImage, Ellipse, RoundedRectangle, and the
+## smooth ones: AntiAliasingLine, SmoothRectangle, SmoothRoundedRectangle,
+## SmoothEllipse, SmoothQuad, SmoothTriangle) and
+## `vertex_instructions_line.pxi` (Line, SmoothLine).
 ##
 ## Each `build` is Kivy's, line for line: the same vertices, texture
 ## coordinates and indices, with the same mix of 32-bit fields (`cdef float`)
@@ -10,23 +12,37 @@
 ## `width` is half of its thickness.
 ##
 ## A Line of width exactly 1 is a line strip, which the renderer draws as a
-## 1 px polyline; any other width is triangulated by `buildExtended`. Out of
-## scope (SCOPE.md): Mesh, Point, Quad, Bezier, StripMesh, the smooth and
-## anti-aliased instructions, Line dashes, `bezier`, `ellipse` and
-## `force_custom_drawing_method`.
+## 1 px polyline; any other width is triangulated by `buildExtended`.
+##
+## The smooth instructions antialias without multisampling, as Kivy does: a
+## smooth shape is built 1 px smaller and an AntiAliasingLine, a band textured
+## with a gradient from opaque to transparent, is drawn on its outline; a
+## SmoothLine is a band with a transparent border. Kivy's `multisamples` has
+## no SDL counterpart, so with `Config.graphics.multisamples > 0` the
+## Rectangle, Ellipse, RoundedRectangle, Triangle and wide Line are drawn
+## with the same code (`msaaEdge`; PORTING.md, Design differences). Out of scope (SCOPE.md):
+## Mesh, Point, Bezier, StripMesh, Line dashes, `bezier`, `ellipse`,
+## `close_mode` and `force_custom_drawing_method`.
 
 import std/[assertions, math, syncio]
-import instructions
+import ../config
+import instructions, texture
 
 type
   Triangle* = ref object of VertexInstruction
     ## A triangle. vertex_instructions.pyx Triangle
+    points: seq[float]
+    msaaEdge: nil AntiAliasingLine     # with multisamples > 0 (msaaEdge)
+
+  Quad* = ref object of VertexInstruction
+    ## A quadrilateral. vertex_instructions.pyx Quad
     points: seq[float]
 
   Rectangle* = ref object of VertexInstruction
     ## A rectangle. vertex_instructions.pyx Rectangle
     x, y, w, h: float32
     points: seq[float]
+    msaaEdge: nil AntiAliasingLine     # with multisamples > 0 (msaaEdge)
 
   BorderAutoScale* = enum
     ## How BorderImage scales its borders (`auto_scale`).
@@ -77,11 +93,70 @@ type
     modeArgs: seq[float]
     circle, rectangle, roundedRectangle: seq[float]   # the normalised args; empty is None
     bxmin, bymin, bxmax, bymax: float
+    msaaEdge: nil SmoothLine           # with multisamples > 0 (msaaEdge)
+
+  SmoothLine* = ref object of Line
+    ## A line with antialiased borders, drawn as a band whose border fades
+    ## out over `overdrawWidth` pixels. `cap` and `joint` are ignored.
+    ## vertex_instructions_line.pxi SmoothLine
+    owidth: float32
+
+  AntiAliasingLine* = ref object of VertexInstruction
+    ## The band drawn on the outline of a smooth shape: 2.5 px to each side,
+    ## textured with Kivy's gradient (transparent, opaque, transparent). Its
+    ## shape adds it to the canvas, never by itself. With a colour whose
+    ## alpha is below 1 the renderer draws it only outside `stencilMask`, the
+    ## shape, as Kivy does through a stencil. vertex_instructions.pyx
+    ## AntiAliasingLine (internal in Kivy)
+    points: seq[float]
+    width: float32
+    close: bool
+    stencilMask: Instruction
+
+  SmoothRectangle* = ref object of Rectangle
+    ## A Rectangle with antialiased edges. vertex_instructions.pyx
+    ## SmoothRectangle
+    antialiasingLine: nil AntiAliasingLine   # set by the constructor
+
+  SmoothEllipse* = ref object of Ellipse
+    ## An Ellipse with antialiased edges. vertex_instructions.pyx
+    ## SmoothEllipse
+    antialiasingLine: nil AntiAliasingLine
+
+  SmoothRoundedRectangle* = ref object of RoundedRectangle
+    ## A RoundedRectangle with antialiased edges. vertex_instructions.pyx
+    ## SmoothRoundedRectangle
+    antialiasingLine: nil AntiAliasingLine
+
+  SmoothTriangle* = ref object of Triangle
+    ## A Triangle with antialiased edges. vertex_instructions.pyx
+    ## SmoothTriangle
+    antialiasingLine: nil AntiAliasingLine
+
+  SmoothQuad* = ref object of Quad
+    ## A Quad with antialiased edges. vertex_instructions.pyx SmoothQuad
+    antialiasingLine: nil AntiAliasingLine
+
+  GradientTextures = ref object
+    # Kivy's Cache 'kv.graphics.texture': the two gradients, made on first use.
+    antialiasingLine, smoothLine: nil Texture
 
 const
+  AntiAliasingLineGradient* = [0xff'u8, 0xff, 0xff, 0x00, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0x00]
+    ## The 3 x 1 RGBA texture of AntiAliasingLine (`_texture_reload_observer`).
+  SmoothLineGradient* = [0xff'u8, 0xff, 0xff, 0x00, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00]
+    ## The 4 x 1 RGBA texture of SmoothLine (`_smooth_reload_observer`).
   Deg2Rad = 0.017453292519943295
   PI2 = 1.5707963267948966              # common.pxi DEF PI2
   Pi32 = 3.1415926535'f32               # vertex_instructions_line.pxi `cdef float PI`
+
+let gradients = GradientTextures(antialiasingLine: nil, smoothLine: nil)
+
+proc multisampled(): bool {.inline.} =
+  # Whether the regular shapes get Kivy's smooth edges (msaaEdge).
+  Config.graphics.multisamples > 0
 
 proc warn(category, msg: string) =
   # Kivy's Logger.warning, on stderr in Kivy's layout.
@@ -89,8 +164,8 @@ proc warn(category, msg: string) =
 
 # ---------------------------------------------------------------- Triangle
 
-method build*(t: Triangle) =
-  ## vertex_instructions.pyx Triangle.build
+proc triangleBuild(t: Triangle) =
+  # vertex_instructions.pyx Triangle.build
   let vc = t.points
   let tc = t.texCoords
   t.vertices = @[
@@ -99,10 +174,18 @@ method build*(t: Triangle) =
     Vertex(x: float32(vc[4]), y: float32(vc[5]), s0: tc[4], t0: tc[5])]
   t.indices = @[0'i32, 1, 2]
 
+proc triangleEdge(t: Triangle)
+
+method build*(t: Triangle) =
+  ## vertex_instructions.pyx Triangle.build; with multisamples > 0, also its
+  ## antialiasing line (`msaaEdge`).
+  t.triangleBuild()
+  t.triangleEdge()
+
 proc newTriangle*(points: openArray[float] = [0.0, 0.0, 100.0, 0.0, 50.0, 100.0]): Triangle =
   ## `Triangle(points=...)`: x1, y1, x2, y2, x3, y3.
   assert points.len >= 6
-  result = Triangle(textureBinding: newBindTexture(), points: @points)
+  result = Triangle(textureBinding: newBindTexture(), points: @points, msaaEdge: nil)
   result.initVertexInstruction(vmTriangles)
   result.flagUpdate()
 
@@ -116,10 +199,44 @@ proc `points=`*(t: Triangle; points: openArray[float]) =
   t.points = @points
   t.flagUpdate()
 
+# ---------------------------------------------------------------- Quad
+
+proc quadBuild(q: Quad) =
+  # vertex_instructions.pyx Quad.build
+  let vc = q.points
+  let tc = q.texCoords
+  q.vertices = @[
+    Vertex(x: float32(vc[0]), y: float32(vc[1]), s0: tc[0], t0: tc[1]),
+    Vertex(x: float32(vc[2]), y: float32(vc[3]), s0: tc[2], t0: tc[3]),
+    Vertex(x: float32(vc[4]), y: float32(vc[5]), s0: tc[4], t0: tc[5]),
+    Vertex(x: float32(vc[6]), y: float32(vc[7]), s0: tc[6], t0: tc[7])]
+  q.indices = @[0'i32, 1, 2, 2, 3, 0]
+
+method build*(q: Quad) =
+  ## vertex_instructions.pyx Quad.build
+  q.quadBuild()
+
+proc newQuad*(points: openArray[float] = [0.0, 50.0, 50.0, 0.0, 100.0, 50.0, 50.0, 100.0]): Quad =
+  ## `Quad(points=...)`: x1, y1, x2, y2, x3, y3, x4, y4.
+  assert points.len == 8, "Quad: invalid number of points"
+  result = Quad(textureBinding: newBindTexture(), points: @points)
+  result.initVertexInstruction(vmTriangles)
+  result.flagUpdate()
+
+proc points*(q: Quad): seq[float] {.inline.} =
+  ## The eight coordinates.
+  q.points
+
+proc `points=`*(q: Quad; points: openArray[float]) =
+  ## Sets the eight coordinates.
+  assert points.len == 8, "Quad: invalid number of points"
+  q.points = @points
+  q.flagUpdate()
+
 # ---------------------------------------------------------------- Rectangle
 
-method build*(r: Rectangle) =
-  ## vertex_instructions.pyx Rectangle.build
+proc rectangleBuild(r: Rectangle) =
+  # vertex_instructions.pyx Rectangle.build
   let tc = r.texCoords
   let x = r.x
   let y = r.y
@@ -135,6 +252,14 @@ method build*(r: Rectangle) =
   r.points = @[float(x), float(y), float(x + w), float(y), float(x + w), float(y + h),
     float(x), float(y + h)]
 
+proc rectangleEdge(r: Rectangle)
+
+method build*(r: Rectangle) =
+  ## vertex_instructions.pyx Rectangle.build; with multisamples > 0, also its
+  ## antialiasing line (`msaaEdge`).
+  r.rectangleBuild()
+  r.rectangleEdge()
+
 proc initRectangle(r: Rectangle; pos, size: (float, float); mode: VertexMode) =
   # vertex_instructions.pyx Rectangle.__init__
   r.initVertexInstruction(mode)
@@ -143,6 +268,7 @@ proc initRectangle(r: Rectangle; pos, size: (float, float); mode: VertexMode) =
   r.w = float32(size[0])
   r.h = float32(size[1])
   r.points = @[]
+  r.msaaEdge = nil
   r.flagUpdate()
 
 proc newRectangle*(pos = (0.0, 0.0); size = (100.0, 100.0)): Rectangle =
@@ -298,8 +424,8 @@ proc `displayBorder=`*(b: BorderImage; v: openArray[float]) =
 
 # ---------------------------------------------------------------- Ellipse
 
-method build*(e: Ellipse) =
-  ## vertex_instructions.pyx Ellipse.build
+proc ellipseBuild(e: Ellipse) =
+  # vertex_instructions.pyx Ellipse.build
   let tc = e.texCoords
   e.points = @[]
   # Kivy returns before set_data: the last geometry stays.
@@ -357,6 +483,14 @@ method build*(e: Ellipse) =
     y *= radialFactor
     e.points.add realX
     e.points.add realY
+
+proc ellipseEdge(e: Ellipse)
+
+method build*(e: Ellipse) =
+  ## vertex_instructions.pyx Ellipse.build; with multisamples > 0, also its
+  ## antialiasing line (`msaaEdge`).
+  e.ellipseBuild()
+  e.ellipseEdge()
 
 proc newEllipse*(pos = (0.0, 0.0); size = (100.0, 100.0); angleStart = 0.0;
     angleEnd = 360.0; segments = 0): Ellipse =
@@ -417,8 +551,8 @@ proc drawArc(cx, cy, rx, ry, angleStart, angleEnd: float; segments: int): seq[fl
     x *= radialFactor
     y *= radialFactor
 
-method build*(r: RoundedRectangle) =
-  ## vertex_instructions.pyx RoundedRectangle.build
+proc roundedBuild(r: RoundedRectangle) =
+  # vertex_instructions.pyx RoundedRectangle.build
   let tc = r.texCoords
   r.points = @[]
   # Kivy returns before set_data: the last geometry stays.
@@ -505,6 +639,14 @@ method build*(r: RoundedRectangle) =
   indices[count] = indices[1]
   r.vertices = vertices
   r.indices = indices
+
+proc roundedEdge(r: RoundedRectangle)
+
+method build*(r: RoundedRectangle) =
+  ## vertex_instructions.pyx RoundedRectangle.build; with multisamples > 0,
+  ## also its antialiasing line (`msaaEdge`).
+  r.roundedBuild()
+  r.roundedEdge()
 
 proc newRoundedRectangle*(pos = (0.0, 0.0); size = (100.0, 100.0)): RoundedRectangle =
   ## `RoundedRectangle(pos=..., size=...)` with Kivy's defaults: radius 10 at
@@ -614,8 +756,9 @@ proc prebuildRoundedRectangle(l: Line) =
   let y = float32(args[1])
   let w = float32(args[2])
   let h = float32(args[3])
-  # A zero size draws nothing and leaves `rounded_rectangle` as it was.
-  if w <= 0 or h <= 0:
+  # A zero size draws nothing and leaves `rounded_rectangle` as it was; so
+  # does a SmoothLine under 2 px, which Kivy cannot draw well.
+  if w <= 0 or h <= 0 or l of SmoothLine and (w < 2 or h < 2):
     return
   var resolution = 45.0
   var c1, c2, c3, c4 = 0'f32
@@ -726,9 +869,11 @@ proc vtx(x, y: float; s, t: float32): Vertex {.inline.} =
   # A vertex of a wide line: the coordinates stored as C floats.
   Vertex(x: float32(x), y: float32(y), s0: s, t0: t)
 
-proc buildExtended(l: Line) =
+proc buildExtended(l: Line): int =
   # vertex_instructions_line.pxi Line.build_extended: each segment is a quad
   # of half-width `width` on both sides, plus joints and caps as triangles.
+  # Returns where the caps start in `indices` (msaaEdge draws only them).
+  result = 0
   l.texture = nil
   l.bxmin = 999999999
   l.bymin = 999999999
@@ -932,6 +1077,7 @@ proc buildExtended(l: Line) =
             discard
 
   # The caps.
+  result = ii
   case cap
   of capSquare:
     vertices[iv] = vtx(x2 + cos(angle) * w, y2 + sin(angle) * w, 0, 0)
@@ -1007,10 +1153,13 @@ proc buildExtended(l: Line) =
   l.vertices = vertices
   l.indices = indices
 
+proc lineEdge(l: Line; caps: int)
+
 method build*(l: Line) =
   ## vertex_instructions_line.pxi Line.build: the points from `circle`,
   ## `rectangle` or `rounded_rectangle` when set, then a line strip for
-  ## width 1 or triangles for any other width.
+  ## width 1 or triangles for any other width; with multisamples > 0, a wide
+  ## line is drawn as a SmoothLine (`msaaEdge`).
   case l.lineMode
   of lmCircle: l.prebuildCircle()
   of lmRectangle: l.prebuildRectangle()
@@ -1018,17 +1167,19 @@ method build*(l: Line) =
   of lmPoints: discard
   if l.width == 1'f32:
     l.buildLegacy()
+    l.msaaEdge = nil
   else:
-    l.buildExtended()
+    l.lineEdge(l.buildExtended())
 
 proc newLine*(points: openArray[float] = []; width = 1.0; cap = capRound; joint = jointRound;
     close = false): Line =
   ## `Line(points=..., width=..., cap=..., joint=..., close=...)`. A width
   ## of 0 means 1, as in Kivy. Set `circle`, `rectangle` or
   ## `roundedRectangle` after, in Kivy's keyword order.
-  result = Line(textureBinding: newBindTexture(), points: @points, width: float32(if width == 0: 1.0 else: width), cap: cap,
-    joint: joint, capPrecision: 10, jointPrecision: 10, close: close, lineMode: lmPoints,
-    modeArgs: @[], circle: @[], rectangle: @[], roundedRectangle: @[])
+  result = Line(textureBinding: newBindTexture(), points: @points,
+    width: float32(if width == 0: 1.0 else: width), cap: cap, joint: joint, capPrecision: 10,
+    jointPrecision: 10, close: close, lineMode: lmPoints, modeArgs: @[], circle: @[],
+    rectangle: @[], roundedRectangle: @[], msaaEdge: nil)
   result.initVertexInstruction(vmLineStrip)
   result.flagUpdate()
 
@@ -1140,3 +1291,772 @@ proc `roundedRectangle=`*(l: Line; args: openArray[float]) =
 proc boundingBox*(l: Line): (float, float, float, float) {.inline.} =
   ## xmin, ymin, xmax, ymax of the last wide build (Kivy's stencil box).
   (l.bxmin, l.bymin, l.bxmax, l.bymax)
+
+# ---------------------------------------------------------------- AntiAliasingLine
+
+proc gradientTexture(smoothLine: bool): Texture =
+  # Kivy's premultiplied_texture: one texture of each gradient for every
+  # instruction, made on first use (Kivy's Cache 'kv.graphics.texture').
+  if smoothLine:
+    var t = gradients.smoothLine
+    if t == nil:
+      t = newTexture(4, 1, SmoothLineGradient)
+      gradients.smoothLine = t
+    result = t
+  else:
+    var t = gradients.antialiasingLine
+    if t == nil:
+      t = newTexture(3, 1, AntiAliasingLineGradient)
+      gradients.antialiasingLine = t
+    result = t
+
+proc filteredPoints(points: openArray[float]): seq[float] =
+  # vertex_instructions.pyx AntiAliasingLine.filtered_points: drops each
+  # point less than 1 px from the one before it on both axes, and the first
+  # if the last is that close to it; fewer than 3 points left is none.
+  if points.len < 6:
+    return @[]
+  var p = @points
+  var index = 0
+  while index < p.len - 2:
+    let (x1, y1) = (p[index], p[index + 1])
+    let (x2, y2) = (p[index + 2], p[index + 3])
+    if abs(x2 - x1) < 1.0 and abs(y2 - y1) < 1.0:
+      p.delete(index + 2)
+      p.delete(index + 2)
+    else:
+      index += 2
+  if abs(p[0] - p[p.len - 2]) < 1.0 and abs(p[1] - p[p.len - 1]) < 1.0:
+    p.delete(0)
+    p.delete(0)
+  result = if p.len < 6: @[] else: p
+
+proc newAntiAliasingLine*(stencilMask: Instruction; points: openArray[float] = [];
+    close = true): AntiAliasingLine =
+  ## `AntiAliasingLine(stencil_mask, points=..., close=...)`: the line of a
+  ## smooth shape, `stencilMask`; closed by default.
+  result = AntiAliasingLine(textureBinding: newBindTexture(), points: @[], width: 2.5,
+    close: close, stencilMask: stencilMask)
+  result.initVertexInstruction(vmTriangles)
+  `points=`(result, points)
+  result.texture = gradientTexture(false)
+
+proc points*(a: AntiAliasingLine): seq[float] {.inline.} =
+  ## The outline: the points given, filtered, with the first one again at
+  ## the end when closed; empty when fewer than 3 points are left.
+  a.points
+
+proc `points=`*(a: AntiAliasingLine; points: openArray[float]) =
+  ## Sets the outline. vertex_instructions.pyx AntiAliasingLine.points
+  var p = filteredPoints(points)
+  if p.len > 0 and a.close:
+    p.add p[0]
+    p.add p[1]
+  a.points = p
+  a.flagUpdate()
+
+proc width*(a: AntiAliasingLine): float {.inline.} =
+  ## The half-width of the band, 2.5 (Kivy found it by experiment).
+  float(a.width)
+
+proc close*(a: AntiAliasingLine): bool {.inline.} =
+  ## Whether the line returns to its first point.
+  a.close
+
+proc `close=`*(a: AntiAliasingLine; v: bool) =
+  ## Sets whether the line is closed; the points are kept as they are.
+  a.close = v
+  a.flagUpdate()
+
+proc stencilMask*(a: AntiAliasingLine): Instruction {.inline.} =
+  ## The shape the line is drawn around.
+  a.stencilMask
+
+method radd*(a: AntiAliasingLine; ig: InstructionGroup) =
+  ## Nothing: the shape adds its line (Kivy's AntiAliasingLine.radd).
+  discard
+
+method rinsert*(a: AntiAliasingLine; ig: InstructionGroup; index: int) =
+  ## Nothing: the shape inserts its line.
+  discard
+
+method rremove*(a: AntiAliasingLine; ig: InstructionGroup) =
+  ## Nothing: the shape removes its line.
+  discard
+
+method build*(a: AntiAliasingLine) =
+  ## vertex_instructions.pyx AntiAliasingLine.build: for each segment, a quad
+  ## 2.5 px to each side (texture s 0 on one side, 1 on the other), and a
+  ## triangle that fills the miter joint with the segment before.
+  let p = a.points
+  let width = float(a.width)
+  if p.len == 0:
+    a.vertices = @[]
+    a.indices = @[]
+    return
+  let discardedVcount = if a.close: 0 else: 3
+  let vcount = 9 * (p.len - 2) div 2 - discardedVcount
+  var vertices = newSeq[Vertex](vcount)
+  var ax, ay, bx, by, cx, cy, lastAngle, angle, angleDiff = 0.0
+  var offsetX, offsetY, jointOffsetX, jointOffsetY = 0.0
+  var iv = 0
+  if a.close:
+    ax = p[p.len - 4]
+    ay = p[p.len - 3]
+    bx = p[0]
+    by = p[1]
+    cx = bx - ax
+    cy = by - ay
+    lastAngle = arctan2(cy, cx)
+  # `<float>ax - offset_x`: the point is cast to a C float first, then the
+  # sum is a double, stored as a float.
+  proc moved(base, offset: float): float32 {.inline.} =
+    float32(float(float32(base)) + offset)
+  for i in countup(0, p.len - 3, 2):
+    ax = p[i]
+    ay = p[i + 1]
+    bx = p[i + 2]
+    by = p[i + 3]
+    cx = bx - ax
+    cy = by - ay
+    angle = arctan2(cy, cx)
+    offsetX = width * sin(angle)
+    offsetY = width * cos(angle)
+    # The two triangles of the segment.
+    for (px, py, ox, oy, s) in [(ax, ay, -offsetX, offsetY, 0'f32),
+        (bx, by, offsetX, -offsetY, 1'f32), (ax, ay, offsetX, -offsetY, 1'f32),
+        (ax, ay, -offsetX, offsetY, 0'f32), (bx, by, offsetX, -offsetY, 1'f32),
+        (bx, by, -offsetX, offsetY, 0'f32)]:
+      vertices[iv] = Vertex(x: moved(px, ox), y: moved(py, oy), s0: s, t0: 0)
+      inc iv
+    # The miter joint.
+    if i > 0 or a.close:
+      jointOffsetX = width * sin(lastAngle)
+      jointOffsetY = width * cos(lastAngle)
+      angleDiff = angle - lastAngle
+      let direction = if -PI < angleDiff and angleDiff < 0 or angleDiff > PI: -1.0 else: 1.0
+      vertices[iv] = Vertex(x: float32(ax), y: float32(ay), s0: 0.5, t0: 0)
+      vertices[iv + 1] = Vertex(x: moved(ax, offsetX * direction),
+        y: moved(ay, -offsetY * direction), s0: 1, t0: 0)
+      vertices[iv + 2] = Vertex(x: moved(ax, jointOffsetX * direction),
+        y: moved(ay, -jointOffsetY * direction), s0: 1, t0: 0)
+      iv += 3
+    lastAngle = angle
+  var indices = newSeq[int32](vcount)
+  for i in 0 ..< vcount:
+    indices[i] = int32(i)
+  a.vertices = vertices
+  a.indices = indices
+
+# ---------------------------------------------------------------- the smooth shapes
+
+proc hasTextureSet(v: VertexInstruction): bool =
+  # vertex_instructions.pyx has_texture_set. Kivy compares the texture with
+  # the one given to the constructor; nimkivy's constructors take none, so
+  # that is the default texture (nil).
+  v.texture != nil or v.source.len > 0
+
+proc tooSmallForAntialiasing(r: Rectangle): bool =
+  # vertex_instructions.pyx too_small_for_antialiasing
+  let (w, h) = r.size
+  result = -4 < w and w < 4 or -4 < h and h < 4
+
+proc adjustParams(r: Rectangle; delta: float) =
+  # vertex_instructions.pyx adjust_params: moves the edges `delta` px out
+  # (in when negative) through the `pos` and `size` setters (C floats), and
+  # a SmoothRoundedRectangle's radii by `delta`, not below 0. Kivy builds
+  # with -1 and restores with +1, so a radius below 1 comes back as 1 and a
+  # position can move by the last bit of its float.
+  var (x, y) = r.pos
+  var (w, h) = r.size
+  let signX = if w < 0: 1.0 else: -1.0
+  let signY = if h < 0: 1.0 else: -1.0
+  x += delta * signX
+  y += delta * signY
+  w += delta * 2 * signX * -1
+  h += delta * 2 * signY * -1
+  r.pos = (x, y)
+  r.size = (w, h)
+  if r of SmoothRoundedRectangle:
+    let rr = SmoothRoundedRectangle(r)
+    var radius = default(array[4, (float, float)])
+    for corner in 0 ..< 4:
+      let (rx, ry) = rr.radius[corner]
+      radius[corner] = (max(0.0, rx + delta), max(0.0, ry + delta))
+    `radius=`(rr, radius)
+
+proc smoothRadd(ig: InstructionGroup; target: VertexInstruction; aa: AntiAliasingLine) =
+  # vertex_instructions.pyx radd_instructions: the shape's BindTexture, the
+  # shape, the line's BindTexture, the line. As in Kivy, the parent of the
+  # line's BindTexture is not set (Kivy sets the shape's twice).
+  ig.children.add target.textureBinding
+  ig.children.add target
+  ig.children.add aa.textureBinding
+  ig.children.add aa
+  target.textureBinding.setParent(ig)
+  aa.setParent(ig)
+  target.setParent(ig)
+
+proc smoothRinsert(ig: InstructionGroup; index: int; target: VertexInstruction;
+    aa: AntiAliasingLine) =
+  # vertex_instructions.pyx rinsert_instructions: the four in order at
+  # `index`, or each at `index` when it is negative (each before the last).
+  let step = if index < 0: 0 else: 1
+  ig.children.insertAt(index, Instruction(target.textureBinding))
+  ig.children.insertAt(index + step, Instruction(target))
+  ig.children.insertAt(index + 2 * step, Instruction(aa.textureBinding))
+  ig.children.insertAt(index + 3 * step, Instruction(aa))
+  target.textureBinding.setParent(ig)
+  aa.setParent(ig)
+  target.setParent(ig)
+
+proc smoothRremove(ig: InstructionGroup; target: VertexInstruction; aa: AntiAliasingLine) =
+  # vertex_instructions.pyx rremove_instructions
+  ig.children.removeFirst(target.textureBinding)
+  ig.children.removeFirst(target)
+  ig.children.removeFirst(aa.textureBinding)
+  ig.children.removeFirst(aa)
+  target.textureBinding.setParent(nil)
+  aa.setParent(nil)
+  target.setParent(nil)
+
+proc line(a: nil AntiAliasingLine): AntiAliasingLine =
+  # A smooth shape's line, which its constructor sets.
+  assert a != nil, "a smooth shape without its antialiasing line"
+  result = a
+
+# Kivy's radd, rinsert and rremove of each smooth shape, and its
+# `antialiasing_line_points`.
+
+method radd*(v: SmoothRectangle; ig: InstructionGroup) =
+  ## Adds the shape and its antialiasing line, each with its BindTexture.
+  smoothRadd(ig, v, line(v.antialiasingLine))
+
+method rinsert*(v: SmoothRectangle; ig: InstructionGroup; index: int) =
+  ## Inserts the shape and its antialiasing line at `index`.
+  smoothRinsert(ig, index, v, line(v.antialiasingLine))
+
+method rremove*(v: SmoothRectangle; ig: InstructionGroup) =
+  ## Removes the shape and its antialiasing line.
+  smoothRremove(ig, v, line(v.antialiasingLine))
+
+proc antialiasingLine*(v: SmoothRectangle): AntiAliasingLine {.inline.} =
+  ## The antialiasing line.
+  line(v.antialiasingLine)
+
+proc antialiasingLinePoints*(v: SmoothRectangle): seq[float] {.inline.} =
+  ## The points of the antialiasing line after the last build (empty: none).
+  line(v.antialiasingLine).points
+
+method radd*(v: SmoothEllipse; ig: InstructionGroup) =
+  ## Adds the shape and its antialiasing line, each with its BindTexture.
+  smoothRadd(ig, v, line(v.antialiasingLine))
+
+method rinsert*(v: SmoothEllipse; ig: InstructionGroup; index: int) =
+  ## Inserts the shape and its antialiasing line at `index`.
+  smoothRinsert(ig, index, v, line(v.antialiasingLine))
+
+method rremove*(v: SmoothEllipse; ig: InstructionGroup) =
+  ## Removes the shape and its antialiasing line.
+  smoothRremove(ig, v, line(v.antialiasingLine))
+
+proc antialiasingLine*(v: SmoothEllipse): AntiAliasingLine {.inline.} =
+  ## The antialiasing line.
+  line(v.antialiasingLine)
+
+proc antialiasingLinePoints*(v: SmoothEllipse): seq[float] {.inline.} =
+  ## The points of the antialiasing line after the last build (empty: none).
+  line(v.antialiasingLine).points
+
+method radd*(v: SmoothRoundedRectangle; ig: InstructionGroup) =
+  ## Adds the shape and its antialiasing line, each with its BindTexture.
+  smoothRadd(ig, v, line(v.antialiasingLine))
+
+method rinsert*(v: SmoothRoundedRectangle; ig: InstructionGroup; index: int) =
+  ## Inserts the shape and its antialiasing line at `index`.
+  smoothRinsert(ig, index, v, line(v.antialiasingLine))
+
+method rremove*(v: SmoothRoundedRectangle; ig: InstructionGroup) =
+  ## Removes the shape and its antialiasing line.
+  smoothRremove(ig, v, line(v.antialiasingLine))
+
+proc antialiasingLine*(v: SmoothRoundedRectangle): AntiAliasingLine {.inline.} =
+  ## The antialiasing line.
+  line(v.antialiasingLine)
+
+proc antialiasingLinePoints*(v: SmoothRoundedRectangle): seq[float] {.inline.} =
+  ## The points of the antialiasing line after the last build (empty: none).
+  line(v.antialiasingLine).points
+
+method radd*(v: SmoothTriangle; ig: InstructionGroup) =
+  ## Adds the shape and its antialiasing line, each with its BindTexture.
+  smoothRadd(ig, v, line(v.antialiasingLine))
+
+method rinsert*(v: SmoothTriangle; ig: InstructionGroup; index: int) =
+  ## Inserts the shape and its antialiasing line at `index`.
+  smoothRinsert(ig, index, v, line(v.antialiasingLine))
+
+method rremove*(v: SmoothTriangle; ig: InstructionGroup) =
+  ## Removes the shape and its antialiasing line.
+  smoothRremove(ig, v, line(v.antialiasingLine))
+
+proc antialiasingLine*(v: SmoothTriangle): AntiAliasingLine {.inline.} =
+  ## The antialiasing line.
+  line(v.antialiasingLine)
+
+proc antialiasingLinePoints*(v: SmoothTriangle): seq[float] {.inline.} =
+  ## The points of the antialiasing line after the last build (empty: none).
+  line(v.antialiasingLine).points
+
+method radd*(v: SmoothQuad; ig: InstructionGroup) =
+  ## Adds the shape and its antialiasing line, each with its BindTexture.
+  smoothRadd(ig, v, line(v.antialiasingLine))
+
+method rinsert*(v: SmoothQuad; ig: InstructionGroup; index: int) =
+  ## Inserts the shape and its antialiasing line at `index`.
+  smoothRinsert(ig, index, v, line(v.antialiasingLine))
+
+method rremove*(v: SmoothQuad; ig: InstructionGroup) =
+  ## Removes the shape and its antialiasing line.
+  smoothRremove(ig, v, line(v.antialiasingLine))
+
+proc antialiasingLine*(v: SmoothQuad): AntiAliasingLine {.inline.} =
+  ## The antialiasing line.
+  line(v.antialiasingLine)
+
+proc antialiasingLinePoints*(v: SmoothQuad): seq[float] {.inline.} =
+  ## The points of the antialiasing line after the last build (empty: none).
+  line(v.antialiasingLine).points
+
+method build*(r: SmoothRectangle) =
+  ## vertex_instructions.pyx SmoothRectangle.build: no line with a texture
+  ## or a side under 4 px; else the rectangle 1 px inside, the line on it.
+  let aa = line(r.antialiasingLine)
+  if hasTextureSet(r) or tooSmallForAntialiasing(r):
+    `points=`(aa, [])
+    r.rectangleBuild()
+  else:
+    r.adjustParams(-1)
+    r.rectangleBuild()
+    `points=`(aa, r.points)
+    r.adjustParams(1)
+
+method build*(e: SmoothEllipse) =
+  ## vertex_instructions.pyx SmoothEllipse.build: as SmoothRectangle's; the
+  ## line also goes through the centre, which closes a slice (the stencil
+  ## hides it inside a full ellipse).
+  let aa = line(e.antialiasingLine)
+  if hasTextureSet(e) or tooSmallForAntialiasing(e):
+    `points=`(aa, [])
+    e.ellipseBuild()
+  else:
+    e.adjustParams(-1)
+    e.ellipseBuild()
+    # `self.x + self.w / 2` on C floats.
+    `points=`(aa, e.points & @[float(e.x + e.w / 2'f32), float(e.y + e.h / 2'f32)])
+    e.adjustParams(1)
+
+method build*(r: SmoothRoundedRectangle) =
+  ## vertex_instructions.pyx SmoothRoundedRectangle.build
+  let aa = line(r.antialiasingLine)
+  if hasTextureSet(r) or tooSmallForAntialiasing(r):
+    `points=`(aa, [])
+    r.roundedBuild()
+  else:
+    r.adjustParams(-1)
+    r.roundedBuild()
+    `points=`(aa, r.points)
+    r.adjustParams(1)
+
+method build*(t: SmoothTriangle) =
+  ## vertex_instructions.pyx SmoothTriangle.build: the line on the triangle
+  ## itself (no adjustment).
+  let aa = line(t.antialiasingLine)
+  if hasTextureSet(t):
+    `points=`(aa, [])
+    t.triangleBuild()
+  else:
+    t.triangleBuild()
+    `points=`(aa, t.points.toOpenArray(0, 5))
+
+method build*(q: SmoothQuad) =
+  ## vertex_instructions.pyx SmoothQuad.build
+  let aa = line(q.antialiasingLine)
+  if hasTextureSet(q):
+    `points=`(aa, [])
+    q.quadBuild()
+  else:
+    q.quadBuild()
+    `points=`(aa, q.points)
+
+proc newSmoothRectangle*(pos = (0.0, 0.0); size = (100.0, 100.0)): SmoothRectangle =
+  ## `SmoothRectangle(pos=..., size=...)`.
+  result = SmoothRectangle(textureBinding: newBindTexture(), antialiasingLine: nil)
+  result.antialiasingLine = newAntiAliasingLine(result)
+  result.initRectangle(pos, size, vmTriangles)
+
+proc newSmoothEllipse*(pos = (0.0, 0.0); size = (100.0, 100.0); angleStart = 0.0;
+    angleEnd = 360.0; segments = 0): SmoothEllipse =
+  ## `SmoothEllipse(pos=..., size=..., angle_start=..., angle_end=...,
+  ## segments=...)`, as `newEllipse`.
+  result = SmoothEllipse(textureBinding: newBindTexture(), segments: segments,
+    angleStart: float32(angleStart), angleEnd: float32(if angleEnd == 0: 360.0 else: angleEnd),
+    antialiasingLine: nil)
+  result.antialiasingLine = newAntiAliasingLine(result)
+  result.initRectangle(pos, size, vmTriangleFan)
+
+proc newSmoothRoundedRectangle*(pos = (0.0, 0.0); size = (100.0, 100.0)): SmoothRoundedRectangle =
+  ## `SmoothRoundedRectangle(pos=..., size=...)` with RoundedRectangle's
+  ## defaults; set `radius` and `segments` after.
+  result = SmoothRoundedRectangle(textureBinding: newBindTexture(), segments: [10, 10, 10, 10],
+    radius: [(10.0, 10.0), (10.0, 10.0), (10.0, 10.0), (10.0, 10.0)], antialiasingLine: nil)
+  result.antialiasingLine = newAntiAliasingLine(result)
+  result.initRectangle(pos, size, vmTriangleFan)
+
+proc newSmoothTriangle*(points: openArray[float] = [0.0, 0.0, 100.0, 0.0, 50.0, 100.0]): SmoothTriangle =
+  ## `SmoothTriangle(points=...)`.
+  assert points.len >= 6
+  result = SmoothTriangle(textureBinding: newBindTexture(), points: @points, msaaEdge: nil,
+    antialiasingLine: nil)
+  result.antialiasingLine = newAntiAliasingLine(result)
+  result.initVertexInstruction(vmTriangles)
+  result.flagUpdate()
+
+proc newSmoothQuad*(points: openArray[float] = [0.0, 50.0, 50.0, 0.0, 100.0, 50.0, 50.0, 100.0]): SmoothQuad =
+  ## `SmoothQuad(points=...)`.
+  assert points.len == 8, "Quad: invalid number of points"
+  result = SmoothQuad(textureBinding: newBindTexture(), points: @points, antialiasingLine: nil)
+  result.antialiasingLine = newAntiAliasingLine(result)
+  result.initVertexInstruction(vmTriangles)
+  result.flagUpdate()
+
+# ---------------------------------------------------------------- SmoothLine
+
+const
+  MinDistanceThreshold = float(0.1'f32)   # `float min_distance_threshold = 0.1`
+  MinAngleThreshold = 0.017453292519943295  # 1 degree, Kivy's empirical value
+
+proc removeTooNearbyPoints(p: var seq[float]; threshold: float) =
+  # vertex_instructions_line.pxi SmoothLine._remove_too_nearby_points
+  var index = 0
+  while index < p.len - 2:
+    if abs(p[index + 2] - p[index]) < threshold and abs(p[index + 3] - p[index + 1]) < threshold:
+      p.delete(index + 2)
+      p.delete(index + 2)
+    else:
+      index += 2
+
+proc angleBetween(x1, y1, x2, y2, x3, y3, x4, y4: float): float =
+  # vertex_instructions_line.pxi SmoothLine._get_angle_diff: the angle
+  # between the vectors (x1, y1)->(x2, y2) and (x3, y3)->(x4, y4).
+  let angle1 = arctan2(y2 - y1, x2 - x1)
+  let angle2 = arctan2(y4 - y3, x4 - x3)
+  result = abs(angle1 - angle2)
+  if result > PI:
+    result = 2 * PI - result
+
+proc buildSmooth(l: SmoothLine) =
+  # vertex_instructions_line.pxi SmoothLine.build_smooth: four vertices per
+  # point, two at `width - 1` (opaque, texture s 0.5) and two at that plus
+  # `overdraw_width` (transparent, s 1), on the bisector of the joint,
+  # mitred; 6 triangles per segment. As in Kivy, the nearby points are
+  # removed from the line's own `points`.
+  l.points.removeTooNearbyPoints(MinDistanceThreshold)
+  var p = l.points
+  var mustCloseLine = l.close
+  let width = max(0.0, float(l.width) - 1.0)
+  let owidth = width + float(l.owidth)
+  # A single segment is never closed.
+  if p.len <= 4:
+    mustCloseLine = false
+  if mustCloseLine and not (abs(p[p.len - 2] - p[0]) < MinDistanceThreshold and
+      abs(p[p.len - 1] - p[1]) < MinDistanceThreshold):
+    p.add p[0]
+    p.add p[1]
+  let count = p.len div 2
+  if count < 2:
+    l.vertices = @[]
+    l.indices = @[]
+    return
+  let vcount = count * 4
+  let icount = (count - 1) * 18
+  var vertices = newSeq[Vertex](vcount)
+  var indices = newSeq[int32](icount)
+  var ax, ay, bx, by, rx, ry, lastAngle, angle, avAngle, adAngle, angleDiff = 0.0
+  if mustCloseLine:
+    # close_mode 'straight-line', the only one here.
+    ax = p[p.len - 4]
+    ay = p[p.len - 3]
+    bx = p[0]
+    by = p[1]
+    rx = bx - ax
+    ry = by - ay
+    lastAngle = arctan2(ry, rx)
+  let maxIndex = p.len
+  var iv = 0
+  for index in countup(0, maxIndex - 1, 2):
+    ax = p[index]
+    ay = p[index + 1]
+    if index < maxIndex - 2:
+      bx = p[index + 2]
+      by = p[index + 3]
+      rx = bx - ax
+      ry = by - ay
+      angle = arctan2(ry, rx)
+    elif mustCloseLine and index == maxIndex - 2:
+      ax = p[0]
+      ay = p[1]
+      bx = p[2]
+      by = p[3]
+      rx = bx - ax
+      ry = by - ay
+      angle = arctan2(ry, rx)
+    else:
+      angle = lastAngle
+    if index == 0 and not mustCloseLine:
+      avAngle = angle
+      adAngle = PI
+    else:
+      avAngle = arctan2(sin(angle) + sin(lastAngle), cos(angle) + cos(lastAngle))
+      adAngle = abs(PI - abs(angle - lastAngle))
+    let a1 = avAngle - PI2
+    let a2 = avAngle + PI2
+    var lw, olw = 0.0
+    if (index == 0 or index >= maxIndex - 2) and not mustCloseLine:
+      lw = width
+      olw = owidth
+    else:
+      var ox, oy = 0.0
+      if index == 0:
+        ox = p[p.len - 4]
+        oy = p[p.len - 3]
+      else:
+        ox = p[index - 2]
+        oy = p[index - 1]
+      let la1 = lastAngle - PI2
+      let la2 = angle - PI2
+      let ra1 = lastAngle + PI2
+      let ra2 = angle + PI2
+      angleDiff = angleBetween(ox + cos(ra1) * owidth, oy + sin(ra1) * owidth,
+        ax + cos(ra1) * owidth, ay + sin(ra1) * owidth, ax + cos(ra2) * owidth,
+        ay + sin(ra2) * owidth, bx + cos(ra2) * owidth, by + sin(ra2) * owidth)
+      # Under 1 degree the intersection is too far away: no mitre.
+      if angleDiff < MinAngleThreshold or adAngle < MinAngleThreshold:
+        lw = width
+        olw = owidth
+      else:
+        # Where the intersection fails, Kivy keeps rx, ry as they were.
+        discard lineIntersection(ox + cos(la1) * width, oy + sin(la1) * width,
+          ax + cos(la1) * width, ay + sin(la1) * width, ax + cos(la2) * width,
+          ay + sin(la2) * width, bx + cos(la2) * width, by + sin(la2) * width, rx, ry)
+        lw = float(float32(sqrt((ax - rx) ^ 2 + (ay - ry) ^ 2)))
+        discard lineIntersection(ox + cos(ra1) * owidth, oy + sin(ra1) * owidth,
+          ax + cos(ra1) * owidth, ay + sin(ra1) * owidth, ax + cos(ra2) * owidth,
+          ay + sin(ra2) * owidth, bx + cos(ra2) * owidth, by + sin(ra2) * owidth, rx, ry)
+        olw = float(float32(sqrt((ax - rx) ^ 2 + (ay - ry) ^ 2)))
+    lastAngle = angle
+    vertices[iv] = vtx(ax + cos(a1) * lw, ay + sin(a1) * lw, 0.5, 0.25)
+    vertices[iv + 1] = vtx(ax + cos(a2) * lw, ay + sin(a2) * lw, 0.5, 0.75)
+    vertices[iv + 2] = vtx(ax + cos(a1) * olw, ay + sin(a1) * olw, 1, 0)
+    vertices[iv + 3] = vtx(ax + cos(a2) * olw, ay + sin(a2) * olw, 1, 1)
+    iv += 4
+  var ii = 0
+  for vindex in countup(0, vcount - 5, 4):
+    for d in [0, 2, 6, 0, 6, 4, 1, 0, 4, 1, 4, 5, 3, 1, 5, 3, 5, 7]:
+      indices[ii] = int32(vindex + d)
+      inc ii
+  l.vertices = vertices
+  l.indices = indices
+
+method build*(l: SmoothLine) =
+  ## vertex_instructions_line.pxi SmoothLine.build: the points from
+  ## `circle`, `rectangle` or `rounded_rectangle` when set, then the band.
+  case l.lineMode
+  of lmCircle: l.prebuildCircle()
+  of lmRectangle: l.prebuildRectangle()
+  of lmRoundedRectangle: l.prebuildRoundedRectangle()
+  of lmPoints: discard
+  l.buildSmooth()
+
+proc newSmoothLine*(points: openArray[float] = []; width = 1.0; close = false;
+    overdrawWidth = 0.0): SmoothLine =
+  ## `SmoothLine(points=..., width=..., close=..., overdraw_width=...)`; an
+  ## overdraw width of 0 means Kivy's 1.2. Set `circle`, `rectangle` or
+  ## `roundedRectangle` after.
+  result = SmoothLine(textureBinding: newBindTexture(), points: @points,
+    width: float32(if width == 0: 1.0 else: width), cap: capRound, joint: jointRound,
+    capPrecision: 10, jointPrecision: 10, close: close, lineMode: lmPoints, modeArgs: @[],
+    circle: @[], rectangle: @[], roundedRectangle: @[], msaaEdge: nil,
+    owidth: float32(if overdrawWidth == 0: 1.2 else: overdrawWidth))
+  result.initVertexInstruction(vmTriangles)
+  result.texture = gradientTexture(true)
+  result.flagUpdate()
+
+proc overdrawWidth*(l: SmoothLine): float {.inline.} =
+  ## How far the transparent border reaches beyond the line, in pixels.
+  float(l.owidth)
+
+proc `overdrawWidth=`*(l: SmoothLine; v: float) =
+  ## Sets the overdraw width, which must be above 0.
+  assert v > 0, "Invalid width value, must be > 0"
+  l.owidth = float32(v)
+  l.flagUpdate()
+
+# ---------------------------------------------------------------- msaaEdge
+
+# Kivy draws every shape with `multisamples` (2 by default) GL samples per
+# pixel. SDL_Renderer has none, so with `multisamples > 0` the regular shapes
+# get the edges of their smooth counterparts, with other widths. Kivy's
+# (a 2.5 px band on the shape 1 px inside, a SmoothLine's 1.2 px overdraw)
+# were tuned by eye and soften every edge, also the whole-pixel ones that
+# multisampling leaves sharp. With n samples an edge pixel takes one of
+# n + 1 levels of the colour, which a linear ramp of (n - 1) / n px across
+# the edge follows best: half a pixel for Kivy's 2, nearly the pixel's
+# coverage for many. So the shape is drawn half the ramp inside (a Rectangle,
+# Ellipse or RoundedRectangle through adjust_params, a Triangle scaled
+# towards its incentre), with an AntiAliasingLine on that outline whose
+# gradient goes from opaque to transparent over the ramp (half-width 1.5
+# ramps), and a wide Line is a SmoothLine whose border fades over the ramp
+# centred on the line's edge (overdraw 2 ramps, width `width + 1 - ramp`).
+# The shape's `points`, `pos`, `size` and `radius` stay Kivy's; the renderer
+# draws the edge right after the shape (PORTING.md, Design differences). A
+# Line of width 1, Kivy's GL line strip, keeps its hard edges, and so does a
+# shape with a texture (as the smooth shapes do).
+
+proc msaaRamp(): float =
+  # The width of an edge's ramp, in pixels, for Config's multisamples.
+  let n = float(Config.graphics.multisamples)
+  result = (n - 1) / n
+
+proc edgeLine(v: VertexInstruction; current: nil AntiAliasingLine;
+    points: openArray[float]): AntiAliasingLine =
+  # The shape's antialiasing line, made on first use, on `points`.
+  if current == nil:
+    result = newAntiAliasingLine(v)
+  else:
+    result = current
+  result.width = float32(1.5 * msaaRamp())
+  `points=`(result, points)
+
+proc rectangleEdge(r: Rectangle; buildShape: proc (r: Rectangle) {.nimcall.};
+    centre: bool) =
+  # adjust_params(-0.5), the build, the line on the outline (through the
+  # centre for an ellipse's slice, as SmoothEllipse's), and back.
+  if multisampled() and not hasTextureSet(r) and not tooSmallForAntialiasing(r):
+    let points = r.points
+    let (x, y, w, h) = (r.x, r.y, r.w, r.h)
+    r.adjustParams(-msaaRamp() / 2)
+    buildShape(r)
+    var outline = r.points
+    if centre:
+      outline.add float(r.x + r.w / 2'f32)
+      outline.add float(r.y + r.h / 2'f32)
+    r.msaaEdge = edgeLine(r, r.msaaEdge, outline)
+    (r.x, r.y, r.w, r.h) = (x, y, w, h)
+    r.points = points
+  else:
+    r.msaaEdge = nil
+
+proc buildRectangle(r: Rectangle) {.nimcall.} =
+  r.rectangleBuild()
+
+proc buildEllipse(r: Rectangle) {.nimcall.} =
+  Ellipse(r).ellipseBuild()
+
+proc rectangleEdge(r: Rectangle) =
+  # A Rectangle's edge, when multisampled.
+  if not (r of SmoothRectangle):
+    r.rectangleEdge(buildRectangle, false)
+
+proc ellipseEdge(e: Ellipse) =
+  # An Ellipse's edge, when multisampled.
+  if not (e of SmoothEllipse):
+    e.rectangleEdge(buildEllipse, abs(e.angleEnd - e.angleStart) < 360)
+
+proc roundedEdge(r: RoundedRectangle) =
+  # A RoundedRectangle's edge, when multisampled: the radii smaller too.
+  if multisampled() and not hasTextureSet(r) and not tooSmallForAntialiasing(r) and
+      not (r of SmoothRoundedRectangle):
+    let points = r.points
+    let (x, y, w, h) = (r.x, r.y, r.w, r.h)
+    let radius = r.radius
+    let inset = msaaRamp() / 2
+    r.adjustParams(-inset)
+    for corner in 0 ..< 4:
+      let (rx, ry) = radius[corner]
+      r.radius[corner] = (max(0.0, rx - inset), max(0.0, ry - inset))
+    r.roundedBuild()
+    r.msaaEdge = edgeLine(r, r.msaaEdge, r.points)
+    (r.x, r.y, r.w, r.h) = (x, y, w, h)
+    r.radius = radius
+    r.points = points
+  else:
+    r.msaaEdge = nil
+
+proc triangleEdge(t: Triangle) =
+  # A Triangle's edge, when multisampled: the triangle scaled about its
+  # incentre so that each side moves half the ramp in.
+  if multisampled() and not hasTextureSet(t) and not (t of SmoothTriangle):
+    let points = t.points
+    let (ax, ay, bx, by, cx, cy) = (points[0], points[1], points[2], points[3], points[4],
+      points[5])
+    let a = hypot(bx - cx, by - cy)
+    let b = hypot(cx - ax, cy - ay)
+    let c = hypot(ax - bx, ay - by)
+    let perimeter = a + b + c
+    let area = abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / 2
+    let inradius = if perimeter > 0: 2 * area / perimeter else: 0.0
+    let inset = msaaRamp() / 2
+    if inradius > inset:
+      let ix = (a * ax + b * bx + c * cx) / perimeter
+      let iy = (a * ay + b * by + c * cy) / perimeter
+      let k = (inradius - inset) / inradius
+      let inset = [ix + (ax - ix) * k, iy + (ay - iy) * k, ix + (bx - ix) * k,
+        iy + (by - iy) * k, ix + (cx - ix) * k, iy + (cy - iy) * k]
+      t.points = @inset
+      t.triangleBuild()
+      t.points = points
+      t.msaaEdge = edgeLine(t, t.msaaEdge, inset)
+    else:
+      t.msaaEdge = nil
+  else:
+    t.msaaEdge = nil
+
+proc isFullCircle(l: Line): bool =
+  # A `circle` of 360 degrees or more: its ends meet.
+  l.lineMode == lmCircle and l.circle.len == 6 and abs(l.circle[4] - l.circle[3]) >= 360
+
+proc lineEdge(l: Line; caps: int) =
+  # A wide Line, when multisampled: a SmoothLine through its points; the
+  # line itself keeps only its caps.
+  if multisampled() and not (l of SmoothLine):
+    var edge = l.msaaEdge
+    if edge == nil:
+      edge = newSmoothLine()
+    let ramp = msaaRamp()
+    let closed = l.close or l.isFullCircle()
+    `points=`(edge, l.points)
+    `width=`(edge, float(l.width) + 1 - ramp)
+    edge.owidth = float32(2 * ramp)
+    `close=`(edge, closed)
+    l.msaaEdge = edge
+    var capIndices: seq[int32] = @[]
+    if not closed:
+      for k in caps ..< l.indices.len:
+        capIndices.add l.indices[k]
+    l.indices = capIndices
+  else:
+    l.msaaEdge = nil
+
+proc msaaEdge*(v: VertexInstruction): nil VertexInstruction =
+  ## The edge the renderer draws right after `v` when
+  ## `Config.graphics.multisamples > 0`: an AntiAliasingLine or a
+  ## SmoothLine, or nil.
+  if v of Line:
+    result = Line(v).msaaEdge
+  elif v of Rectangle:
+    result = Rectangle(v).msaaEdge
+  elif v of Triangle:
+    result = Triangle(v).msaaEdge
+  else:
+    result = nil

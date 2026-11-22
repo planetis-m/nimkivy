@@ -17,6 +17,13 @@
 ## Blending is Kivy's `glBlendFuncSeparate(SRC_ALPHA, ONE_MINUS_SRC_ALPHA,
 ## ONE, ONE)` (instructions.pyx `reset_gl_context`).
 ##
+## An AntiAliasingLine drawn with a colour whose alpha is below 1 goes, in
+## Kivy, through a stencil of its shape, so that it is drawn only outside
+## the shape. Here it is drawn into a scratch texture, its shape erased from
+## that texture, and the rest drawn over the target: the same pixels. With
+## `Config.graphics.multisamples > 0` a shape's `msaaEdge` (vertex_instructions)
+## is drawn right after it, in the same way.
+##
 ## Two instructions exist only for FadeTransition (layer 8), because they
 ## need the SDL renderer: `Fbo` draws its children into a render-target
 ## texture with a fresh render context, cleared to its `clearColor` (Kivy's
@@ -85,24 +92,27 @@ type
     vbuf: seq[SDL_Vertex]
     ibuf: seq[cint]
     points: seq[SDL_FPoint]
+    scratch: nil Texture              # drawOutside's render target, grown as needed
+    premultiplied: SDL_BlendMode      # drawOutside's blend mode onto the target
 
 proc emptyBox(): Box {.inline.} =
   Box(x0: Inf, y0: Inf, x1: -Inf, y1: -Inf)
 
 proc newRenderer*(sdl: SDL_Renderer): Renderer =
   ## A renderer drawing on `sdl` (the window's).
-  # GAP: no multisample antialiasing, where Kivy's default is
-  # `multisamples = 2`: edges of ellipses, rounded corners and wide lines are
-  # more jagged (graphics_basic_msaa: 0.27% of pixels differ), because
-  # SDL_Renderer has no MSAA
-  result = Renderer(sdl: sdl, target: nil, blendMode: SDL_BLENDMODE_BLEND, height: 0, color: [1.0, 1, 1, 1],
-    opacity: 1, opacityStack: @[], tx: 0, ty: 0, matrixStack: @[], texture: nil, phase: spNone,
-    mask: emptyBox(), clipStack: @[], vbuf: @[], ibuf: @[], points: @[])
+  result = Renderer(sdl: sdl, target: nil, blendMode: SDL_BLENDMODE_BLEND, height: 0,
+    color: [1.0, 1, 1, 1], opacity: 1, opacityStack: @[], tx: 0, ty: 0, matrixStack: @[],
+    texture: nil, phase: spNone, mask: emptyBox(), clipStack: @[], vbuf: @[], ibuf: @[],
+    points: @[], scratch: nil, premultiplied: SDL_BLENDMODE_BLEND_PREMULTIPLIED)
   let kivyBlend = SDL_ComposeCustomBlendMode(SDL_BLENDFACTOR_SRC_ALPHA,
     SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD, SDL_BLENDFACTOR_ONE,
     SDL_BLENDFACTOR_ONE, SDL_BLENDOPERATION_ADD)
   if SDL_SetRenderDrawBlendMode(sdl, kivyBlend):
     result.blendMode = kivyBlend
+    # A premultiplied layer over the target, with Kivy's alpha (ONE, ONE).
+    result.premultiplied = SDL_ComposeCustomBlendMode(SDL_BLENDFACTOR_ONE,
+      SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD, SDL_BLENDFACTOR_ONE,
+      SDL_BLENDFACTOR_ONE, SDL_BLENDOPERATION_ADD)
   else:
     # GAP: where the SDL driver refuses custom blend modes (the software
     # renderer of the headless tests), blending is SDL_BLENDMODE_BLEND: the
@@ -187,20 +197,18 @@ proc drawLineStrip(r: Renderer; v: VertexInstruction) =
     discard SDL_SetRenderDrawColorFloat(r.sdl, c.r, c.g, c.b, c.a)
     discard SDL_RenderLines(r.sdl, addr r.points[0], cint(r.points.len))
 
-proc drawTriangles(r: Renderer; v: VertexInstruction) =
-  # The vertex batch as SDL_RenderGeometry triangles; a fan is expanded.
-  # GAP: on SDL's software renderer, long thin triangles (wide lines) cover
-  # up to a pixel more or less than GL's pixel-centre rule (graphics_line:
-  # 0.91% of pixels differ, against 0.10% on the OpenGL renderer, which
-  # matches GL), because SDL's software triangle rasterizer is less precise;
-  # the scenes run on the OpenGL renderer
+proc renderGeometry(r: Renderer; v: VertexInstruction; c: SDL_FColor; t: nil Texture;
+    blendMode: SDL_BlendMode; dx, dy: float32) =
+  # The vertex batch as SDL_RenderGeometry triangles, in colour `c` with
+  # texture `t` blended by `blendMode` (when textured), moved by (dx, dy)
+  # in SDL's coordinates; a fan is expanded.
   if v.vertices.len == 0 or v.indices.len < 3:
     return
-  let c = r.drawColor()
   r.vbuf.setLen(0)
   for k in 0 ..< v.vertices.len:
     let vert = v.vertices[k]
-    r.vbuf.add SDL_Vertex(position: r.toSdl(vert.x, vert.y), color: c,
+    let p = r.toSdl(vert.x, vert.y)
+    r.vbuf.add SDL_Vertex(position: SDL_FPoint(x: p.x + dx, y: p.y + dy), color: c,
       tex_coord: SDL_FPoint(x: vert.s0, y: vert.t0))
   r.ibuf.setLen(0)
   case v.mode
@@ -212,17 +220,107 @@ proc drawTriangles(r: Renderer; v: VertexInstruction) =
   else:
     for k in 0 ..< v.indices.len - v.indices.len mod 3:
       r.ibuf.add cint(v.indices[k])
+  if r.ibuf.len == 0:
+    return
   var handle: nil SDL_Texture = nil
-  let t = r.texture
   if t != nil:
     handle = t.handle(r.sdl)
     if handle != nil:
-      discard SDL_SetTextureBlendMode(handle, r.blendMode)
+      discard SDL_SetTextureBlendMode(handle, blendMode)
   discard SDL_RenderGeometry(r.sdl, handle, addr r.vbuf[0], cint(r.vbuf.len),
     addr r.ibuf[0], cint(r.ibuf.len))
 
+proc drawTriangles(r: Renderer; v: VertexInstruction) =
+  # The vertex batch in the current colour and texture.
+  # GAP: on SDL's software renderer, long thin triangles (wide lines) cover
+  # up to a pixel more or less than GL's pixel-centre rule (graphics_line:
+  # 0.91% of pixels differ, against 0.10% on the OpenGL renderer, which
+  # matches GL), because SDL's software triangle rasterizer is less precise;
+  # the scenes run on the OpenGL renderer
+  r.renderGeometry(v, r.drawColor(), r.texture, r.blendMode, 0, 0)
+
+proc scratchTexture(r: Renderer; w, h: int): nil Texture =
+  # A render target of at least w x h pixels, kept for the next call.
+  var t = r.scratch
+  if t == nil or t.width < w or t.height < h:
+    var tw = w
+    var th = h
+    if t != nil:
+      tw = max(tw, t.width)
+      th = max(th, t.height)
+    t = nil
+    r.scratch = nil
+    let handle = SDL_CreateTexture(r.sdl, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET,
+      cint(tw), cint(th))
+    if handle != nil:
+      discard SDL_SetTextureScaleMode(handle, SDL_SCALEMODE_NEAREST)
+      t = newTexture(r.sdl, handle)
+      r.scratch = t
+  result = t
+
+proc drawOutside(r: Renderer; line, shape: VertexInstruction) =
+  # AntiAliasingLine.apply with alpha below 1: StencilPush, the shape,
+  # StencilUse(op="greater"), the line, StencilUnUse, the shape, StencilPop:
+  # the line only where the shape is not. Here the line is drawn into a
+  # scratch texture (premultiplied: SDL's BLEND over transparent black), the
+  # shape's pixels are cleared from it (the same pixels the stencil gets),
+  # and the texture is drawn over the target.
+  if line.vertices.len == 0 or line.indices.len < 3:
+    return
+  var x0 = Inf
+  var y0 = Inf
+  var x1 = -Inf
+  var y1 = -Inf
+  for k in 0 ..< line.vertices.len:
+    let p = r.toSdl(line.vertices[k].x, line.vertices[k].y)
+    x0 = min(x0, float(p.x))
+    y0 = min(y0, float(p.y))
+    x1 = max(x1, float(p.x))
+    y1 = max(y1, float(p.y))
+  let ox = floor(x0)
+  let oy = floor(y0)
+  let w = int(ceil(x1) - ox)
+  let h = int(ceil(y1) - oy)
+  let scratch = r.scratchTexture(w, h)
+  if w <= 0 or h <= 0 or scratch == nil:
+    return
+  let handle = scratch.handle(r.sdl)
+  if handle == nil or not SDL_SetRenderTarget(r.sdl, handle):
+    return
+  discard SDL_SetRenderClipRect(r.sdl, nil)
+  discard SDL_SetRenderDrawColorFloat(r.sdl, 0, 0, 0, 0)
+  discard SDL_RenderClear(r.sdl)
+  r.renderGeometry(line, r.drawColor(), r.texture, SDL_BLENDMODE_BLEND, float32(-ox),
+    float32(-oy))
+  discard SDL_SetRenderDrawBlendMode(r.sdl, SDL_BLENDMODE_NONE)
+  r.renderGeometry(shape, SDL_FColor(r: 0, g: 0, b: 0, a: 0), nil, SDL_BLENDMODE_NONE,
+    float32(-ox), float32(-oy))
+  discard SDL_SetRenderDrawBlendMode(r.sdl, r.blendMode)
+  discard r.setTarget(r.target)
+  r.setClip()
+  discard SDL_SetTextureBlendMode(handle, r.premultiplied)
+  var src = SDL_FRect(x: 0, y: 0, w: float32(w), h: float32(h))
+  var dst = SDL_FRect(x: float32(ox), y: float32(oy), w: float32(w), h: float32(h))
+  discard SDL_RenderTexture(r.sdl, handle, addr src, addr dst)
+
+proc drawSmooth(r: Renderer; v: VertexInstruction) =
+  # A vertex instruction outside any stencil: an AntiAliasingLine through
+  # its shape's stencil when the colour is translucent (Kivy reads the
+  # colour's alpha, not the opacity), anything else as it is.
+  if v.mode == vmLineStrip:
+    r.drawLineStrip(v)
+  elif v of AntiAliasingLine and r.color[3] < 1 and
+      AntiAliasingLine(v).stencilMask of VertexInstruction:
+    r.drawOutside(v, VertexInstruction(AntiAliasingLine(v).stencilMask))
+  else:
+    # GAP: a wide Line drawn with alpha below 1 blends its overlapping
+    # triangles (joints, caps) twice, where Kivy draws it once through a
+    # stencil, because SDL_Renderer has no stencil buffer
+    r.drawTriangles(v)
+
 proc drawVertex(r: Renderer; v: VertexInstruction) =
-  # VertexInstruction.apply: rebuild if flagged, then draw the batch.
+  # VertexInstruction.apply: rebuild if flagged, then draw the batch; then
+  # the shape's msaaEdge, with its own texture.
   if v.needsRedraw:
     v.build()
     v.flagUpdateDone()
@@ -232,13 +330,16 @@ proc drawVertex(r: Renderer; v: VertexInstruction) =
   of spUnmask:
     discard     # erasing the mask: nothing to draw
   of spNone:
-    if v.mode == vmLineStrip:
-      r.drawLineStrip(v)
-    else:
-      # GAP: a wide Line drawn with alpha below 1 blends its overlapping
-      # triangles (joints, caps) twice, where Kivy draws it once through a
-      # stencil, because SDL_Renderer has no stencil buffer
-      r.drawTriangles(v)
+    r.drawSmooth(v)
+    let edge = msaaEdge(v)
+    if edge != nil:
+      if edge.needsRedraw:
+        edge.build()
+        edge.flagUpdateDone()
+      let bound = r.texture
+      r.texture = edge.texture
+      r.drawSmooth(edge)
+      r.texture = bound
 
 proc applyFbo(r: Renderer; f: Fbo)
 proc applyFadeMix(r: Renderer; m: FadeMix)

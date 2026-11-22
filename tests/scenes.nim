@@ -104,6 +104,68 @@ proc shifted(pts: openArray[float]; x, y: float): seq[float] =
   for k, p in pts:
     result.add(if k mod 2 == 0: x + p else: y + p)
 
+proc graphicsSmooth(): Widget =
+  # smooth.py graphics_smooth (archive/reference/smooth.py)
+  let w = newWidget()
+  let c = w.canvas
+  c.add newColor(0.2, 0.3, 0.8)
+  let rr1 = newSmoothRoundedRectangle((20.0, 440.0), (200.0, 140.0))
+  rr1.radius = [30.0]
+  c.add rr1
+  c.add newColor(0.9, 0.6, 0.1)
+  let rr2 = newSmoothRoundedRectangle((240.0, 440.0), (220.0, 140.0))
+  rr2.radius = [(10.0, 10.0), (60.0, 30.0), (0.0, 0.0), (40.0, 40.0)]
+  c.add rr2
+  c.add newColor(0.5, 0.1, 0.5)
+  c.add newSmoothEllipse((480.0, 450.0), (180.0, 120.0))
+  c.add newColor(0.1, 0.5, 0.5)
+  c.add newSmoothEllipse((675.0, 460.0), (110.0, 110.0), angleStart = 45, angleEnd = 300)
+  c.add newColor(0.8, 0.2, 0.2)
+  c.add newSmoothRectangle((20.5, 300.25), (150.4, 90.6))
+  c.add newColor(0.9, 0.2, 0.5)
+  c.add newSmoothTriangle([200.0, 300, 330, 315, 255, 410])
+  c.add newColor(0.3, 0.6, 0.2)
+  c.add newSmoothQuad([360.0, 300, 480, 322, 470, 410, 350, 385])
+  c.add newColor(0.3, 0.3, 0.3)
+  c.add newSmoothEllipse((510.0, 300.0), (110.0, 110.0), segments = 7)
+  # Half alpha over a dark band: the line only outside the shape.
+  c.add newColor(0.15, 0.15, 0.15)
+  c.add newRectangle((640.0, 280.0), (150.0, 150.0))
+  c.add newColor(0.9, 0.9, 0.2, 0.5)
+  c.add newSmoothEllipse((650.0, 300.0), (120.0, 100.0))
+  c.add newColor(0.2, 0.8, 0.9, 0.5)
+  let rr3 = newSmoothRoundedRectangle((700.0, 360.0), (80.0, 60.0))
+  rr3.radius = [20.0]
+  c.add rr3
+  # SmoothLine: an open polyline, closed, circles, an arc, rectangles.
+  c.add newColor(0, 0, 0)
+  c.add newSmoothLine([20.0, 260, 120, 200, 200, 270, 260, 190], width = 1)
+  c.add newColor(0.1, 0.4, 0.1)
+  c.add newSmoothLine([280.0, 260, 380, 200, 440, 270, 330, 280], width = 3, close = true)
+  c.add newColor(0.6, 0, 0.6)
+  let circle = newSmoothLine(width = 2)
+  circle.circle = [520.0, 230, 45]
+  c.add circle
+  let arc = newSmoothLine(width = 1.5)
+  arc.circle = [640.0, 230, 45, 30, 270]
+  c.add arc
+  c.add newColor(0.4, 0.2, 0)
+  let rect = newSmoothLine(width = 4)
+  rect.rectangle = [700.0, 190, 80, 80]
+  c.add rect
+  c.add newColor(0.2, 0.2, 0.7)
+  let rrl1 = newSmoothLine(width = 2)
+  rrl1.roundedRectangle = [20.0, 30, 300, 120, 30]
+  c.add rrl1
+  let rrl2 = newSmoothLine(width = 1.2)
+  rrl2.roundedRectangle = [340.0, 30, 200, 120, 40, 5, 1, 20]
+  c.add rrl2
+  c.add newColor(0.8, 0.3, 0.1, 0.5)
+  c.add newSmoothLine([560.0, 40, 780, 140], width = 6)
+  c.add newColor(0, 0, 0)
+  c.add newSmoothLine([560.0, 140, 780, 40], width = 1, overdrawWidth = 2.5)
+  result = w
+
 proc graphicsLine(): Widget =
   # scenes.py graphics_line
   let w = newWidget()
@@ -621,6 +683,7 @@ proc build(name: string): Widget =
   case name
   of "graphics_basic", "graphics_basic_msaa": graphicsBasic()
   of "graphics_line": graphicsLine()
+  of "graphics_smooth": graphicsSmooth()
   of "graphics_texture": graphicsTexture()
   of "canvas_order": canvasOrder()
   of "boxlayout_tests": boxlayoutTests()
@@ -686,6 +749,8 @@ proc shoot(name: string) =
   # scenes.py shoot: the root widget in the window, a few frames, then the
   # screenshot (Window.screenshot numbers the file; it is renamed) and the
   # geometry of every widget.
+  # scenes.py: multisamples 0, but 2 for the `_msaa` scenes.
+  Config.graphics.multisamples = if name.endsWith("_msaa"): 2 else: 0
   let root = build(name)
   Window.addWidget(root)
   for _ in 0 ..< 5:
@@ -732,8 +797,8 @@ proc shoot(name: string) =
   echo "wrote tests/out/", name, ".png and .txt"
 
 proc main() =
-  # scenes.py shoot's Config: 800 x 600, not resizable; multisamples do not
-  # exist here (see the MSAA GAP).
+  # scenes.py shoot's Config: 800 x 600, not resizable; multisamples are set
+  # for each scene (shoot).
   Config.graphics.width = 800
   Config.graphics.height = 600
   Config.graphics.resizable = false

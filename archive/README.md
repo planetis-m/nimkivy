@@ -17,7 +17,14 @@ the nimkivy root, between 2026-11-21 and 2026-11-22 (git history of
 | `scenes.py` | `out/<scene>.png` and `out/<scene>.txt` | `tests/fixtures/scenes/` |
 | `traces.py` | `out/traces/<name>.txt` | `tests/fixtures/traces/` |
 | `graphics_points.py` | `out/graphics_points.txt` | `tests/fixtures/graphics_points.txt` |
+| `smooth.py` (P2.12) | `tests/fixtures/smooth_points.txt` and `scenes/graphics_smooth.*`, already in Nim's format | the same |
 | `compare.py` | (compared nimkivy's output with `out/`) | `tests/compare.nim` |
+
+`smooth.py` ran on 2026-11-22 in a throwaway Python 3.12 environment
+outside the repository (`~/.cache/kivy232-venv`, `uv pip install
+kivy==2.3.2`; its docstring has the commands), on the same machine and
+display; that environment re-rendered graphics_basic and graphics_basic_msaa
+byte for byte as the committed fixtures before it was used.
 
 The commands were
 `<kiosk>/.venv/bin/python reference/<script>.py`. Their paths are the old

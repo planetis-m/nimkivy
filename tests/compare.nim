@@ -91,8 +91,9 @@ proc differs(a, b: ptr UncheckedArray[uint8]; i, j: int): bool =
   for c in 0 ..< 3:
     if abs(int(a[i + c]) - int(b[j + c])) > Tolerance: return true
 
-proc comparePng(scene, fixture, got, diffDir: string): string =
-  # "" when the picture is within the scene's budget, else what differs.
+proc comparePng(scene, fixture, got, diffDir: string; share: var float): string =
+  # "" when the picture is within the scene's budget, else what differs;
+  # `share` is the share of differing pixels.
   let a = loadRgb(fixture)
   if a == nil: return "cannot read " & fixture & ": " & fromCString(SDL_GetError())
   let b = loadRgb(got)
@@ -108,7 +109,7 @@ proc comparePng(scene, fixture, got, diffDir: string): string =
     for y in 0 ..< int(a.h):
       for x in 0 ..< int(a.w):
         if differs(pa, pb, y * int(a.pitch) + 3 * x, y * int(b.pitch) + 3 * x): inc bad
-    let share = float(bad) / float(int(a.w) * int(a.h))
+    share = float(bad) / float(int(a.w) * int(a.h))
     if share <= budget(scene):
       result = ""
     else:
@@ -191,8 +192,9 @@ proc main() =
       if not pixelsOnly:
         if not report(scene & " geometry",
             compareText(scene, want & ".txt", got & ".txt", known)): ok = false
-      if not report(scene & " pixels",
-          comparePng(scene, want & ".png", got & ".png", outDir & "/diff")): ok = false
+      var share = 0.0
+      let err = comparePng(scene, want & ".png", got & ".png", outDir & "/diff", share)
+      if not report(scene & " pixels " & percent(share), err): ok = false
     if args.len == 1:
       if not compareTraces(fixtures, outDir, @[], known): ok = false
   if not ok: quit 1

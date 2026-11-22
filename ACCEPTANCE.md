@@ -26,7 +26,7 @@ the reference scenes.
 | `test_animations.py` | TestAnimation: test_start_animation, test_animation_duration_0, test_cancel_all, test_cancel_all_2, test_stop_animation, test_stop_all, test_stop_all_2, test_duration, test_transition, test_animated_properties, test_animated_instruction | `tanimation.nim` | The `sleep` helper ticks the real Clock, as in Kivy. test_animated_instruction animates a Translate's `x`, because Scale is out of scope. |
 | `test_screen.py` | test_switch_to, test_switching_does_not_affect_a_list_of_screens | `tscreenmanager.nim` | Only with NoTransition and FadeTransition. |
 | `test_uix_modal.py` | test_modal_app | `tmodalview.nim` | Adapted: the root `ModalButton(Button)` becomes a widget with a ButtonBehavior. Touches are posted to the EventLoop as UnitKivyApp does: down, moves, up. |
-| `test_graphics.py` | test_line_rounded_rectangle | `tvertex_instructions.nim` | The asserts on the normalised `rounded_rectangle` radii (clamping, minimum 1). The renders are covered by `graphics_line`. |
+| `test_graphics.py` | test_line_rounded_rectangle, test_smoothline_rounded_rectangle; SmoothVertexInstructionTest: test_antialiasing_line, test_smoothrectangle, test_smoothroundedrectangle, test_smoothellipse, test_smoothtriangle, test_smoothquad | `tvertex_instructions.nim` | The asserts on the normalised `rounded_rectangle` radii (clamping, minimum 1) and on the `antialiasing_line_points` of each smooth shape; Kivy's `r(wid)` is a direct `build`. The renders are covered by `graphics_line` and `graphics_smooth`. Adapted: test_antialiasing_line's TypeError (a `stencil_mask` that is not an Instruction) is a compile error here, and its gradient is checked as the texture's size and the bytes it is made of (Kivy reads them back from GL). |
 | `test_app.py` | test_basic_app, test_graphics_app | `tlabel.nim` (test_basic_app), `tapp.nim` | test_basic_app checks `root.text`. test_graphics_app reads two pixels of the rendered window. |
 | `test_fonts.py` | test_unicode_name | `ttext.nim` | Adapted: `data/fonts/DejaVuSans.ttf` is copied to a temporary file named `कीवी.ttf` (no zip). |
 | `test_audio.py` | test_length_simple, test_length_playing, test_length_stopped | `taudio.nim` | Adapted: `tests/assets/tone.wav` (1.402 s, the length of `sample1.ogg`), because only WAV is supported (Gaps). Kivy reports 1.40200 s for this file. |
@@ -44,14 +44,15 @@ the reference scenes.
 | test_widget: test_export_to_png | export_to_png is out (and skipped in Kivy) |
 | test_app: test_start_raw_app, test_start_app_with_kv, test_user_data_dir, test_directory, test_name, test_button_app, test_drag_app, test_text_app, test_leak_app_* | kv, user_data_dir, ToggleButton, Scatter and TextInput are out. test_leak_app_* needs weak references. |
 | test_window_base, test_window_info, test_mouse_hover_event, test_mouse_multitouchsim, test_motion_event | to_normalized_pos, opacity, window_info, hover, multitouch simulation and MotionEvent internals are out |
-| test_graphics (all but test_line_rounded_rectangle) | BoxShadow, Point, smooth instructions, Fbo, Scale (test_enlarged_line), transformations and threads are out. test_circle and test_ellipse only render; `graphics_basic` covers them. |
+| test_graphics (all but the ones above) | BoxShadow, Point, Fbo, Scale (test_enlarged_line), transformations and threads are out. test_circle and test_ellipse only render; `graphics_basic` covers them. |
 | test_image, test_imageloader | keep_data, BytesIO saving, and per-provider loader suites (SDL2, PIL, ...) are out. Loading is compared in the `image_*` and `graphics_texture` scenes. |
 | test_utils (other tests), test_config, test_lang*, test_uix_* of other widgets, test_issues, and the rest | out of scope |
 
 ## Reference scenes (`archive/reference/scenes.py`)
 
 Each scene builds a widget tree with the in-scope API in an 800 x 600 window
-(clearcolor white, `multisamples = 0`). It saved `<scene>.png`
+(clearcolor white, `multisamples = 0`; graphics_smooth is made the same way
+by `archive/reference/smooth.py`). It saved `<scene>.png`
 with `Window.screenshot` (Kivy numbers the file, and the script renames it),
 and `<scene>.txt` with every widget's pos, size, `texture_size` and
 `norm_image_size`, now in `tests/fixtures/scenes/`. The test images in
@@ -60,7 +61,8 @@ and `<scene>.txt` with every widget's pos, size, `texture_size` and
 | Scene | What it shows |
 |---|---|
 | graphics_basic | Rectangle, alpha blending, RoundedRectangle (one radius, and 4 mixed corners), Ellipse (full, angle range, 6 segments), Triangle, a 1 px rectangle, fractional geometry |
-| graphics_basic_msaa | the same scene with Kivy's default MSAA 2, to measure the MSAA GAP |
+| graphics_basic_msaa | the same scene with Kivy's default MSAA 2; nimkivy draws it with `multisamples = 2` too (the smooth edges of `msaaEdge`, PORTING.md, Design differences) |
+| graphics_smooth | SmoothRoundedRectangle, SmoothEllipse (full, slice, 7 segments), SmoothRectangle at fractional geometry, SmoothTriangle, SmoothQuad, half-alpha smooth shapes over a dark rectangle (Kivy's stencil), SmoothLine open, closed, circle, arc, rectangle, rounded rectangles, half alpha, an overdraw width of 2.5 (`archive/reference/smooth.py`) |
 | graphics_line | 1 px open and closed polylines, the three caps, the four joints, circle (full and arcs, segments), rectangle, rounded_rectangle, a width of 1.5 |
 | graphics_texture | `source` on Rectangle, Ellipse and RoundedRectangle, PNG with alpha, JPEG, colour tint, half alpha, an upscaled small image |
 | canvas_order | before, canvas, child canvas and after; nested opacity (0.5 × 0.5); `canvas.clear`; `add_widget(index=2)` |

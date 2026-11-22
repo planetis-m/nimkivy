@@ -95,9 +95,14 @@ proc parent*(i: Instruction): nil InstructionGroup {.inline.} =
   ## The group `i` is in, or nil.
   i.parent
 
-proc insertAt[T](s: var seq[T]; index: int; x: T) =
-  # Inserts at Kivy's list index: a negative index counts from the end, and
-  # an index out of range is clamped.
+proc setParent*(i: Instruction; parent: nil InstructionGroup) {.inline.} =
+  ## Sets the group `i` is in, for an `radd`, `rinsert` or `rremove` that
+  ## adds or removes several instructions (Kivy's `set_parent`).
+  i.parent = parent
+
+proc insertAt*[T](s: var seq[T]; index: int; x: T) =
+  ## Inserts at Kivy's list index: a negative index counts from the end, and
+  ## an index out of range is clamped.
   var i = index
   if i < 0:
     i = max(0, s.len + i)
@@ -105,9 +110,9 @@ proc insertAt[T](s: var seq[T]; index: int; x: T) =
     i = s.len
   s.insert([x], i)
 
-proc removeFirst(s: var seq[Instruction]; x: Instruction) =
-  # Removes the first occurrence of the instruction (by identity), as Kivy's
-  # list.remove.
+proc removeFirst*(s: var seq[Instruction]; x: Instruction) =
+  ## Removes the first occurrence of the instruction (by identity), as Kivy's
+  ## list.remove.
   let i = s.find(x)
   if i >= 0:
     s.delete(i)

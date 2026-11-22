@@ -71,7 +71,7 @@ for mode in debug release; do
   # renderer through the offscreen driver's EGL: the software renderer
   # rasterizes long thin triangles up to a pixel off GL's and refuses Kivy's
   # blend mode (PORTING.md, Gaps).
-  scenes="graphics_basic graphics_basic_msaa graphics_line graphics_texture canvas_order
+  scenes="graphics_basic graphics_basic_msaa graphics_smooth graphics_line graphics_texture canvas_order
     boxlayout_tests boxlayout_hints floatlayout_hints anchorlayout_tests
     label_align image_fit image_misc label_wrap label_default
     screen_relative fade_half modal_custom"

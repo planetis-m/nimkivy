@@ -10,8 +10,10 @@
 ## draws it, then the SDL texture that the renderer made from it. Render
 ## targets (FadeTransition) are SDL textures from the start. Filtering is
 ## linear, Kivy's default. Out of scope (SCOPE.md): regions, mipmaps, wrap
-## modes, `blit_buffer` and reload observers.
+## modes, `blit_buffer` (except at creation, `newTexture(width, height, rgba)`)
+## and reload observers.
 
+import std/[assertions, syncio]
 import ../sdl3/sdl
 
 type
@@ -57,6 +59,21 @@ proc newTexture*(surface: ptr SDL_Surface): Texture =
   ## row of the surface is `t = 0`; image and text loaders flip it
   ## vertically, as Kivy's do.
   result = newTexture(int(surface.w), int(surface.h), surface, nil, nil)
+
+proc newTexture*(width, height: int; rgba: openArray[uint8]): Texture =
+  ## A texture of `width` x `height` pixels made of `rgba`, four bytes (R, G,
+  ## B, A) per pixel, row after row: Kivy's `Texture.create(size,
+  ## colorfmt="rgba")` followed by `blit_buffer`. The program stops if SDL
+  ## cannot make the surface (out of memory).
+  assert rgba.len == width * height * 4
+  let s = SDL_CreateSurface(cint(width), cint(height), SDL_PIXELFORMAT_RGBA32)
+  if s == nil:
+    quit "cannot make a surface of " & $width & " x " & $height & " pixels"
+  let dst = cast[ptr UncheckedArray[uint8]](s.pixels)
+  for row in 0 ..< height:
+    for k in 0 ..< width * 4:
+      dst[row * int(s.pitch) + k] = rgba[row * width * 4 + k]
+  result = newTexture(s)
 
 proc newTexture*(renderer: SDL_Renderer; handle: SDL_Texture): Texture =
   ## A texture for an SDL texture that `renderer` made (a render target),

@@ -23,7 +23,8 @@ type
     resizable*: bool             ## the user may resize the window
     fullscreen*: bool            ## fullscreen at start (Kivy's `1` and `auto`)
     maxfps*: int                 ## frames per second the event loop paces to; 0 does not wait
-    multisamples*: int           ## not used: SDL_Renderer has no MSAA (PORTING.md, Gaps)
+    multisamples*: int           ## above 0, shapes get smooth edges for that many samples
+                                 ## (graphics/vertex_instructions, msaaEdge)
     minStateTime*: float         ## ButtonBehavior's shortest pressed state, in seconds
 
   InputSection* = object

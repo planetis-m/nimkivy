@@ -107,9 +107,16 @@ nimkivy spells them in camelCase.
   flipping, linear filtering, and textures built from images and text.
 - **Coordinates:** Kivy's origin is at the bottom left with y up. The renderer
   flips to SDL's y-down coordinates in one place.
+- **Smooth instructions (after phase 2, P2.12):** SmoothLine,
+  SmoothRectangle, SmoothRoundedRectangle, SmoothEllipse, SmoothTriangle,
+  SmoothQuad (and Quad, which it needs), with Kivy's internal
+  AntiAliasingLine. With `multisamples > 0` (Kivy's default 2) the
+  Rectangle, Ellipse, RoundedRectangle, Triangle and wide Line get the same
+  kind of edges (PORTING.md, Design differences), since SDL_Renderer has no
+  MSAA.
 - **Out:** OpenGL, Shader, RenderContext, Fbo (except the private
-  render-to-texture inside FadeTransition), Mesh, Point, Quad, Bezier,
-  SmoothLine and the `smooth_*` instructions, `Line` dash, bezier and ellipse
+  render-to-texture inside FadeTransition), Mesh, Point, Bezier,
+  `Line` dash, bezier and ellipse
   modes, Scale, Rotate, MatrixInstruction, Callback, ClearColor, BoxShadow,
   SVG, atlas, mipmaps, and instruction groups beyond Canvas.
 
