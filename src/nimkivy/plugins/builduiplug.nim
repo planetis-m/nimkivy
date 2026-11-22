@@ -18,6 +18,11 @@
 ##      is a property, `h.bindP(proc (v: typeof(h.p)) = w.prop = expr)`;
 ##    - a handler: `w.bindEvent(proc (params): bool = result = false;
 ##      stmts)`, or `w.bindProp(proc (v: T) = stmts)` for a property.
+## 4. an `if` item becomes an `if` statement at its place among the
+##    widget's children (or canvas instructions); each arm is a small
+##    expansion of its own: its `let`s, its `prop = value` items, then its
+##    children, instructions, bindings and handlers. A `place expr` widget
+##    is `let name = expr` in step 1 and is otherwise a widget like any.
 ##
 ## `self` in an item is the widget the item belongs to (for a canvas
 ## instruction, the widget whose canvas it is). The checks a plugin cannot
@@ -51,16 +56,27 @@ type
   Layer = enum
     widget, canvasMain, canvasBefore, canvasAfter
 
+  NodeKind = enum
+    nkWidget, nkInstruction,
+    nkIf,                      # an `if` item: its arms
+    nkArm                      # one arm of an `if`: items of its widget
+
   Node = object
-    typeName: string
+    kind: NodeKind
+    typeName: string           # for messages (an arm's: its widget's)
     layer: Layer               # `widget`, or the canvas an instruction is on
     args: seq[NifCursor]       # positional constructor arguments
+    placed: NifCursor          # `place expr`: the expression; else empty
     handle: NifCursor          # one token: the `as` name or a generated symbol
     def: NifCursor             # the same as a definition, for the `let`
-    owner: int                 # an instruction's widget; a widget's own index
+    owner: int                 # the widget: an instruction's, an `if`'s, an
+                               # arm's; a widget's own index
+    scope: int                 # the arm whose block declares it, or -1
     items: seq[Item]
-    children: seq[int]         # child widgets, in order
-    instructions: seq[int]     # canvas instructions, in order
+    children: seq[int]         # child widgets and `if`s, in order
+    instructions: seq[int]     # canvas instructions and `if`s, in order
+    conds: seq[NifCursor]      # nkIf: the conditions (none for `else`)
+    arms: seq[int]             # nkIf: the arms, in order
     info: LineInfo
 
   Tree = object
@@ -69,6 +85,7 @@ type
 
 const
   letCode = "let NameV = newTYPE(ARGS)\n"
+  placeCode = "let NameV = ExprV\n"
   setCode = """
 when compiles(HandleV.PROP):
   HandleV.PROP = ValueV
@@ -102,12 +119,19 @@ proc isCapitalIdent(n: NifCursor): bool =
 proc isTag(n: NifCursor; tag: string): bool =
   n.kind == TagLit and n.tagText == tag
 
+proc isPlace(n: NifCursor): bool =
+  # `place expr [as name] [: ...]`.
+  result = (isTag(n, "cmd") or isTag(n, "call")) and firstChild(n).kind == Ident and
+    firstChild(n).identText == "place"
+
 proc isWidget(n: NifCursor): bool =
-  # `Type`, `Type(...)`, `Type(...): ...` or any of them `as name`.
+  # `Type`, `Type(...)`, `Type(...): ...` or any of them `as name`, or
+  # `place expr`.
   if isCapitalIdent(n): return true
   if n.kind != TagLit: return false
   if n.tagText == "infix":
     return firstChild(n).identText == "as"
+  if isPlace(n): return true
   # A type starts with a capital letter (`on press:` is a `cmd` too).
   result = n.tagText in ["call", "cmd"] and isCapitalIdent(firstChild(n))
 
@@ -191,7 +215,9 @@ proc readEvent(t: var Tree; spec: NifCursor; item: var Item) =
   item.name = names[0]
   for i in countdown(names.len - 1, 1): item.path.add names[i]
 
-proc readNode(t: var Tree; n: NifCursor; layer: Layer; owner: int): int
+proc readNode(t: var Tree; n: NifCursor; layer: Layer; owner, scope: int): int
+proc readItems(t: var Tree; body: NifCursor; index: int)
+proc readInstructions(t: var Tree; body: NifCursor; layer: Layer; owner, into: int)
 
 proc readArg(t: var Tree; c: NifCursor; node: var Node) =
   # One argument of `Type(...)`: `prop = value`, `prop <- expr` or a
@@ -218,10 +244,53 @@ proc readArg(t: var Tree; c: NifCursor; node: var Node) =
   else:
     node.args.add c
 
+proc innerScope(t: Tree; index: int): int =
+  # The scope of what a widget's or an arm's block declares.
+  result = if t.nodes[index].kind == nkArm: index else: t.nodes[index].scope
+
+proc readIf(t: var Tree; n: NifCursor; layer: Layer; owner, scope: int): int =
+  ## Reads an `if` item, in a widget's block (`layer` widget) or in a
+  ## canvas; returns its index.
+  result = t.nodes.len
+  t.nodes.add Node(kind: nkIf, typeName: t.nodes[owner].typeName, layer: layer,
+    handle: t.nodes[owner].handle, owner: owner, scope: scope, info: n.info)
+  for branch in asIfStmt(n).branches:
+    if t.err.isEmpty:
+      let arm = t.nodes.len
+      t.nodes.add Node(kind: nkArm, typeName: t.nodes[owner].typeName, layer: layer,
+        handle: t.nodes[owner].handle, owner: owner, scope: scope, info: branch.body.info)
+      t.nodes[result].arms.add arm
+      if not branch.isElse: t.nodes[result].conds.add branch.cond
+      if branch.body.stmtKind != StmtsS:
+        t.fail("expected a block after `:`", branch.body)
+      elif layer == widget:
+        readItems(t, branch.body, arm)
+      else:
+        readInstructions(t, branch.body, layer, owner, arm)
+
+proc readInstructions(t: var Tree; body: NifCursor; layer: Layer; owner, into: int) =
+  # The block of `canvas:` or of an `if` in it: instructions and `if`s, added
+  # to `into`'s instructions.
+  let scope = innerScope(t, into)
+  var i = firstChild(body)
+  while i.hasMore and t.err.isEmpty:
+    if isTag(i, "if"):
+      let k = readIf(t, i, layer, owner, scope)
+      t.nodes[into].instructions.add k
+    elif isWidget(i):
+      let k = readNode(t, i, layer, owner, scope)
+      if k >= 0: t.nodes[into].instructions.add k
+    else:
+      t.fail("expected a canvas instruction: `Type(...) [as name]`", i)
+    skip i
+
 proc readItems(t: var Tree; body: NifCursor; index: int) =
-  # The block of a widget (`layer` widget) or of `canvas:` (an instruction's
-  # items are only `prop = value` and `prop <- expr`).
-  let isInstruction = t.nodes[index].layer != widget
+  # The block of a widget, of an arm of an `if` in it (whose items are the
+  # widget's) or of a canvas instruction (`prop = value` and `prop <- expr`
+  # only).
+  let isInstruction = t.nodes[index].kind == nkInstruction
+  let owner = t.nodes[index].owner
+  let scope = innerScope(t, index)
   var n = firstChild(body)
   while n.hasMore and t.err.isEmpty:
     if n.stmtKind == AsgnS:
@@ -258,6 +327,9 @@ proc readItems(t: var Tree; body: NifCursor; index: int) =
         item.value = c
         t.nodes[index].items.add item
     elif isCanvas(n):
+      if t.nodes[index].kind == nkArm:
+        t.fail("`canvas:` cannot be inside `if`; put the `if` inside `canvas:`", n)
+        return
       var c = firstChild(n)
       var layer = canvasMain
       if c.kind != Ident:
@@ -271,26 +343,50 @@ proc readItems(t: var Tree; body: NifCursor; index: int) =
       if not c.hasMore or c.stmtKind != StmtsS:
         t.fail("`canvas:` expects a block of instructions", n)
       else:
-        var i = firstChild(c)
-        while i.hasMore and t.err.isEmpty:
-          if isWidget(i):
-            let k = readNode(t, i, layer, index)
-            if k >= 0: t.nodes[index].instructions.add k
-          else:
-            t.fail("expected a canvas instruction: `Type(...) [as name]`", i)
-          skip i
+        readInstructions(t, c, layer, owner, index)
+    elif isTag(n, "if"):
+      let k = readIf(t, n, widget, owner, scope)
+      t.nodes[index].children.add k
     elif isWidget(n):
-      let k = readNode(t, n, widget, index)
+      let k = readNode(t, n, widget, owner, scope)
       if k >= 0: t.nodes[index].children.add k
     else:
-      t.fail("expected a widget, `prop = value`, `prop <- expr`, " &
-        "`on event: ...` or `canvas: ...`", n)
+      t.fail("expected a widget, `place widget`, `prop = value`, `prop <- expr`, " &
+        "`on event: ...`, `canvas: ...` or `if`", n)
     skip n
 
-proc readNode(t: var Tree; n: NifCursor; layer: Layer; owner: int): int =
+proc readPlace(t: var Tree; call: NifCursor; node: var Node; name, body: var NifCursor) =
+  # `place expr [as name] [: ...]`: `expr` is an existing widget (or, in a
+  # canvas, an instruction).
+  var c = firstChild(call)
+  skip c                       # `place`
+  if not c.hasMore:
+    t.fail("`place` expects a widget: `place expr [as name]`", call)
+    return
+  var e = c
+  if isTag(c, "infix") and firstChild(c).identText == "as":
+    var d = firstChild(c)
+    skip d
+    e = d
+    skip d
+    if d.kind != Ident:
+      t.fail("`as` expects a name", d)
+      return
+    name = d
+  node.placed = e
+  node.typeName = if e.kind == Ident: "`" & e.identText & "`" else: "the placed widget"
+  skip c
+  if c.hasMore and c.stmtKind == StmtsS:
+    body = c
+    skip c
+  if c.hasMore:
+    t.fail("`place` takes one widget: `place expr [as name]`", c)
+
+proc readNode(t: var Tree; n: NifCursor; layer: Layer; owner, scope: int): int =
   ## Reads one widget or canvas instruction and its block; returns its index.
   var call = n
-  var node = Node(layer: layer, info: n.info)
+  var node = Node(kind: if layer == widget: nkWidget else: nkInstruction, layer: layer,
+    scope: scope, info: n.info)
   var body = NifCursor()
   var name = NifCursor()
   if isTag(n, "infix"):
@@ -306,11 +402,11 @@ proc readNode(t: var Tree; n: NifCursor; layer: Layer; owner: int): int =
     if c.hasMore: body = c
   if call.kind == Ident:
     node.typeName = call.identText
-  elif isTag(call, "call") or isTag(call, "cmd"):
+  elif isPlace(call) and not isTag(n, "infix"):
+    readPlace(t, call, node, name, body)
+    if not t.err.isEmpty: return -1
+  elif (isTag(call, "call") or isTag(call, "cmd")) and isCapitalIdent(firstChild(call)):
     var c = firstChild(call)
-    if not isCapitalIdent(c):
-      t.fail("expected `Type(...)`", call)
-      return -1
     node.typeName = c.identText
     skip c
     while c.hasMore and t.err.isEmpty:
@@ -375,8 +471,17 @@ proc deps(n: NifCursor; acc: var seq[(NifCursor, string)]) =
   for c in n.children:
     deps(c, acc)
 
-proc emitLets(dest: var NifBuilder; t: Tree) =
+proc declared(node: Node; scope: int): bool =
+  # A widget or an instruction that the block of `scope` declares.
+  node.kind in {nkWidget, nkInstruction} and node.scope == scope
+
+proc emitLets(dest: var NifBuilder; t: Tree; scope: int) =
   for node in t.nodes:
+    if not node.declared(scope): continue
+    if node.placed.hasMore:
+      let s = Subst(trees: @[("NameV", node.def), ("ExprV", node.placed)])
+      dest.emitStmts(placeCode, s, node.info)
+      continue
     var args = ""
     var s = Subst(trees: @[("NameV", node.def)])
     for i in 0 ..< node.args.len:
@@ -386,8 +491,12 @@ proc emitLets(dest: var NifBuilder; t: Tree) =
     let code = letCode.replace("TYPE", node.typeName).replace("ARGS", args)
     dest.emitStmts(code, s, node.info)
 
-proc emitSets(dest: var NifBuilder; t: Tree) =
-  for node in t.nodes:
+proc emitSets(dest: var NifBuilder; t: Tree; scope: int) =
+  # The `prop = value` items of what `scope` declares, and of the arm
+  # `scope` itself, in tree order.
+  for i in 0 ..< t.nodes.len:
+    let node = t.nodes[i]
+    if not (node.declared(scope) or i == scope): continue
     for item in node.items:
       if item.kind == ikSet:
         let code = setCode.replace("PROP", item.name).replace("TYPE", node.typeName)
@@ -446,23 +555,56 @@ proc emitHandler(dest: var NifBuilder; t: Tree; node: Node; item: Item) =
     s.trees.add ("ArgT" & $i, item.paramTypes[i])
   dest.emitStmts(code, s, item.info)
 
+proc emitNode(dest: var NifBuilder; t: Tree; i: int)
+
+proc emitIf(dest: var NifBuilder; t: Tree; k: int) =
+  # `if Cond0V: Body0V elif ...: ... else: ...`, each body an arm built
+  # where it stands: what it declares, its sets, then the rest of the arm.
+  let node = t.nodes[k]
+  var code = ""
+  var s = Subst(trees: @[])
+  for j in 0 ..< node.arms.len:
+    let a = node.arms[j]
+    if j < node.conds.len:
+      code.add (if j == 0: "if " else: "elif ") & "Cond" & $j & "V:\n"
+      s.trees.add ("Cond" & $j & "V", substituted(node.conds[j], t.selfSubst(node)))
+    else:
+      code.add "else:\n"
+    code.add "  Body" & $j & "V\n"
+    var b = createTree()
+    b.withTree StmtsS, t.nodes[a].info:
+      b.emitLets(t, a)
+      b.emitSets(t, a)
+      b.emitNode(t, a)
+    s.trees.add ("Body" & $j & "V", snapshot(b))
+  dest.emitStmts(code, s, node.info)
+
 proc emitNode(dest: var NifBuilder; t: Tree; i: int) =
-  # Completes widget `i`: its canvas instructions, its children (each
-  # complete before it is added), then the bindings of the widget and its
-  # instructions and the widget's handlers. So a child's handlers see it
-  # being added (a Screen's `enter`), and a widget's own handlers do not see
-  # its children being added (a ScreenManager's `current`).
+  # Completes widget `i` (or the rest of an arm of an `if` in it): its
+  # canvas instructions, its children (each complete before it is added),
+  # then the bindings of the widget and its instructions and the widget's
+  # handlers. So a child's handlers see it being added (a Screen's `enter`),
+  # and a widget's own handlers do not see its children being added (a
+  # ScreenManager's `current`). An `if` is built where it stands among the
+  # instructions or the children.
   let node = t.nodes[i]
+  let owner = t.nodes[node.owner]
   for k in node.instructions:
+    if t.nodes[k].kind == nkIf:
+      dest.emitIf(t, k)
+      continue
     let canvas = case t.nodes[k].layer
       of canvasBefore: "canvas.before"
       of canvasAfter: "canvas.after"
       else: "canvas"
-    let s = Subst(trees: @[("OwnerV", node.handle), ("HandleV", t.nodes[k].handle)])
+    let s = Subst(trees: @[("OwnerV", owner.handle), ("HandleV", t.nodes[k].handle)])
     dest.emitStmts(canvasCode.replace("CANVAS", canvas), s, t.nodes[k].info)
   for c in node.children:
+    if t.nodes[c].kind == nkIf:
+      dest.emitIf(t, c)
+      continue
     emitNode(dest, t, c)
-    let s = Subst(trees: @[("OwnerV", node.handle), ("HandleV", t.nodes[c].handle)])
+    let s = Subst(trees: @[("OwnerV", owner.handle), ("HandleV", t.nodes[c].handle)])
     dest.emitStmts(addCode, s, t.nodes[c].info)
   for k in node.instructions:
     for item in t.nodes[k].items:
@@ -480,7 +622,7 @@ proc transform(root: NifCursor): NifBuilder =
   if not isWidget(b):
     return errorTree("buildUi expects a widget: `Type(...) [as name]: ...`", b)
   var t = Tree(nodes: @[], err: createTree())
-  discard readNode(t, b, widget, 0)
+  discard readNode(t, b, widget, 0, -1)
   if not t.err.isEmpty: return t.err
   skip b
   if b.hasMore:
@@ -495,8 +637,8 @@ proc transform(root: NifCursor): NifBuilder =
             "`object.property`; a value set once is `" & item.name & " = ...`", item.value)
   result = createTree()
   result.withTree StmtsS, root.info:
-    result.emitLets(t)
-    result.emitSets(t)
+    result.emitLets(t, -1)
+    result.emitSets(t, -1)
     result.emitNode(t, 0)
 
 saveTree transform(loadPluginInput())

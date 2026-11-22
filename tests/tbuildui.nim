@@ -6,8 +6,10 @@
 # and without parameters, one that stops the dispatch, one of an owned
 # ButtonBehavior and two of a property; generated callback parameters do
 # not hide the caller's names; and the update model: the tree is built once
-# and the bindings keep it current. The rejected programs are
-# tests/bad/bad_ui_*.nim (run_tests.sh).
+# and the bindings keep it current; `if` items (children, the widget's own
+# items, a canvas instruction, nested, each condition evaluated once) and
+# `place` (existing widgets and an instruction, with and without a block).
+# The rejected programs are tests/bad/bad_ui_*.nim (run_tests.sh).
 
 import std/[assertions, opt]
 import nimkivy/[props, buildui]
@@ -132,4 +134,117 @@ proc main() =
   go.height = 40
   assert seen == @["!"]
 
+proc conditional(home: bool; lang: int; checks: var int): BoxLayout =
+  # `if` items, evaluated once when the tree is built: children, the
+  # widget's own items, a canvas instruction, a nested `if`, `self` in a
+  # condition and a name declared in an arm used in the same arm.
+  proc counted(v: bool; checks: var int): bool =
+    inc checks
+    result = v
+  let topic = newTopic("Figs")
+  var pressed = 0
+  buildUi:
+    BoxLayout(spacing = 2) as box:
+      canvas.before:
+        Color(rgba = [1.0, 0, 0, 1]) as first
+        if home:
+          Color(rgba <- [self.x, 0, 0, 1]) as middle
+        Color(rgba = [0.0, 0, 1, 1]) as last
+      if counted(home, checks):
+        Knob() as homeButton:
+          on press:
+            inc pressed
+            homeButton.opacity = 0.5
+        spacing = 8
+        on spacing:
+          inc pressed
+      Label("logo") as logo
+      if lang == 0:
+        Label("en")
+      elif lang == 1:
+        Label("el"):
+          text <- topic.title & "!"
+        if self.spacing == 2:
+          padding = [1.0, 1, 1, 1]
+      else:
+        Widget()
+        Widget()
+  # The instructions, in order: the conditional one between the others.
+  assert box.canvas.before.indexof(first) == 0
+  assert box.canvas.before.indexof(last) == (if home: 2 else: 1)
+  # The home button first, before the logo.
+  assert (if home: box.children[^1] of Knob else: box.children[^1] == WidgetBase(logo))
+  if home:
+    let homeButton = Knob(box.children[^1])
+    assert box.children[^2] == WidgetBase(logo)
+    assert box.spacing == 8
+    discard homeButton.dispatchPress()
+    assert pressed == 1 and homeButton.opacity == 0.5
+    box.x = 0.25                 # the conditional instruction's binding
+    let middle = Color(box.canvas.before.children[1])
+    assert middle.rgba == [0.25, 0.0, 0.0, 1.0]
+  else:
+    assert box.spacing == 2
+  # The language's item: one Label, a bound one, or two Widgets.
+  let after = box.children.len - (if home: 2 else: 1)
+  case lang
+  of 0:
+    assert after == 1 and Label(box.children[0]).text == "en"
+    assert box.padding == [0.0, 0, 0, 0]
+  of 1:
+    assert after == 1 and Label(box.children[0]).text == "Figs!"
+    topic.title = "Crete"
+    assert Label(box.children[0]).text == "Crete!"
+    assert box.padding == (if home: [0.0, 0, 0, 0] else: [1.0, 1, 1, 1])
+  else:
+    assert after == 2
+  result = box
+
+proc newHeaderBox(): BoxLayout =
+  # A widget built separately, to be placed in another tree.
+  buildUi:
+    BoxLayout as h:
+      Label("header")
+  result = h
+
+proc placed() =
+  # `place`: existing widgets (and an instruction) at their place in a tree,
+  # with or without `as name` and items of their own.
+  let header = newHeaderBox()
+  let paint = newColor(0.0, 1.0, 0.0)
+  let slider = newSlider()
+  var pressed = 0
+  buildUi:
+    BoxLayout(orientation = orientationVertical) as root:
+      canvas:
+        place paint
+      Label("top")
+      place header
+      place newKnob() as knob:
+        opacity <- slider.value
+        on press:
+          inc pressed
+        Label("in the knob")
+      if pressed == 0:
+        place newSlider() as inner:
+          value = 0.5
+  assert root.children.len == 4
+  assert root.children[2] == WidgetBase(header) and header.parent == WidgetBase(root)
+  assert root.children[1] == WidgetBase(knob) and knob.children.len == 1
+  assert root.children[0] of Slider and Slider(root.children[0]).value == 0.5
+  assert root.canvas.indexof(paint) >= 0
+  assert knob.opacity == 0.0
+  slider.value = 0.25
+  assert knob.opacity == 0.25
+  discard knob.dispatchPress()
+  assert pressed == 1
+
 main()
+for home in [false, true]:
+  for lang in 0 .. 2:
+    var checks = 0
+    let box = conditional(home, lang, checks)
+    assert checks == 1           # each condition evaluated once
+    box.spacing = 3              # nothing is rebuilt
+    assert checks == 1
+placed()

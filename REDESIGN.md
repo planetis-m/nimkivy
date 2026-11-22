@@ -225,13 +225,16 @@ buildUi:
 
 ```
 widget = Type[(arg, ..., prop = value | prop <- expr, ...)] [as name] [: item+]
+       | place expr [as name] [: item+]       an existing widget
 item   = prop = value            set once
        | prop <- expr            set now, and again when a property expr reads changes
        | on [part.]name[(params)]: stmts     an event, or else a property
-       | canvas[.before|.after]: instruction+
+       | canvas[.before|.after]: (instruction | if)+
        | widget                  child, added in order
+       | if cond: item+ [elif cond: item+]* [else: item+]   chosen once, at build
 instruction = Type[(arg, ..., prop = value | prop <- expr)] [as name]
               [: (prop = value | prop <- expr)+]
+            | place expr [as name] [: (prop = value | prop <- expr)+]
 ```
 
 `Type(args)` calls `newType(args)` with the positional arguments, so a
@@ -260,6 +263,38 @@ screen). Property, event and binding checks the plugin cannot make without
 types are generated as `when compiles(...)` with an `{.error.}` at the
 item: a wrong name, handler signature or binding is a compile error that
 says what is wrong at the line it is on (`tests/bad/bad_ui_*.nim`).
+
+Added for the kiosk (after phase 2):
+
+- `if cond:` (`elif`, `else`) in a widget's block or a canvas chooses items
+  when the tree is built. Its condition is evaluated once, when the
+  expansion reaches it; nothing changes when it would later (kv has no
+  conditional either; a tree that must change is rebuilt or changed in
+  code). The `if` is built where it stands among the widget's children (or
+  instructions): each arm is a small expansion of its own (its `let`s and
+  `prop = value` items, then its children or instructions, bindings and
+  handlers), so a name declared in an arm is visible in that arm only. An
+  arm in a widget's block holds the widget's items, children and `if`s,
+  not `canvas:` (put the `if` inside the canvas; `tests/bad/bad_ui_if.nim`).
+- `place expr [as name] [: item+]` puts an existing widget (a header built
+  by another proc) at its place among the children, as a child written
+  there: `let name = expr` with the constructors, then its items and
+  `addWidget` as for any widget. In a canvas it adds an existing
+  instruction. kv has no direct equivalent.
+
+```nim
+buildUi:
+  BoxLayout as header:
+    if showHome:
+      RoundButton(ikHome, 58):
+        on button.release:
+          onHome()
+    Image(Logo, fitMode = fitContain)
+    place voiceButton
+    if langs > 1:
+      place flag as f:
+        posHint = {phCenterY: 0.5}
+```
 
 ## Standalone: tests without Python (step 0, done)
 

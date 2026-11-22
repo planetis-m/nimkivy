@@ -21,13 +21,16 @@
 ##
 ## .. code-block::
 ##   widget = Type[(arg, ..., prop = value | prop <- expr, ...)] [as name] [: item+]
+##          | place expr [as name] [: item+]   an existing widget
 ##   item   = prop = value              set once
 ##          | prop <- expr              set now, and again when expr's properties change
 ##          | on [part.]name[(params)]: stmts
-##          | canvas[.before|.after]: instruction+
+##          | canvas[.before|.after]: (instruction | if)+
 ##          | widget                    a child, added in order
+##          | if cond: item+ [elif cond: item+]* [else: item+]   no canvas inside
 ##   instruction = Type[(arg, ..., prop = value | prop <- expr)] [as name]
 ##                 [: (prop = value | prop <- expr)+]
+##               | place expr [as name] [: (prop = value | prop <- expr)+]
 ##
 ## - `Type(args)` calls `newType(args)`: a widget's or an instruction's
 ##   constructor, or any proc of that name that returns one (a component,
@@ -51,6 +54,20 @@
 ## - `canvas:`, `canvas.before:` and `canvas.after:` add instructions to the
 ##   widget's canvas; in an instruction's items `self` is the widget.
 ## - `self` in an item is the widget the item belongs to.
+## - `place expr` puts a widget made elsewhere (a separately built
+##   header, a widget a proc returns) at its place in the tree, as a child
+##   written there would be: `expr` is evaluated once with the constructors,
+##   `as name` names it, and its block may hold any item. In a canvas,
+##   `place expr` adds an existing instruction. kv has no direct equivalent
+##   (an app adds such a widget in Python after the rule is applied).
+## - `if cond:` (with `elif` and `else`) chooses items when the tree is
+##   built: its condition is evaluated once, when the expansion reaches the
+##   `if`, and nothing is added, removed or bound again when it would change
+##   later; kv has no conditional either. In a widget's block an arm holds
+##   the widget's items (properties, bindings, handlers), children and
+##   further `if`s, but no `canvas:` (put the `if` inside the canvas); in a
+##   canvas an arm holds instructions and `if`s. A name declared with `as`
+##   in an arm is visible in that arm only.
 ##
 ## The expansion, in the caller's scope: the constructors, then the
 ## `prop = value` items, in tree order; then each widget is completed from
@@ -59,7 +76,11 @@
 ## child's handlers see it being added to its parent (a Screen's `enter`
 ## when it becomes the current screen), and a widget's own handlers do not
 ## see its children being added (a ScreenManager's `current` changing to
-## the first screen). Nothing is rebuilt later.
+## the first screen). An `if` is built where it stands among the widget's
+## children (or instructions): the arm's widgets are made, its
+## `prop = value` items set, then its children completed and added, its
+## bindings and handlers bound, all inside the arm. Nothing is rebuilt
+## later.
 ##
 ## A wrong name or a wrong handler is a compile error at the item, for
 ## example `buildUi: \`txt\` is not a property of Label`,

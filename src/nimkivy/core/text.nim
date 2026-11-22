@@ -5,7 +5,8 @@
 ## subclasses `LabelBase` and implements the `getExtents`, `renderBegin`,
 ## `renderText` and `renderEnd` methods with SDL3_ttf. `register` gives a
 ## font name its regular, italic, bold and bold-italic files; `Roboto` is
-## registered from nimkivy's copy of Kivy's fonts.
+## registered from nimkivy's copy of Kivy's fonts in the data directory
+## (`resources`), on the first `register` or font lookup.
 ##
 ## Options are set on `options` after construction (`newLabelSDL3()` in the
 ## provider), and `refresh` renders. The texture is filled at once, where
@@ -44,12 +45,13 @@ type
     fonts: Table[string, array[4, string]]   # LabelBase._fonts
     fontsCache: Table[string, string]        # LabelBase._fonts_cache
     generation: int                          # bumped by every `register`
+    defaults: bool                           # Roboto is registered
 
   Texture1px = ref object
     texture: nil Texture
 
 let fontRegistry = FontRegistry(fonts: initTable[string, array[4, string]](),
-  fontsCache: initTable[string, string](), generation: 0)
+  fontsCache: initTable[string, string](), generation: 0, defaults: false)
 let texture1px = Texture1px(texture: nil)
 
 proc logError(msg: string) =
@@ -59,12 +61,15 @@ proc logError(msg: string) =
 
 # ---------------------------------------------------------------- fonts
 
+proc registerDefaults()
+
 proc register*(name, fnRegular: string; fnItalic = ""; fnBold = "";
     fnBoldItalic = "") =
   ## Registers a font name with the files of its styles, each searched with
   ## `resourceFind`. A missing style uses the regular file; it is not
   ## synthesised. A file that is not found leaves the name unregistered,
   ## with a log line. core/text/__init__.py LabelBase.register
+  registerDefaults()   # first, so that a later `register` wins
   var fonts: array[4, string] = ["", "", "", ""]
   var i = 0
   for fontType in [fnRegular, fnItalic, fnBold, fnBoldItalic]:
@@ -80,6 +85,19 @@ proc register*(name, fnRegular: string; fnItalic = ""; fnBold = "";
   fontRegistry.fonts[name] = fonts
   inc fontRegistry.generation
 
+proc registerDefaults() =
+  # kivy/core/text/__init__.py: get_system_fonts_dir adds the font
+  # directories to the resource paths, then the default font is registered;
+  # here on first use, so that `setDataDir` can come first. The files are
+  # named in the data directory, not as `data/fonts/...` in the resource
+  # paths, so a data directory of any name is found.
+  if fontRegistry.defaults: return
+  fontRegistry.defaults = true
+  let fonts = dataDir() / "fonts"
+  resourceAddPath(fonts)
+  register("Roboto", fonts / "Roboto-Regular.ttf", fonts / "Roboto-Italic.ttf",
+    fonts / "Roboto-Bold.ttf", fonts / "Roboto-BoldItalic.ttf")
+
 proc fontsGeneration*(): int {.inline.} =
   ## A number that changes whenever a font name is (re)registered, so a
   ## provider can drop what it measured with the old files.
@@ -90,6 +108,7 @@ proc resolveFontName*(l: LabelBase) =
   ## bold and italic options: a registered name, a cached name, a path, or a
   ## name in data/fonts (with `.ttf` added). A name that is not found
   ## leaves it "" and logs. core/text/__init__.py LabelBase.resolve_font_name
+  registerDefaults()
   let options = l.options
   var fontname = options.fontName
   if fontRegistry.fonts.hasKey(fontname):
@@ -104,7 +123,7 @@ proc resolveFontName*(l: LabelBase) =
       fontname = fontname & ".ttf"
       filename = resourceFind(fontname)
     if filename.len == 0:
-      filename = kivyDataDir / fontname
+      filename = dataDir() / fontname
       if not fileExists(filename):
         logError "Label: File '" & fontname & "' not found"
         options.fontNameR = ""
@@ -434,9 +453,3 @@ proc refresh*(l: LabelBase) =
     nt.flipVertical()
     l.texture = nt
   l.renderReal()
-
-# kivy/core/text/__init__.py: get_system_fonts_dir adds the font directories
-# to the resource paths, then the default font is registered.
-resourceAddPath(kivyDataDir / "fonts")
-register("Roboto", "data/fonts/Roboto-Regular.ttf", "data/fonts/Roboto-Italic.ttf",
-  "data/fonts/Roboto-Bold.ttf", "data/fonts/Roboto-BoldItalic.ttf")
