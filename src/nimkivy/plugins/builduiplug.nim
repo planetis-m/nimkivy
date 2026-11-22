@@ -35,21 +35,18 @@ const
     "preEnter", "enter", "preLeave", "leave",
     "preOpen", "open", "preDismiss", "dismiss"]
   StmtCalls = ["inc", "dec", "echo"]
-  Walked = ["if", "when", "case", "for", "while", "block", "try"]
-  Arms = ["elif", "else", "of", "except", "fin"]
+  Walked = {IfS, WhenS, CaseS, ForS, WhileS, BlockS, TryS}
+  Arms = {ElifU, ElseU, OfU, ExceptU, FinU}
 
 type
   Parent = object
     handle: NifCursor          # what a line is added to; empty at the top level
     group: string              # "" (addWidget), "canvas", "canvas.before", ...
 
-proc isTag(n: NifCursor; tags: openArray[string]): bool =
-  n.kind == TagLit and n.tagText in tags
-
 proc isPath(n: NifCursor): bool =
   # `name` or `a.b.c`.
   if n.kind == Ident: return true
-  if not isTag(n, ["dot"]): return false
+  if n.exprKind != DotX: return false
   var c = firstChild(n)
   result = isPath(c)
   skip c
@@ -63,28 +60,28 @@ proc headText(n: NifCursor): string =
 proc isFollow(n: NifCursor): bool =
   # `prop <- a.b`: a property name and a dot path.
   result = false
-  if isTag(n, ["infix"]) and headText(n) == "<-":
+  if n.exprKind == InfixX and headText(n) == "<-":
     var c = firstChild(n)
     skip c
     result = c.kind == Ident
     skip c
-    result = result and isTag(c, ["dot"]) and isPath(c)
+    result = result and c.exprKind == DotX and isPath(c)
 
 proc handlerName(n: NifCursor): string =
   # `onX` of `proc onX(...)`, else "".
   result = ""
-  if isTag(n, ["proc"]):
+  if n.stmtKind == ProcS:
     let s = headText(n)
     if s.len > 2 and s.startsWith("on") and s[2] in {'A' .. 'Z'}: result = s
 
 proc canvasGroup(n: NifCursor): string =
   # "canvas", "canvas.before" or "canvas.after" for such a block, else "".
   result = ""
-  if isTag(n, ["call", "cmd"]):
+  if n.exprKind in {CallX, CmdX}:
     var c = firstChild(n)
     if c.kind == Ident and c.identText == "canvas":
       result = "canvas"
-    elif isTag(c, ["dot"]) and headText(c) == "canvas":
+    elif c.exprKind == DotX and headText(c) == "canvas":
       var d = firstChild(c)
       skip d
       if d.kind == Ident and d.identText in ["before", "after"]:
@@ -105,7 +102,7 @@ proc emitChild(dest: var NifBuilder; n: NifCursor; p: Parent) =
   var e = n
   var name = NifCursor()
   var body = NifCursor()
-  if isTag(n, ["infix"]):
+  if n.exprKind == InfixX:
     var c = firstChild(n)
     skip c                     # `as`
     e = c
@@ -113,13 +110,13 @@ proc emitChild(dest: var NifBuilder; n: NifCursor; p: Parent) =
     name = c
     skip c
     if c.hasMore: body = c
-  let listed = isTag(e, ["call", "cmd"]) and headText(e) in Widgets
+  let listed = e.exprKind in {CallX, CmdX} and headText(e) in Widgets
   var expr = createTree()      # the call without its block
-  if isTag(e, ["call", "cmd"]):
-    expr.openTree(e.tagText, e.info)
+  if e.exprKind in {CallX, CmdX}:
+    expr.openTree(e.tag, e.info)
     for c in e.children:
       if c.stmtKind == StmtsS: body = c
-      elif not (listed and (isTag(c, ["vv"]) or isFollow(c))): expr.addSubtree c
+      elif not (listed and (c.otherKind == VvU or isFollow(c))): expr.addSubtree c
     expr.closeTree()
   else:
     expr.addSubtree e
@@ -150,7 +147,7 @@ proc emitChild(dest: var NifBuilder; n: NifCursor; p: Parent) =
       skip c
     dest.emitStmts("let NameV = new" & capital(headText(e)) & "(" & args & ")\n", s, n.info)
     for c in e.children:
-      if isTag(c, ["vv"]):
+      if c.otherKind == VvU:
         var kv = firstChild(c)
         let prop = kv.identText
         skip kv
@@ -217,18 +214,18 @@ proc emitLine(dest: var NifBuilder; n: NifCursor; p: Parent)
 
 proc walkInto(dest: var NifBuilder; n: NifCursor; p: Parent) =
   # Control flow: its statement lists are walked, the rest copied.
-  dest.openTree(n.tagText, n.info)
+  dest.openTree(n.tag, n.info)
   for c in n.children:
     if c.stmtKind == StmtsS:
       dest.withTree StmtsS, c.info:
         dest.walk(c, p)
-    elif isTag(c, Arms): dest.walkInto(c, p)
+    elif c.otherKind in Arms: dest.walkInto(c, p)
     else: dest.addSubtree c
   dest.closeTree()
 
 proc emitLine(dest: var NifBuilder; n: NifCursor; p: Parent) =
   let group = canvasGroup(n)
-  if isTag(n, Walked):
+  if n.stmtKind in Walked:
     dest.walkInto(n, p)
   elif group.len > 0 and p.handle.hasMore:
     var c = firstChild(n)
@@ -236,10 +233,10 @@ proc emitLine(dest: var NifBuilder; n: NifCursor; p: Parent) =
     dest.walk(c, Parent(handle: p.handle, group: group))
   elif handlerName(n).len > 0 and p.handle.hasMore:
     dest.emitHandler(n, p.handle)
-  elif isTag(n, ["infix"]) and headText(n) == "as":
+  elif n.exprKind == InfixX and headText(n) == "as":
     dest.emitChild(n, p)
-  elif isTag(n, ["call", "cmd"]):
-    if isTag(firstChild(n), ["dot"]) or headText(n) in StmtCalls:
+  elif n.exprKind in {CallX, CmdX}:
+    if firstChild(n).exprKind == DotX or headText(n) in StmtCalls:
       dest.addSubtree n        # a dot call, `inc`, `dec`, `echo`
     else: dest.emitChild(n, p)
   elif isPath(n):
