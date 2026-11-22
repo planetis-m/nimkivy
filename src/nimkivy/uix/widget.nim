@@ -152,7 +152,10 @@ properties:
   proc addChildCanvas(group: InstructionGroup; c: sink Canvas) =
     group.add(c)
 
-  method addWidget*(w: Widget; widget: sink WidgetBase; index = 0; canvas = layerCanvas) =
+  # GAP: `widget` is not sink, because a captured sink parameter is never freed
+  # (planetis-m/nimony-bugs-llms#348; WindowBase's override captures it, and an
+  # override keeps its base's signature)
+  method addWidget*(w: Widget; widget: WidgetBase; index = 0; canvas = layerCanvas) =
     ## Adds a child at `index` in `children` (0: on top). Its canvas goes
     ## after the canvas of the child it is placed above, into `canvas.before`
     ## or `canvas.after` when `canvas` says so and `index` is 0. Adding a

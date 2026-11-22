@@ -260,7 +260,10 @@ method toWindow*(w: WidgetBase; x, y: float; initial = true;
   ## This widget's coordinates to window coordinates; unchanged here.
   (x, y)
 
-method addWidget*(w: WidgetBase; widget: sink WidgetBase; index = 0;
+# GAP: `widget` is not sink, because a captured sink parameter is never freed
+# (planetis-m/nimony-bugs-llms#348; WindowBase's override captures it, and an
+# override keeps its base's signature)
+method addWidget*(w: WidgetBase; widget: WidgetBase; index = 0;
     canvas = layerCanvas) {.base.} =
   ## Adds a child. Widget (layer 6) and the window override it.
   discard
@@ -714,7 +717,9 @@ properties:
       discard w.dispatchPreResize(s[0], s[1])
     w.updateViewport()
 
-  method addWidget*(w: WindowBase; widget: sink WidgetBase; index = 0;
+  # GAP: `widget` is not sink, because a captured sink parameter is never freed
+  # (planetis-m/nimony-bugs-llms#348)
+  method addWidget*(w: WindowBase; widget: WidgetBase; index = 0;
       canvas = layerCanvas) =
     ## Adds a root widget: newest first in `children`, its canvas in the
     ## window's canvas (or `before`/`after`), sized from its hints now and

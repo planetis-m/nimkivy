@@ -18,22 +18,24 @@ import stubs
 type Log = ref object
   lines: seq[string]
 
-proc logger(log: Log; tag: sink string; ret: bool): proc (): bool {.closure.} =
+# GAP: `tag` of the four loggers is not sink, because a captured sink parameter
+# is never freed (planetis-m/nimony-bugs-llms#348)
+proc logger(log: Log; tag: string; ret: bool): proc (): bool {.closure.} =
   result = proc (): bool {.closure.} =
     log.lines.add tag
     result = ret
 
-proc touchLogger(log: Log; tag: sink string; ret: bool): TouchCallback =
+proc touchLogger(log: Log; tag: string; ret: bool): TouchCallback =
   result = proc (t: MotionEvent): bool {.closure.} =
     log.lines.add tag
     result = ret
 
-proc closeLogger(log: Log; tag: sink string; ret: bool): proc (keyboard: bool): bool {.closure.} =
+proc closeLogger(log: Log; tag: string; ret: bool): proc (keyboard: bool): bool {.closure.} =
   result = proc (keyboard: bool): bool {.closure.} =
     log.lines.add tag
     result = ret
 
-proc keyLogger(log: Log; tag: sink string; ret: bool): proc (key, scancode: int;
+proc keyLogger(log: Log; tag: string; ret: bool): proc (key, scancode: int;
     codepoint: string; modifiers: set[Modifier]): bool {.closure.} =
   result = proc (key, scancode: int; codepoint: string;
       modifiers: set[Modifier]): bool {.closure.} =
