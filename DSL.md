@@ -137,13 +137,13 @@ discard Window.bindSize(proc (s: (float, float)) {.closure.} = app.rebuild())
 ```
 
 `rebuild` stops the slideshow, dismisses the picker, builds the views again
-(`buildViews`, split out of today's `build`), swaps the root and re-shows
-the current screen without voice. The voice's `onChange` listener moves into
-`build`, once, so a rebuild does not add another.
+(`buildViews`), swaps the root (the window's child and `App.root`) and
+re-shows the current screen without voice. The voice's `onChange` listeners
+are added in `build`, once, so a rebuild does not add another.
 
-## 5. What goes away
+## 5. What went away
 
-| Today | Instead |
+| Before | Instead |
 |---|---|
 | capital-letter guess, `Type` → `newType` for every capital call | the lowercase `Widgets` list; other calls untouched |
 | `prop <- expr` and its dependency walk | values at build time; `prop <- a.b` for one property (3.7); property handlers |
@@ -154,8 +154,6 @@ the current screen without voice. The voice's `onChange` listener moves into
 | `buildUi: unsupported syntax` and the bad_ui tests | none: unknown lines are code, errors come from the compiler |
 | propsplug's `handlerBinds` (two `bindP` overloads per property) | the `Events` list picks the signature |
 | the kiosk's fake constructors (`newPillBox`, `newRoundBox`, `newFlagBox`, `newTileBox`) and `newIconPill` | components are plain procs with keyword arguments, starting from one plain constructor per type (`newPill`, `newRoundButton`, `newFlagButton`, `newPhotoTile`) |
-
-Estimated plugin size: about 150 lines (today 564).
 
 ## 6. Where it departs from Karax, and why
 
@@ -169,7 +167,7 @@ Estimated plugin size: about 150 lines (today 564).
 
 ## 7. Example: the topic screen's button row
 
-Before (ui.nim today):
+Before (ui.nim under the earlier DSL):
 
 ```nim
             BoxLayout(sizeHintY = none[float]()):
