@@ -15,6 +15,12 @@
 ##   screen after `idleTimeout` seconds without a touch (a Clock interval);
 ## - the header and the type follow the window height (window resize).
 ##
+## The widget trees are written with `buildUi` (nimkivy/buildui), as a kv
+## file would be; the components (`Pill`, `Panel`, `Tile`, `Caption`, ...)
+## are procs named `newX`, as kv's class rules. The app's logic is in the
+## procs on `Showcase`; the handlers in the trees reach it through the app
+## (`app.show`), as kv's `app.`.
+##
 ## Assets come from `tests/assets` and the fonts from `data/fonts`, so
 ## it runs from the repository root:
 ##
@@ -24,7 +30,7 @@
 ## `tests/tshowcase.nim` drives it with a scripted run.
 
 import std/[math, syncio]
-import nimkivy/[app, clock, config, animation]
+import nimkivy/[app, clock, config, animation, buildui]
 import nimkivy/core/text
 import nimkivy/graphics/[context_instructions, vertex_instructions]
 import nimkivy/core/audio
@@ -44,6 +50,7 @@ const
   Linen = [0.98, 0.96, 0.92, 1.0]
   Charcoal = [0.17, 0.17, 0.17, 1.0]
   Leaf = [0.42, 0.53, 0.30, 1.0]
+  Sand = [0.93, 0.90, 0.85, 1.0]
 
 type
   Texts* = object
@@ -77,7 +84,7 @@ proc texts*(lang: string): Texts =
         "The figs are picked by hand early in the morning, before the heat.",
         "They dry in the sun for days on reed mats and grow sweeter."])
 
-# ------------------------------------------------------------------ widgets
+# ------------------------------------------------------------------ components
 
 type
   Pressable* = ref object of BoxLayout
@@ -98,60 +105,53 @@ method onTouchUp(p: Pressable; t: MotionEvent): bool =
   if p.button.grabbed(p, t): result = p.button.touchUp(p, t)
   else: result = procCall onTouchUp(BoxLayout(p), t)
 
-proc paint(w: Widget; rgba: array[4, float]) =
-  # A background rectangle in canvas.before that follows the widget (the
-  # kiosk's paint()).
-  w.canvas.before.add newColor(rgba[0], rgba[1], rgba[2], rgba[3])
-  let rect = newRectangle(w.pos, w.size)
-  w.canvas.before.add rect
-  discard w.bindPos(proc (v: (float, float)) {.closure.} = rect.pos = v)
-  discard w.bindSize(proc (v: (float, float)) {.closure.} = rect.size = v)
-
-proc boxedText(l: Label) =
-  # The text is wrapped and aligned in the label's own box.
-  discard l.bindSize(proc (v: (float, float)) {.closure.} = l.textSize = v)
-
-proc wrapText(l: Label) =
-  # The text wraps at the label's width and grows downwards.
-  discard l.bindWidth(proc (v: float) {.closure.} = l.textSize = (some(v), none[float]()))
-
-proc label(text: string; size: float; color: array[4, float]; bold = false;
-    halign = halignCenter; wrap = false): Label =
-  # The kiosk's label(): Source Sans 3, aligned in its box.
-  result = newLabel(text)
-  result.fontName = "SourceSans"
-  result.fontSize = size
-  result.color = color
-  result.bold = bold
-  result.halign = halign
-  result.valign = valignMiddle
-  if wrap: result.wrapText()
-  else: result.boxedText()
-
-proc pressable(vertical = false): Pressable =
+proc newPressable*(): Pressable =
+  ## A horizontal Pressable.
   result = Pressable(canvas: newCanvas(), button: newButtonBehavior())
   result.initProps()
   result.initBoxLayout()
-  if vertical: result.orientation = orientationVertical
 
-proc pill(text: Label; fill: array[4, float]): Pressable =
-  # A button with a coloured background and a label.
-  result = pressable()
-  result.paint(fill)
-  result.addWidget(text)
+proc newPill(fill: Rgba): Pressable =
+  # A Pressable on a coloured background (the kiosk's paint()).
+  buildUi:
+    Pressable as p:
+      canvas.before:
+        Color(rgba = fill)
+        Rectangle(pos <- self.pos, size <- self.size)
+  result = p
 
-proc onRelease(p: Pressable; action: proc () {.closure.}) =
-  discard p.button.bindRelease(proc (): bool {.closure.} =
-    action()
-    result = false)
+proc newPanel(fill: Rgba): BoxLayout =
+  # A BoxLayout on a coloured background.
+  buildUi:
+    BoxLayout as b:
+      canvas.before:
+        Color(rgba = fill)
+        Rectangle(pos <- self.pos, size <- self.size)
+  result = b
 
-proc fixedHeight(w: Widget; h: float) =
-  w.sizeHintY = none[float]()
-  w.height = h
+proc newTile(): Pressable =
+  # A photo tile: dims while it is pressed (the kiosk's PhotoTile).
+  buildUi:
+    Pill(Linen, orientation = orientationVertical) as p:
+      on button.press:
+        newAnimation([opacityTo(Widget, 0.8)], duration = 0.08).start(self)
+      on button.release:
+        newAnimation([opacityTo(Widget, 1.0)], duration = 0.15).start(self)
+  result = p
 
-proc fixedWidth(w: Widget; width: float) =
-  w.sizeHintX = none[float]()
-  w.width = width
+proc newCaption(text = ""): Label =
+  # The kiosk's label(): Source Sans 3, centred in its own box.
+  buildUi:
+    Label(text, fontName = "SourceSans", halign = halignCenter, valign = valignMiddle) as l:
+      textSize <- self.size
+  result = l
+
+proc newParagraph(): Label =
+  # Source Sans 3 that wraps at the label's width and grows downwards.
+  buildUi:
+    Label(fontName = "SourceSans", valign = valignMiddle) as l:
+      textSize <- (some(self.width), none[float]())
+  result = l
 
 # ------------------------------------------------------------------ the app
 
@@ -195,6 +195,12 @@ type
     fadeDuration*: float         ## the photo crossfade (1.6)
     idleTimeout*: float          ## seconds without a touch before the reset (60)
 
+proc show*(a: ShowcaseApp): Showcase =
+  ## The app's state, once built.
+  let s = a.state
+  if s == nil: quit "the showcase is not built yet"
+  result = s
+
 proc scale(s: Showcase): float =
   # The kiosk's sc(): sizes follow the window height (600 is 1).
   Window.height / 600.0
@@ -223,6 +229,14 @@ proc showCard*(s: Showcase; i: int; animate = true) =
     newAnimation([opacityTo(Widget, 1.0)], duration = 0.35).start(s.cardImage)
   s.drawDots()
   s.log.add "card " & $s.card
+
+proc swipe(s: Showcase; card: Widget; t: MotionEvent): bool =
+  # A horizontal swipe on the card turns it (the kiosk's on_touch_up).
+  result = false
+  let dx = t.x - t.ox
+  if card.collidePoint(t.ox, t.oy) and abs(dx) > 80.0 * s.scale:
+    s.showCard(s.card + (if dx < 0: 1 else: -1))
+    result = true
 
 proc stopVoice(s: Showcase) =
   let snd = s.sound
@@ -258,6 +272,11 @@ proc go*(s: Showcase; screen: string) =
   if s.sm.current.get("") != screen:
     s.sm.current = screen
 
+proc openTopic(s: Showcase; i: int) =
+  # A tile was released: its topic, on the topic screen.
+  s.showCard(i, animate = false)
+  s.go("topic")
+
 proc nextPhoto*(s: Showcase) =
   ## The attract crossfade: the back photo gets the next picture and fades
   ## in while the front fades out (the kiosk's next_photo).
@@ -269,6 +288,16 @@ proc nextPhoto*(s: Showcase) =
   newAnimation([opacityTo(Widget, 0.0)], duration = s.fadeDuration).start(front)
   s.front = 1 - s.front
   s.log.add "slide " & $s.slide
+
+proc startSlides(s: Showcase) =
+  # The attract screen came in: a new photo every slideInterval.
+  s.slideEv = Clock.scheduleInterval(proc (dt: float) {.closure.} = s.nextPhoto(),
+    s.slideInterval)
+
+proc stopSlides(s: Showcase) =
+  let ev = s.slideEv
+  if ev != nil: ev.cancel()
+  s.slideEv = nil
 
 proc rescale(s: Showcase) =
   # The header and the type follow the window height (the kiosk's _rescale).
@@ -283,188 +312,131 @@ proc rescale(s: Showcase) =
 
 # ------------------------------------------------------------------ screens
 
-proc header(s: Showcase; title: Label; button: Pressable): BoxLayout =
-  result = newBoxLayout()
-  s.headers.add result
-  result.fixedHeight(80)
-  result.padding = [16.0, 8, 16, 8]
-  result.paint(Linen)
-  result.addWidget(title)
-  button.fixedWidth(160)
-  result.addWidget(button)
-
-proc attractScreen(s: Showcase): Screen =
-  # FloatLayout of two photos and a title; any touch goes home.
-  result = newScreen("attract")
-  let f = newFloatLayout()
-  f.addWidget(s.slides[0])
-  f.addWidget(s.slides[1])
-  let shade = newAnchorLayout()
-  shade.anchorY = anchorBottom
-  shade.padding = [0.0, 0, 0, 40]
-  s.attractTitle.fixedHeight(120)
-  s.attractTitle.paint([0.0, 0, 0, 0.35])
-  shade.addWidget(s.attractTitle)
-  f.addWidget(shade)
-  result.addWidget(f)
-  discard result.bindTouchDown(proc (t: MotionEvent): bool {.closure.} =
-    s.go("home")
-    result = true)
-  discard result.bindEnter(proc (): bool {.closure.} =
-    s.slideEv = Clock.scheduleInterval(proc (dt: float) {.closure.} = s.nextPhoto(),
-      s.slideInterval)
-    result = false)
-  discard result.bindLeave(proc (): bool {.closure.} =
-    let ev = s.slideEv
-    if ev != nil: ev.cancel()
-    s.slideEv = nil
-    result = false)
-
-proc tile(s: Showcase; i: int): Pressable =
-  # A photo tile: the photo covers its box, the caption is below.
-  let p = pressable(vertical = true)
-  p.paint(Linen)
-  let im = newImage(Assets & Photos[i])
-  im.fitMode = fitCover
-  p.addWidget(im)
-  let caption = label("", 22, Fig, bold = true)
-  caption.fixedHeight(56)
-  p.addWidget(caption)
-  s.tiles.add p
-  s.tileImages.add im
-  s.tileLabels.add caption
-  discard p.button.bindPress(proc (): bool {.closure.} =
-    newAnimation([opacityTo(Widget, 0.8)], duration = 0.08).start(p)
-    result = false)
-  p.onRelease(proc () {.closure.} =
-    newAnimation([opacityTo(Widget, 1.0)], duration = 0.15).start(p)
-    s.showCard(i, animate = false)
-    s.go("topic"))
+proc newChoice(app: ShowcaseApp; lang, name: string): Pressable =
+  # One language of the picker: a flag and its name.
+  buildUi:
+    Pill(Linen, orientation = orientationVertical) as p:
+      on button.release:
+        app.show.setLanguage(lang)
+      Image(Assets & "flag.png")
+      Caption(name, fontSize = 22, color = Charcoal, sizeHintY = none[float](), height = 40)
   result = p
 
-proc homeScreen(s: Showcase): Screen =
-  result = newScreen("home")
-  let col = newBoxLayout()
-  col.orientation = orientationVertical
-  col.addWidget(s.header(s.homeTitle, s.langButton))
-  let mosaic = newBoxLayout()
-  mosaic.spacing = 16
-  mosaic.padding = [16.0, 16, 16, 16]
-  for i in 0 ..< Photos.len: mosaic.addWidget(s.tile(i))
-  col.addWidget(mosaic)
-  col.paint([0.93, 0.90, 0.85, 1.0])
-  result.addWidget(col)
-
-proc topicScreen(s: Showcase): Screen =
-  # Header, then the card (RelativeLayout: photo | text and Listen), then
-  # prev, dots, next.
-  result = newScreen("topic")
-  let col = newBoxLayout()
-  col.orientation = orientationVertical
-  col.paint([0.93, 0.90, 0.85, 1.0])
-  col.addWidget(s.header(s.topicTitle, s.homeButton))
-  let card = newRelativeLayout()
-  let row = newBoxLayout()
-  row.padding = [24.0, 16, 24, 16]
-  row.spacing = 24
-  s.cardImage.fitMode = fitContain
-  s.cardImage.sizeHintX = 0.45
-  row.addWidget(s.cardImage)
-  let right = newBoxLayout()
-  right.orientation = orientationVertical
-  right.spacing = 12
-  right.addWidget(s.cardText)
-  let anchor = newAnchorLayout()
-  anchor.fixedHeight(64)
-  anchor.anchorX = anchorLeft
-  s.listen.fixedWidth(180)
-  s.listen.fixedHeight(56)
-  anchor.addWidget(s.listen)
-  right.addWidget(anchor)
-  row.addWidget(right)
-  card.addWidget(row)
-  col.addWidget(card)
-  let nav = newBoxLayout()
-  nav.fixedHeight(64)
-  nav.padding = [24.0, 4, 24, 4]
-  s.prev.fixedWidth(120)
-  s.next.fixedWidth(120)
-  nav.addWidget(s.prev)
-  nav.addWidget(s.dots)
-  nav.addWidget(s.next)
-  col.addWidget(nav)
-  result.addWidget(col)
-  # A horizontal swipe on the card turns it (the kiosk's on_touch_up).
-  discard card.bindTouchUp(proc (t: MotionEvent): bool {.closure.} =
-    result = false
-    let dx = t.x - t.ox
-    if card.collidePoint(t.ox, t.oy) and abs(dx) > 80.0 * s.scale:
-      s.showCard(s.card + (if dx < 0: 1 else: -1))
-      result = true)
-  discard result.bindLeave(proc (): bool {.closure.} =
-    s.stopVoice()
-    result = false)
-
-proc choice(s: Showcase; lang, name: string): Pressable =
-  # One language: a flag and its name. A proc of its own, so each closure
-  # has its own `lang` (closures made in a loop share the loop's variables).
-  let p = pressable(vertical = true)
-  p.paint(Linen)
-  p.addWidget(newImage(Assets & "flag.png"))
-  let l = label(name, 22, Charcoal)
-  l.fixedHeight(40)
-  p.addWidget(l)
-  p.onRelease(proc () {.closure.} = s.setLanguage(lang))
-  s.choices.add p
-  result = p
-
-proc languagePicker(s: Showcase): ModalView =
-  # A row of three choices, each a flag and a name.
-  let m = newModalView()
-  m.sizeHint = (0.7, 0.4)
-  m.backgroundColor = Linen
-  m.animDuration = 0.1
-  let row = newBoxLayout()
-  row.padding = [16.0, 16, 16, 16]
-  row.spacing = 16
-  for (lang, name) in [("en", "English"), ("el", "Ελληνικά"), ("de", "Deutsch")]:
-    row.addWidget(s.choice(lang, name))
-  m.addWidget(row)
-  result = m
-
-proc newShowcase*(slideInterval = 6.0; fadeDuration = 1.6; idleTimeout = 60.0): Showcase =
+proc newShowcase*(app: ShowcaseApp): Showcase =
   ## Makes the widgets and the screens; the attract screen is current.
-  let slides = [newImage(Assets & Photos[0]), newImage()]
-  for im in slides: im.fitMode = fitCover
-  slides[1].opacity = 0
-  let s = Showcase(sm: newScreenManager(), lang: "en", slides: slides, front: 0, slide: 0,
-    attractTitle: label("", 56, Linen, bold = true),
-    homeTitle: label("", 30, Fig, bold = true, halign = halignLeft),
-    topicTitle: label("", 30, Fig, bold = true, halign = halignLeft),
-    homeButton: pressable(), langButton: pressable(),
-    langLabel: label("", 22, Linen), homeLabel: label("", 22, Linen),
-    headers: @[], tiles: @[], tileLabels: @[], tileImages: @[], card: 0,
-    cardImage: newImage(), cardText: label("", 24, Charcoal, halign = halignLeft, wrap = true),
-    listen: pressable(), listenLabel: label("", 22, Linen, bold = true),
-    prev: pill(label("<", 30, Linen, bold = true), Fig),
-    next: pill(label(">", 30, Linen, bold = true), Fig),
-    dots: newWidget(), sound: loadSound(Assets & "tone.wav"), picker: newModalView(),
-    choices: @[], slideEv: nil, lastTouch: 0, slideInterval: slideInterval,
-    fadeDuration: fadeDuration, idleTimeout: idleTimeout, log: @[])
-  s.homeButton.paint(Fig)
-  s.homeButton.addWidget(s.homeLabel)
-  s.langButton.paint(Fig)
-  s.langButton.addWidget(s.langLabel)
-  s.listen.paint(Leaf)
-  s.listen.addWidget(s.listenLabel)
-  s.picker = s.languagePicker()
-  s.homeButton.onRelease(proc () {.closure.} = s.go("home"))
-  s.langButton.onRelease(proc () {.closure.} = s.picker.open())
-  s.listen.onRelease(proc () {.closure.} = s.toggleListen())
-  s.prev.onRelease(proc () {.closure.} = s.showCard(s.card - 1))
-  s.next.onRelease(proc () {.closure.} = s.showCard(s.card + 1))
-  discard s.dots.bindPos(proc (v: (float, float)) {.closure.} = s.drawDots())
-  discard s.dots.bindSize(proc (v: (float, float)) {.closure.} = s.drawDots())
+  let fade = newFadeTransition()
+  fade.duration = 0.25
+  buildUi:
+    Screen("attract") as attract:
+      # Two photos and a title; any touch goes home.
+      on touchDown(t: MotionEvent):
+        app.show.go("home")
+        result = true
+      on enter:
+        app.show.startSlides()
+      on leave:
+        app.show.stopSlides()
+      FloatLayout:
+        Image(Assets & Photos[0], fitMode = fitCover) as slide0
+        Image(fitMode = fitCover, opacity = 0) as slide1
+        AnchorLayout(anchorY = anchorBottom, padding = [0.0, 0, 0, 40]):
+          Caption(fontSize = 56, color = Linen, bold = true,
+              sizeHintY = none[float](), height = 120) as attractTitle:
+            canvas.before:
+              Color(rgba = [0.0, 0, 0, 0.35])
+              Rectangle(pos <- self.pos, size <- self.size)
+
+  buildUi:
+    Screen("home") as home:
+      Panel(Sand, orientation = orientationVertical):
+        Panel(Linen, sizeHintY = none[float](), height = 80,
+            padding = [16.0, 8, 16, 8]) as homeHeader:
+          Caption(fontSize = 30, color = Fig, bold = true, halign = halignLeft) as homeTitle
+          Pill(Fig, sizeHintX = none[float](), width = 160) as langButton:
+            on button.release:
+              app.show.picker.open()
+            Caption(fontSize = 22, color = Linen) as langLabel
+        BoxLayout(spacing = 16, padding = [16.0, 16, 16, 16]):
+          Tile as tile0:
+            on button.release:
+              app.show.openTopic(0)
+            Image(Assets & Photos[0], fitMode = fitCover) as tileImage0
+            Caption(fontSize = 22, color = Fig, bold = true,
+              sizeHintY = none[float](), height = 56) as tileLabel0
+          Tile as tile1:
+            on button.release:
+              app.show.openTopic(1)
+            Image(Assets & Photos[1], fitMode = fitCover) as tileImage1
+            Caption(fontSize = 22, color = Fig, bold = true,
+              sizeHintY = none[float](), height = 56) as tileLabel1
+          Tile as tile2:
+            on button.release:
+              app.show.openTopic(2)
+            Image(Assets & Photos[2], fitMode = fitCover) as tileImage2
+            Caption(fontSize = 22, color = Fig, bold = true,
+              sizeHintY = none[float](), height = 56) as tileLabel2
+
+  buildUi:
+    Screen("topic") as topic:
+      # Header, then the card (photo | text and Listen), then prev, dots,
+      # next.
+      on leave:
+        app.show.stopVoice()
+      Panel(Sand, orientation = orientationVertical):
+        Panel(Linen, sizeHintY = none[float](), height = 80,
+            padding = [16.0, 8, 16, 8]) as topicHeader:
+          Caption(fontSize = 30, color = Fig, bold = true, halign = halignLeft) as topicTitle
+          Pill(Fig, sizeHintX = none[float](), width = 160) as homeButton:
+            on button.release:
+              app.show.go("home")
+            Caption(fontSize = 22, color = Linen) as homeLabel
+        RelativeLayout:
+          on touchUp(t: MotionEvent):
+            result = app.show.swipe(self, t)
+          BoxLayout(padding = [24.0, 16, 24, 16], spacing = 24):
+            Image(fitMode = fitContain, sizeHintX = 0.45) as cardImage
+            BoxLayout(orientation = orientationVertical, spacing = 12):
+              Paragraph(fontSize = 24, color = Charcoal, halign = halignLeft) as cardText
+              AnchorLayout(sizeHintY = none[float](), height = 64, anchorX = anchorLeft):
+                Pill(Leaf, sizeHintX = none[float](), width = 180,
+                    sizeHintY = none[float](), height = 56) as listen:
+                  on button.release:
+                    app.show.toggleListen()
+                  Caption(fontSize = 22, color = Linen, bold = true) as listenLabel
+        BoxLayout(sizeHintY = none[float](), height = 64, padding = [24.0, 4, 24, 4]):
+          Pill(Fig, sizeHintX = none[float](), width = 120) as prev:
+            on button.release:
+              app.show.showCard(app.show.card - 1)
+            Caption("<", fontSize = 30, color = Linen, bold = true)
+          Widget as dots:
+            on pos:
+              app.show.drawDots()
+            on size:
+              app.show.drawDots()
+          Pill(Fig, sizeHintX = none[float](), width = 120) as next:
+            on button.release:
+              app.show.showCard(app.show.card + 1)
+            Caption(">", fontSize = 30, color = Linen, bold = true)
+
+  buildUi:
+    ModalView(sizeHint = (0.7, 0.4), backgroundColor = Linen, animDuration = 0.1) as picker:
+      BoxLayout(padding = [16.0, 16, 16, 16], spacing = 16):
+        Choice(app, "en", "English") as english
+        Choice(app, "el", "Ελληνικά") as greek
+        Choice(app, "de", "Deutsch") as german
+
+  let s = Showcase(sm: newScreenManager(), lang: "en", slides: [slide0, slide1], front: 0,
+    slide: 0, attractTitle: attractTitle, homeTitle: homeTitle, topicTitle: topicTitle,
+    homeButton: homeButton, langButton: langButton, langLabel: langLabel,
+    homeLabel: homeLabel, headers: @[homeHeader, topicHeader],
+    tiles: @[tile0, tile1, tile2], tileLabels: @[tileLabel0, tileLabel1, tileLabel2],
+    tileImages: @[tileImage0, tileImage1, tileImage2], card: 0, cardImage: cardImage,
+    cardText: cardText, listen: listen, listenLabel: listenLabel, prev: prev, next: next,
+    dots: dots, sound: loadSound(Assets & "tone.wav"), picker: picker,
+    choices: @[english, greek, german], slideEv: nil, lastTouch: 0,
+    slideInterval: app.slideInterval, fadeDuration: app.fadeDuration,
+    idleTimeout: app.idleTimeout, log: @[])
+  app.state = s
   let snd = s.sound
   if snd != nil:
     discard snd.bindPlay(proc (): bool {.closure.} =
@@ -475,12 +447,12 @@ proc newShowcase*(slideInterval = 6.0; fadeDuration = 1.6; idleTimeout = 60.0): 
       s.listenLabel.text = texts(s.lang).listen
       s.log.add "stop"
       result = false)
-  let fade = newFadeTransition()
-  fade.duration = 0.25
+  # The screens are added once the state exists: adding the first one makes
+  # it current, and its `enter` handler starts the slides.
   s.sm.transition = fade
-  s.sm.addWidget(s.attractScreen())
-  s.sm.addWidget(s.homeScreen())
-  s.sm.addWidget(s.topicScreen())
+  s.sm.addWidget(attract)
+  s.sm.addWidget(home)
+  s.sm.addWidget(topic)
   discard s.sm.bindCurrent(proc (v: Opt[string]) {.closure.} =
     if v.isSome: s.log.add "screen " & v.get(""))
   s.applyLanguage()
@@ -497,8 +469,7 @@ proc idleCheck(s: Showcase) =
 method build(a: ShowcaseApp): nil WidgetBase =
   register("SourceSans", Assets & "fonts/SourceSans3-Regular.ttf",
     fnBold = Assets & "fonts/SourceSans3-SemiBold.ttf")
-  let s = newShowcase(a.slideInterval, a.fadeDuration, a.idleTimeout)
-  a.state = s
+  let s = newShowcase(a)
   s.lastTouch = Clock.getTime()
   Window.clearcolor = [0.0, 0.0, 0.0, 1.0]
   discard Window.bindTouchDown(proc (t: MotionEvent): bool {.closure.} =
@@ -513,12 +484,6 @@ proc newShowcaseApp*(): ShowcaseApp =
   ## The app; `run` opens the window and shows the attract screen.
   result = ShowcaseApp(state: nil, slideInterval: 6, fadeDuration: 1.6, idleTimeout: 60)
   result.initApp("ShowcaseApp")
-
-proc show*(a: ShowcaseApp): Showcase =
-  ## The app's state, once built.
-  let s = a.state
-  if s == nil: quit "the showcase is not built yet"
-  result = s
 
 when isMainModule:
   Config.graphics.width = 1024

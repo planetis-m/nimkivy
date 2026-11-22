@@ -1,7 +1,7 @@
-## Code generation helpers shared by nimkivy's plugins (`propsplug`, and the
-## buildUi prototype until it moves here): generated code is written as Nim
-## text with placeholder names, parsed with `nimparser`, and copied with the
-## placeholders replaced by names and input subtrees.
+## Code generation helpers shared by nimkivy's plugins (`propsplug`,
+## `builduiplug`): generated code is written as Nim text with placeholder
+## names, parsed with `nimparser`, and copied with the placeholders replaced
+## by names and input subtrees.
 
 import std/strutils
 import plugins, nimparser

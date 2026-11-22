@@ -2,16 +2,18 @@
 
 The plan for ROADMAP.md's phase 2. Behaviour stays phase 1's: the same tests,
 traces and scenes, adapted in syntax only, are the safety net. The two
-plugins were prototyped first (`prototypes/`, `prototypes/run.sh`, debug and
-release); what they showed decides the mechanism below.
+plugins were prototyped first (`prototypes/`, debug and release); what they
+showed decides the mechanism below. Both prototypes moved into `src/` and
+`tests/` (steps 1 and 7), and `prototypes/` is gone; #336's reproduction is
+`bug-reports/09` (the same three files).
 
 ## What the prototypes showed (Nimony `95afaa04`)
 
 | Route | Result |
 |---|---|
-| **Type plugin** (`type Widget {.plugin.}`) that adds accessors to the declaring module | **Broken.** A proc the plugin adds cannot read the type's fields ("undeclared field"); one without a field access is written without a module suffix and a call from another module crashes nimsem. Filed: planetis-m/nimony-bugs-llms#336 (`bug-reports/09`). Repro: `prototypes/typeplugin/`. Also: a type plugin runs only in modules that *name* the type (`let w = newWidget()` does not trigger it), so a plugin that rewrites uses would miss modules. |
+| **Type plugin** (`type Widget {.plugin.}`) that adds accessors to the declaring module | **Broken.** A proc the plugin adds cannot read the type's fields ("undeclared field"); one without a field access is written without a module suffix and a call from another module crashes nimsem. Filed: planetis-m/nimony-bugs-llms#336 (`bug-reports/09`). Repro: `bug-reports/09` (was `prototypes/typeplugin/`). Also: a type plugin runs only in modules that *name* the type (`let w = newWidget()` does not trigger it), so a plugin that rewrites uses would miss modules. |
 | **Template plugin** `properties:` over a `type` section | **Works**, debug and release: typed fields, typed observer lists, change-only setters, bounds, a list, a reference list with Kivy's observer order, events with default handlers as base methods, subclass default overrides, compile errors for wrong names. `prototypes/props/` (tests `tprops.nim`, 5 rejected programs in `bad/`; moved to `src/` and `tests/` in step 1). |
-| **Template plugin** `buildUi:` | **Works**, debug and release: a 3-level tree, `as` handles, bindings to another object's and to a sibling's property, handlers with and without arguments, built once and kept current. `prototypes/buildui/` (`tbuildui.nim`, 3 rejected programs). |
+| **Template plugin** `buildUi:` | **Works**, debug and release: a 3-level tree, `as` handles, bindings to another object's and to a sibling's property, handlers with and without arguments, built once and kept current. Now `src/nimkivy/buildui.nim` (step 7). |
 
 Three Nimony limits shape the layout of a module that uses `properties:`:
 
@@ -165,41 +167,63 @@ passed to callbacks.
 
 ## `buildUi:`
 
+`src/nimkivy/buildui.nim` and `plugins/builduiplug.nim` (step 7; the module
+doc is the reference).
+
 ```nim
 buildUi:
-  BoxLayout(orientation = vertical) as root:
-    Header() as header
-    Label(fontSize = sp(22)) as title:
-      text <- topic.title & " (" & $topic.index & ")"
-    PillButton(text = "Listen") as listen:
-      on button.release:
-        player.toggle()
-      on touchDown(t: MotionEvent):
-        idle.reset()
+  Screen("topic") as topic:
+    on leave:
+      app.show.stopVoice()
+    BoxLayout(orientation = orientationVertical):
+      canvas.before:
+        Color(rgba = Sand)
+        Rectangle(pos <- self.pos, size <- self.size)
+      Label(fontSize = 22) as title:
+        text <- topic.title & " (" & $topic.index & ")"
+      Pill(Leaf, sizeHintY = none[float](), height = 56) as listen:
+        on button.release:
+          app.show.toggleListen()
+        Caption("Listen")
 ```
 
 ```
-widget = Type(prop = value, ...) [as name] [: item+]
+widget = Type[(arg, ..., prop = value | prop <- expr, ...)] [as name] [: item+]
 item   = prop = value            set once
-       | prop <- expr            set now, and again when a handle.prop in expr changes
-       | on [part.]event[(params)]: stmts
+       | prop <- expr            set now, and again when a property expr reads changes
+       | on [part.]name[(params)]: stmts     an event, or else a property
+       | canvas[.before|.after]: instruction+
        | widget                  child, added in order
+instruction = Type[(arg, ..., prop = value | prop <- expr)] [as name]
+              [: (prop = value | prop <- expr)+]
 ```
 
-Expansion, in the caller's scope, nothing rebuilt later
-(`prototypes/buildui/builduiplug.nim`):
+`Type(args)` calls `newType(args)` with the positional arguments, so a
+component is a proc `newX` (kv's class rule); `self` is the widget an item
+belongs to. Expansion, in the caller's scope, nothing rebuilt later:
 
-1. `let name = newType()` for every widget in tree order (generated symbols
-   for unnamed ones), so every handle exists before a binding uses it;
+1. `let name = newType(args)` for every widget and instruction in tree
+   order (generated symbols for unnamed ones), so every handle exists
+   before an item uses it;
 2. the `prop = value` items, in tree order (setters, so they dispatch);
-3. `parent.addWidget(child)`, each child complete before it is added;
-4. each binding: `w.prop = expr`, then for each `h.p` read by `expr`:
-   `discard h.bindP(proc (v: typeof(h.p)) = w.prop = expr)`;
-5. each handler: `discard w.bindEvent(proc (params): bool = stmts; false)`.
+3. each widget completed from the root down: its canvas instructions
+   (`w.canvas.before.add i`), its children (each completed, then
+   `w.addWidget(child)`), its bindings and its handlers:
+   - a binding: `w.prop = expr`, then for each `h.p` read by `expr` that
+     is a property: `discard h.bindP(proc (_: typeof(h.p)) = w.prop = expr)`
+     (kv's rule: other reads are evaluated, not followed; at least one must
+     be a property);
+   - a handler: `discard w.bindName(proc (params): bool = result = false;
+     stmts)` for an event, else `w.bindName(proc (v: T) = stmts)` for a
+     property; `on part.name` binds `w.part`'s.
 
-A wrong property or a binding to something that is not a property is a
-compile error at its place. The prototype has all of this except `part.` in
-`on part.event` (a path to an owned properties object such as `w.button`).
+So a child's handlers are bound before it is added (a Screen's `enter`
+fires when the ScreenManager makes it current), a widget's own after its
+children are added (a ScreenManager's `current` does not see its first
+screen). Property, event and binding checks the plugin cannot make without
+types are generated as `when compiles(...)` with an `{.error.}` at the
+item: a wrong name, handler signature or binding is a compile error that
+says what is wrong at the line it is on (`tests/bad/bad_ui_*.nim`).
 
 ## Standalone: tests without Python (step 0, done)
 
@@ -276,7 +300,7 @@ the block).
 | 4 | **Layer 7** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master): label (typed font options), image, ButtonBehavior as an owned properties object, no closures | tlabel, timage, tbutton; traces `label`, `touch`; label and image scenes | as before |
 | 5 | **Layers 8-9** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master): animation (tracks), screenmanager, modalview, audio | tanimation, tscreenmanager, tmodalview, taudio; traces `animation`, `screens`, `modal`; fade and modal scenes | as before |
 | 6 | **Cleanup** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master): remove `Value`, `DispatcherClass`, the name APIs and every helper in the table above; rename the Python-style helpers | everything | `grep` finds none of the phase-1 names; PORTING.md's decisions 3 and 4 rewritten |
-| 7 | **`buildUi`** in `src/nimkivy/buildui.nim` + plugin; the showcase's trees written with it | tshowcase unchanged in behaviour; the prototype test as `tbuildui` | the showcase reads like a kv file and passes |
+| 7 | **`buildUi`** (done, 2026-11-22; #336, #290, #175, #337 still open at `95afaa04`, master) in `src/nimkivy/buildui.nim` + plugin; the showcase's trees written with it | tshowcase unchanged in behaviour; the prototype test as `tbuildui` | the showcase reads like a kv file and passes |
 | 8 | **Word-width cache** | ttext, label trace and scenes, tshowcase | outputs identical; `TTF_GetStringSize` calls down |
 | 9 | **Profile again** with `tools/profile.sh` and `tools/callcounts.sh` on the same machine and settings | — | PROFILE.md gets an "after" section with the same tables: frame times, Ir by area, `doDispatch` (same count), `getPropertyStorage` (0), `rawAlloc` per drawn frame, `TTF_GetStringSize` calls; compared with "before" |
 
@@ -418,6 +442,37 @@ or cite Kivy. The `events` trace's step label `dispatch after unbindUid` is
 lists the phase-1 functions (`doDispatch`, `getPropertyStorage`, ...): step
 9 compares against PROFILE.md's "before" numbers and has to count typed
 dispatches another way (they are inlined setters now).
+
+Step 7 notes: `buildUi` is `src/nimkivy/buildui.nim` and
+`plugins/builduiplug.nim` (one implementation; `prototypes/` is gone, the
+type-plugin reproduction is `bug-reports/09`). Beyond the prototype: `on
+part.event` (`on button.release`), handlers on properties (`on size:`,
+kv's `on_size`), `result` in a handler (false unless set), `canvas`,
+`canvas.before` and `canvas.after` blocks of instructions, `self`,
+positional constructor arguments and components (`Type(args)` calls any
+`newType(args)`), `prop <- expr` in the parentheses, and clear errors at the
+item (`when compiles` + `{.error.}`: not a property, no such event or
+property with these parameters, a binding that follows no property; the
+plugin's own: a statement that is not an item, a binding that reads
+nothing, two roots). The prototype bound every handler after the whole
+tree was assembled; now each widget's bindings and handlers are bound
+before it is added to its parent (after its own children), because a
+Screen's `enter` fires when the ScreenManager adds it. Bindings follow kv's
+rule (a read that is not a property is evaluated, not followed); generated
+callback parameters are generated symbols, so they hide no caller name.
+**The showcase**: its three screens and the picker are `buildUi` trees, with
+components `Pill`, `Panel`, `Tile`, `Caption`, `Paragraph`, `Choice` (procs
+`newX`); `paint`, `label`, `pressable`, `header`, `tile`, `choice`,
+`fixedWidth`/`fixedHeight` and the hand-written binds are gone. Handlers
+reach the app state through the app (`app.show.go("home")`, kv's `app.`):
+`Showcase` holds the widgets as non-nil fields, so it can only be made after
+the trees; the screens are therefore added to the ScreenManager after it is
+made (adding the first one fires its `enter`, which uses the state).
+`rescale` and the language switch stay procs (the kiosk's `_rescale` and
+`refresh`). tshowcase is unchanged and passes: same steps, same log order.
+For the kiosk: make the state its handlers reach (the kiosk's `Kiosk`
+logic) before the trees, and the widgets a screen's procs need are `as`
+handles kept in its object.
 
 The kiosk (philosykos-website) is written once on the result, after step 7;
 its own parity harness and Python app leave its tree then (ROADMAP.md).

@@ -36,6 +36,15 @@ bad bad_default "undeclared identifier: 'initOpacty'"
 bad bad_refs "undeclared field: 'h'"
 bad bad_readonly "undeclared field: 'half='"
 bad bad_pragma "unknown property pragma"
+# buildUi: each error says what is wrong, at the place it is written.
+bad bad_ui_prop "bad_ui_prop.nim(6, 11) Error: buildUi: \`txt\` is not a property of Label"
+bad bad_ui_item "bad_ui_item.nim(9, 7) Error: buildUi: expected a widget"
+bad bad_ui_bind "bad_ui_bind.nim(10, 22) Error: undeclared field: 'txt'"
+bad bad_ui_follow "bad_ui_follow.nim(11, 7) Error: buildUi: \`text <- ...\` follows no property: topic.name is not one"
+bad bad_ui_const "bad_ui_const.nim(8, 15) Error: buildUi: \`text <- ...\` reads no"
+bad bad_ui_event "bad_ui_event.nim(8, 7) Error: buildUi: Label has no event or property \`presss\` without parameters"
+bad bad_ui_params "bad_ui_params.nim(9, 7) Error: buildUi: Label has no event or property \`touchDown\` with parameters (x: float)"
+bad bad_ui_roots "bad_ui_roots.nim(8, 13) Error: buildUi expects one root widget"
 "$nimony" c --mm:orc --path:src --nimcache:nimcache/bad_bounds -o:bin/bad_bounds \
   tests/bad/bad_bounds.nim
 if ./bin/bad_bounds; then echo "bad_bounds: ran, expected exit code 1"; exit 1; fi
