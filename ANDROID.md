@@ -198,6 +198,17 @@ The host's CMake 4.3.0 and Ninja 1.13.2 build the libraries.
     gets `SCREEN_ORIENTATION_LANDSCAPE`. `SDL_ENV.*` meta-data become
     environment variables before `SDL_main`. No `INTERNET` permission.
     App label `PHILOSYKOS` (`res/values/strings.xml`).
+  - Launcher icon (2026-11-23): the website's icon, the ő of the logo
+    (`media/brand/logos-minified/socials_logo.svg` in the website repo).
+    An adaptive icon (`mipmap-anydpi-v26/ic_launcher.xml`): the glyph alone
+    as the foreground (`ic_launcher_foreground.png`, 108 dp, the logo's
+    circle 72 dp across) on a white background (`ic_launcher_background`,
+    the website's theme colour), and the SVG as it is (the glyph in its white
+    circle) as `ic_launcher.png` at 48 dp. Rendered with SDL3_image by
+    `~/Android/build/icons/render.nim` from `legacy.svg` and `foreground.svg`
+    there (copies of the SVG with a square or padded viewBox, the circle
+    removed from the foreground): `nimony c -r --path:~/Projects/nimkivy/src
+    render.nim` in that folder writes all ten PNGs into the project.
   - Keep the screen on: no code of the app's own. **known** from SDL's
     source: SDL disables the screensaver by default, and on Android that
     sets `FLAG_KEEP_SCREEN_ON` on the window
