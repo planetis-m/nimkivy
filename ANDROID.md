@@ -91,6 +91,16 @@ The host's CMake 4.3.0 and Ninja 1.13.2 build the libraries.
 
 ## 3. Compiling the Nim code (phase B: **blocked**)
 
+- **known** (nimony `b1ffdf8d`, 2026-11-23): #354 and #353 below are fixed;
+  `SDL_main` now calls the exported `NimMain` first. The build stops on
+  `std/posix`, which has no Linux/ARM ABI, so `std/os` does not compile for
+  `--cpu:arm` (planetis-m/nimony-bugs-llms#364, kiosk `bug-reports/05`).
+  With a scratch copy of the stdlib that takes the i386 ABI for `arm` (not
+  correct: `st_size` is at 48 on ARM, futex and gettid numbers differ),
+  the kiosk compiles to a `libmain.so` (ELF32 ARM, `SDL_main` and `NimMain`
+  global; NEEDED `libSDL3*.so`, libdl, libc) and a 70 MB debug APK with the
+  four libraries and 139 assets. Not installed.
+
 - **known** from Nimony's source: `--cpu:arm` is an alias of `arm32`, and
   naming the CPU sets `int` to its 32 bits (`nifconfig.setTargetCPU`), so
   `--bits:32` is not needed; `lib/platform.nim` knows `Android`.
