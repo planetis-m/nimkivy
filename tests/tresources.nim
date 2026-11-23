@@ -1,10 +1,10 @@
-# Tests nimkivy/resources' data directory: without `KIVY_DATA_DIR`, the
+# Tests nimkivy/resources' data directory: the
 # directory given to `setDataDir` before the first use is where the default
 # font is found, even when it is not named `data`; it is fixed from then on.
 # (The other choices, `data` beside the executable and under the current
 # directory, are what every other test runs with: bin/ has no `data`.)
 
-import std/[assertions, envvars, files, dirs, paths, strutils, tempfiles]
+import std/[assertions, files, dirs, paths, strutils, tempfiles]
 import nimkivy/resources
 import nimkivy/core/text
 import nimkivy/core/text/text_sdl3
@@ -20,7 +20,6 @@ proc copyFonts(): string {.raises.} =
   result = $dir
 
 proc main() =
-  assert getEnv("KIVY_DATA_DIR", "").len == 0, "run without KIVY_DATA_DIR"
   var dir = ""
   try:
     dir = copyFonts()

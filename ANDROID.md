@@ -89,27 +89,21 @@ The host's CMake 4.3.0 and Ninja 1.13.2 build the libraries.
   2.13.2 and HarfBuzz 8.5.0. Text metrics may differ from the `label`
   trace; to compare on the first Android build.
 
-## 3. Compiling the Nim code (phase B: **blocked**)
+## 3. Compiling the Nim code (phase B: **done**, 2026-11-23)
 
-- **known** (nimony `b1ffdf8d`, 2026-11-23): #354 and #353 below are fixed;
-  `SDL_main` now calls the exported `NimMain` first. The build stops on
-  `std/posix`, which has no Linux/ARM ABI, so `std/os` does not compile for
-  `--cpu:arm` (planetis-m/nimony-bugs-llms#364, kiosk `bug-reports/05`).
-  With a scratch copy of the stdlib that takes the i386 ABI for `arm` (not
-  correct: `st_size` is at 48 on ARM, futex and gettid numbers differ),
-  the kiosk compiles to a `libmain.so` (ELF32 ARM, `SDL_main` and `NimMain`
-  global; NEEDED `libSDL3*.so`, libdl, libc) and a 70 MB debug APK with the
-  four libraries and 139 assets.
-- **known**: that APK does not start: `dlopen failed: cannot locate symbol
-  "nimEnviron"`. std/envvars (imported by `resources` and `metrics`) and
-  `posix_environ` read `nimEnviron`, which only a program's generated `main`
-  defines (planetis-m/nimony-bugs-llms#367).
-- **known**, on the tablet (SM-T585, Android 8.1, `armeabi-v7a`), with the
-  scratch stdlib also reading libc's `environ`: the kiosk runs. Full screen
-  1920x1200 in landscape, the attract crossfade, the logo, flags, photos and
-  fonts all found in the APK's assets, a tap on a flag opens the topic grid.
-  Section 7's other checks are not done yet. `adb shell svc power stayon usb`
-  was set so the screen stays on while on USB.
+- **known** (nimony `b1ffdf8d`): #354 and #353 below are fixed; `SDL_main`
+  calls the exported `NimMain` first. nimkivy and the kiosk no longer import
+  std/os, std/monotimes or std/envvars (owner: SDL functions instead), so
+  neither #364 (std/posix has no Linux/ARM ABI) nor #367 (`nimEnviron` in a
+  library) is reached. The command below builds `libmain.so` with the
+  unmodified Nimony: ELF32 ARM, `SDL_main` and `NimMain` global, every
+  undefined symbol in libc or the SDL libraries.
+- **known**, on the tablet (SM-T585, Android 8.1, `armeabi-v7a`): the debug
+  APK installs and the kiosk runs full screen 1920x1200 in landscape: the
+  attract crossfade, logo, flags, photos and fonts from the APK's assets,
+  taps, the topic grid, a topic screen and its voice clip playing. Section
+  7's other checks are not done yet. `adb shell svc power stayon usb` is set
+  so the screen stays on while on USB.
 
 - **known** from Nimony's source: `--cpu:arm` is an alias of `arm32`, and
   naming the CPU sets `int` to its 32 bits (`nifconfig.setTargetCPU`), so
@@ -123,7 +117,7 @@ The host's CMake 4.3.0 and Ninja 1.13.2 build the libraries.
   ```sh
   NDK=~/Android/sdk/ndk/28.2.13676358
   SDLA=~/Android/build/install/armeabi-v7a
-  XDG_CACHE_HOME=~/Android/build/xdg-cache nimony c -d:release --mm:orc \
+  nimony c -d:release --mm:orc \
     --os:android --cpu:arm --app:lib \
     --cc:$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi26-clang \
     --passC:-I$SDLA/include --passC:-fPIC --passL:-L$SDLA/lib \

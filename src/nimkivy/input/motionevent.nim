@@ -14,7 +14,8 @@
 ## `distance`, the double and triple tap attributes that the postproc modules
 ## set, `shape`, `z` values other than 0, and rotation.
 
-import std/[monotimes, syncio]
+import std/syncio
+import ../sdl3/sdl
 
 type
   MotionAction* = enum
@@ -89,7 +90,7 @@ let uniqId = Counter(value: 0)
 
 proc time(): float =
   # Kivy's time.time(): only differences matter.
-  float(getMonoTime().ticks) / 1e9
+  float(SDL_GetTicksNS()) / 1e9
 
 # ------------------------------------------------------------------ MotionEvent
 

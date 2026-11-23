@@ -17,12 +17,12 @@
 ## leave the assets.
 ##
 ## The data directory (nimkivy's `fonts/`) is, in this order:
-## `KIVY_DATA_DIR` if it is set; the directory given to `setDataDir`; `data`
+## the directory given to `setDataDir`; `data`
 ## in the program's directory, if it exists; `data` under the current
 ## directory. It is fixed when it is first used: by the first label, font or
 ## resource lookup, so `setDataDir` goes before the first widget.
 
-import std/[assertions, os, envvars, sequtils]
+import std/[assertions, sequtils, strutils]
 import sdl3/sdl
 
 type
@@ -30,6 +30,31 @@ type
     paths: seq[string]
     dataDir: string            # "" until `setDataDir` or the first use
     fixed: bool                # the data directory is in use
+
+proc `/`*(head, tail: string): string =
+  ## `head` and `tail` joined with one "/"; `tail` if `head` is "".
+  ## os.path.join
+  if head.len == 0: result = tail
+  elif head.endsWith("/"): result = head & tail
+  else: result = head & "/" & tail
+
+proc parentDir*(path: string): string =
+  ## The directory that holds `path` ("" for a bare name). os.path.dirname
+  var last = path.len - 1
+  while last > 0 and path[last] == '/': dec last
+  let i = path.rfind('/', last = last)
+  result = if i < 0: "" elif i == 0: "/" else: path.substr(0, i - 1)
+
+proc normalizedPath(path: string): string =
+  # `.` and empty parts dropped, `x/..` collapsed. os.path.normpath
+  var parts: seq[string] = @[]
+  for part in path.split('/'):
+    if part.len == 0 or part == ".": discard
+    elif part == ".." and parts.len > 0 and parts[^1] != "..": parts.setLen(parts.len - 1)
+    else: parts.add part
+  result = parts.join("/")
+  if path.startsWith("/"): result = "/" & result
+  elif result.len == 0: result = "."
 
 proc basePath(): string =
   # The program's directory, as SDL finds it, ending in a separator.
@@ -54,20 +79,18 @@ let resourcePaths = ResourcePaths(paths: @[".", basePath()], dataDir: "", fixed:
 proc setDataDir*(path: sink string) =
   ## Sets the data directory, for a program that does not run from the
   ## directory that holds `data` and does not have it beside its executable.
-  ## `KIVY_DATA_DIR` still comes first. Call it before the first widget,
-  ## label, font or resource lookup.
+  ## Call it before the first widget, label, font or resource lookup.
   assert not resourcePaths.fixed, "setDataDir: the data directory is already in use"
   resourcePaths.dataDir = path
 
 proc fixDataDir() =
-  # kivy/__init__.py: `KIVY_DATA_DIR`, or `data` beside the package. Then
-  # resources.py adds the data directory's parent to the resource paths.
+  # kivy/__init__.py: `data` beside the package. Then resources.py adds the
+  # data directory's parent to the resource paths.
   # GAP: the last choice is `data` under the current directory, not beside
   # the nimkivy sources, because Nimony has no currentSourcePath
   # (instantiationInfo gives only the file name).
   if resourcePaths.fixed: return
-  var dir = getEnv("KIVY_DATA_DIR", "")
-  if dir.len == 0: dir = resourcePaths.dataDir
+  var dir = resourcePaths.dataDir
   if dir.len == 0:
     dir = normalizedPath(basePath() / "data")
     if pathType(dir) != SDL_PATHTYPE_DIRECTORY: dir = "data"

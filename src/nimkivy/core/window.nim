@@ -27,8 +27,9 @@
 ## request API, text input, the cursor, hover, drag and drop, joysticks,
 ## event managers, window position and opacity, shaped windows and icons.
 
-import std/[os, sequtils, strutils, syncio]
-import ../[props, clock, config, metrics]
+import std/[sequtils, strutils, syncio]
+import ../[props, clock, config, metrics, resources]
+import ../sdl3/sdl
 import ../graphics/instructions
 import ../input/motionevent
 
@@ -646,18 +647,16 @@ properties:
     let dot = name.rfind('.')
     let ext = if dot >= 0: name.substr(dot + 1) else: name
     let stem = name.substr(0, name.len - ext.len - 2)
-    var cwd = ""
-    try:
-      cwd = getCurrentDir()
-    except:
-      cwd = "."
+    let d = SDL_GetCurrentDirectory()
+    let cwd = if d != nil: fromCString(d) else: "."
+    SDL_free(d)
     var i = 0
     result = ""
     while true:
       inc i
       let file = stem & align($i, 4, '0') & "." & ext
-      result = if isAbsolute(file): file else: cwd / file
-      if not fileExists(result):
+      result = if file.startsWith("/"): file else: cwd / file
+      if not isFile(result):
         break
 
   method createWindow*(w: WindowBase) {.base.}

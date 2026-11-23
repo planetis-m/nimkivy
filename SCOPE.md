@@ -59,7 +59,7 @@ nimkivy spells them in camelCase.
   without `#`) and `get_hex_from_color`.
 - `Metrics.density`, `fontscale` and `dpi`, and `dp`, `sp`, `pt`, `inch`,
   `cm`, `mm`, `dpi2px` with the same formulas. On desktop the density is 1,
-  as in Kivy, unless the environment variable `KIVY_METRICS_DENSITY` is set.
+  as in Kivy.
   On Android it comes from the display (SDL3 display content scale).
 - Config holds these keys only, in memory, with Kivy's defaults:
   `graphics.width` and `graphics.height` (800 x 600), `graphics.resizable`,

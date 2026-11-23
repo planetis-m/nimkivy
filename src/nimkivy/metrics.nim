@@ -6,13 +6,11 @@
 ## them. `dp`, `sp`, `pt`, `inch`, `cm` and `mm` convert to pixels with
 ## `dpi2px`, in 32-bit floats as Kivy's Cython code does.
 ##
-## The values come from the environment (`KIVY_DPI`, `KIVY_METRICS_DENSITY`,
-## `KIVY_METRICS_FONTSCALE`), or else from the platform: the window sets
+## The values are set, or else come from the platform: the window sets
 ## `platformDpi` (and on Android `platformDensity`) and calls `resetMetrics`.
 ## Before that they are 96, 1 and 1, which is what Kivy's desktop window
 ## reports.
 
-import std/[envvars, parseutils]
 import props
 
 type
@@ -74,11 +72,6 @@ proc dp*(value: float): float =
 proc sp*(value: float): float =
   ## Scale-independent pixels (fonts) to pixels.
   dpi2px(value, unitSp)
-
-proc envFloat(name: string; value: var float): bool =
-  # An environment variable as a float; false when unset or not a number.
-  let s = getEnv(name)
-  result = s.len > 0 and parseFloat(s, value) == s.len
 
 # Every property is Kivy's AliasProperty with `cache=True` and the default
 # `watch_before_use` (`eager`). `dpi`, `density` and `fontscale` read the
@@ -162,14 +155,11 @@ properties:
   proc getMm(m: MetricsBase): float = dpi2px(1, unitMm)
 
   proc newMetricsBase*(): MetricsBase =
-    ## Metrics from the environment, else the platform defaults.
+    ## Metrics with the platform defaults.
     ## metrics.py module setup and MetricsBase.__init__
     result = MetricsBase(dpiSet: false, densitySet: false, fontscaleSet: false,
       dpiValue: 0.0, densityValue: 0.0, fontscaleValue: 0.0,
       platformDpi: 96.0, platformDensity: 1.0, platformFontscale: 1.0)
-    result.dpiSet = envFloat("KIVY_DPI", result.dpiValue)
-    result.densitySet = envFloat("KIVY_METRICS_DENSITY", result.densityValue)
-    result.fontscaleSet = envFloat("KIVY_METRICS_FONTSCALE", result.fontscaleValue)
     result.initProps()
     discard result.bindDpi(proc (v: float) {.closure.} = dispatchPixelScale())
     discard result.bindDensity(proc (v: float) {.closure.} = dispatchPixelScale())

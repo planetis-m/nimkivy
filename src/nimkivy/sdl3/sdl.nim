@@ -587,5 +587,14 @@ proc SDL_GetBasePath*(): nil cstring
 proc SDL_GetPathInfo*(path: cstring; info: nil ptr SDL_PathInfo): bool
   ## Fills `info` for what `path` names; false if nothing does. A relative
   ## path is looked up in the APK's assets on Android.
+proc SDL_GetCurrentDirectory*(): nil cstring
+  ## The current working directory, ending in a separator; nil on failure.
+  ## Free it with `SDL_free`.
+
+# Time.
+proc SDL_GetTicksNS*(): uint64
+  ## Nanoseconds since SDL was initialized (a monotonic clock).
+proc SDL_DelayPrecise*(ns: uint64)
+  ## Waits `ns` nanoseconds, as precisely as the platform allows.
 
 {.pop.}

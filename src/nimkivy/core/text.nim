@@ -16,7 +16,7 @@
 ## other than left to right are out (SCOPE.md). Right-to-left text would
 ## start in `findBaseDirection` and the provider's `shape`.
 
-import std/[assertions, tables, math, opt, os, strutils, syncio]
+import std/[assertions, tables, math, opt, strutils, syncio]
 from std/unicode import runeLen, runeOffset
 import ../sdl3/sdl
 import ../graphics/texture

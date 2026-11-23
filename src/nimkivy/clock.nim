@@ -11,8 +11,8 @@
 ## interval, lifecycle-aware triggers, `schedule_del_safe`, threads, async
 ## clocks and the `triggered` decorator.
 
-import std/[monotimes, os, syncio]
-import config
+import std/syncio
+import config, sdl3/sdl
 
 type
   ClockCallback* = proc (dt: float) {.closure.}
@@ -48,7 +48,7 @@ type
 
 proc time*(): float =
   ## Seconds on the monotonic clock (Kivy's `_default_time`).
-  float(getMonoTime().ticks) / 1e9
+  float(SDL_GetTicksNS()) / 1e9
 
 proc newClockBase*(): ClockBase =
   ## A clock that has not started, paced to `graphics.maxfps`.
@@ -269,9 +269,7 @@ proc processEventsBeforeFrame(c: ClockBase) =
 
 proc usleep*(microseconds: float) =
   ## Sleeps (Kivy's `_usleep`).
-  # GAP: sleeps whole milliseconds (rounded down), where Kivy sleeps
-  # microseconds, because std/os has only sleep(milsecs)
-  sleep(int(microseconds / 1000))
+  SDL_DelayPrecise(uint64(max(microseconds, 0.0) * 1000))
 
 proc checkReady(c: ClockBase; fps, minSleep, undershoot: float): (bool, float) =
   # clock.py ClockBaseBehavior._check_ready
