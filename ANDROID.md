@@ -1,4 +1,4 @@
-# Android build notes (toolchain and libraries built; the app blocked by two Nimony bugs)
+# Android build notes (toolchain, libraries and the kiosk APK built; runs on the tablet)
 
 Phase 1 runs and is tested on the Linux desktop only (LAYERS.md, layer 10:
 "no tablet testing for now"). This file lists what the Android build of a
@@ -223,10 +223,10 @@ The host's CMake 4.3.0 and Ninja 1.13.2 build the libraries.
   `gr.philosykos.philosykos_exhibition`, sdkVersion 26, targetSdkVersion
   34, `native-code: 'armeabi-v7a'`, launchable `KioskActivity`); the stub
   was then taken out of `jniLibs` again. Not installed on a device.
-- Phase B built no APK: there is no `libmain.so` (section 3).
-  `jniLibs/armeabi-v7a/` holds only the three SDL libraries, and
-  `app/build/outputs/apk/debug/app-debug.apk` is still phase A's, with the
-  stub.
+- Phase B: with the kiosk's `libmain.so` in `jniLibs/armeabi-v7a/`
+  (section 3) the debug APK is 70 MB: the four libraries, `armeabi-v7a`
+  only, and the 139 asset files. Installed on the tablet with `adb install
+  -r` (section 7).
 - **known**: the asset symlinks resolve to 139 files (`find -L
   app/src/main/assets -type f`; phase A's APK holds 134: the logo
   renderings came later). Once an APK is built, check it with
