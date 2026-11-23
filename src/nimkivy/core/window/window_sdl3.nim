@@ -619,6 +619,11 @@ proc mainloop*(w: WindowSDL) =
         pending.trigger()
     elif t == SDL_EVENT_WINDOW_EXPOSED:
       w.canvas.askUpdate()
+    elif t == SDL_EVENT_WINDOW_RESTORED:
+      # Also after the app comes back to the front: SDL sends it after
+      # SDL_EVENT_DID_ENTER_FOREGROUND. Kivy also dispatches on_restore,
+      # which nimkivy's window does not have.
+      w.canvas.askUpdate()
     elif t == SDL_EVENT_KEY_DOWN or t == SDL_EVENT_KEY_UP:
       w.onKeyEvent(ev.key, t == SDL_EVENT_KEY_DOWN)
 

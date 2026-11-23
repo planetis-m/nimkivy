@@ -273,6 +273,11 @@ block headless_run:
   var keys: seq[string] = @[]
   var shot = ""
   var steps = 0
+  var draws = 0
+  var drawsBefore = 0
+  discard Window.bindDraw(proc (): bool {.closure.} =
+    inc draws
+    result = false)
   discard Clock.scheduleInterval(proc (dt: float) {.closure.} =
     inc steps
     case steps
@@ -306,6 +311,15 @@ block headless_run:
     of 8:
       pushButton(SDL_EVENT_MOUSE_BUTTON_UP, SDL_BUTTON_RIGHT, 20, 30)
     of 9:
+      # A restored window (also an app back in front, on Android) is drawn
+      # again.
+      assert not Window.canvas.needsRedraw, "drawn before"
+      drawsBefore = draws
+      var ev = default(SDL_Event)
+      ev.window = SDL_WindowEvent(`type`: SDL_EVENT_WINDOW_RESTORED)
+      assert pushEvent(ev)
+    of 10:
+      assert draws > drawsBefore, "restored: no redraw"
       pushKey(SDL_EVENT_KEY_DOWN, SDLK_LEFT)
       pushKey(SDL_EVENT_KEY_UP, SDLK_LEFT)
       pushKey(SDL_EVENT_KEY_DOWN, SDLK_ESCAPE)
