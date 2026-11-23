@@ -99,7 +99,17 @@ The host's CMake 4.3.0 and Ninja 1.13.2 build the libraries.
   correct: `st_size` is at 48 on ARM, futex and gettid numbers differ),
   the kiosk compiles to a `libmain.so` (ELF32 ARM, `SDL_main` and `NimMain`
   global; NEEDED `libSDL3*.so`, libdl, libc) and a 70 MB debug APK with the
-  four libraries and 139 assets. Not installed.
+  four libraries and 139 assets.
+- **known**: that APK does not start: `dlopen failed: cannot locate symbol
+  "nimEnviron"`. std/envvars (imported by `resources` and `metrics`) and
+  `posix_environ` read `nimEnviron`, which only a program's generated `main`
+  defines (planetis-m/nimony-bugs-llms#367).
+- **known**, on the tablet (SM-T585, Android 8.1, `armeabi-v7a`), with the
+  scratch stdlib also reading libc's `environ`: the kiosk runs. Full screen
+  1920x1200 in landscape, the attract crossfade, the logo, flags, photos and
+  fonts all found in the APK's assets, a tap on a flag opens the topic grid.
+  Section 7's other checks are not done yet. `adb shell svc power stayon usb`
+  was set so the screen stays on while on USB.
 
 - **known** from Nimony's source: `--cpu:arm` is an alias of `arm32`, and
   naming the CPU sets `int` to its 32 bits (`nifconfig.setTargetCPU`), so
