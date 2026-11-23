@@ -286,6 +286,7 @@ method stop*(p: MotionEventProvider) {.base.} =
 method update*(p: MotionEventProvider): seq[InputEvent] {.base.} =
   ## The events that arrived since the last call, oldest first. Kivy's
   ## `update(dispatch_fn)` calls `dispatch_fn` with each; a method with a
-  ## closure parameter does not compile (planetis-m/nimony-bugs-llms#333,
-  ## bug-reports/06), so they are returned in the same order instead.
+  ## closure parameter written inline dispatches to the wrong override
+  ## (planetis-m/nimony-bugs-llms#366, follow-up to #333), so they are
+  ## returned in the same order instead.
   @[]

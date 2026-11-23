@@ -10,8 +10,9 @@ import std/[assertions, parseutils, strutils, syncio]
 import nimkivy/graphics/[instructions, texture, vertex_instructions]
 import nimkivy/core/image
 
-# One overload per type, because a generic `[T: VertexInstruction]` rejects
-# the subtypes (planetis-m/nimony-bugs-llms#330, bug-reports/03). It is only
+# One overload per type, because in a generic `[T: VertexInstruction]` a `T`
+# is not accepted where a VertexInstruction is (planetis-m/nimony-bugs-llms#365,
+# follow-up to #330). It is only
 # repetition, not an inaccuracy, so there is no GAP.
 proc built(v: Triangle): Triangle =
   v.build()
