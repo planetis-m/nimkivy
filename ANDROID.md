@@ -307,6 +307,13 @@ The host's CMake 4.3.0 and Ninja 1.13.2 build the libraries.
 - **known** An `on_pause` that returns false, and `App.stop`, stop the app
   as on the desktop (Kivy calls `finishAndRemoveTask`; PORTING.md, Gaps).
 - **known** SDL_EVENT_TERMINATING quits the event loop.
+- **known bug** (owner, on the tablet, 2026-11-23): after switching to
+  another app and back, the kiosk shows a black screen until a button is
+  pressed; then it draws again. Not investigated yet. Kivy redraws on its
+  own when the app comes back to the front. nimkivy already asks for a
+  redraw on SDL_EVENT_WINDOW_EXPOSED (`window_sdl3`), so either that event
+  does not arrive on resume or the redraw comes before the GLES surface
+  exists again.
 - **untested** Rendering: SDL's renderer on Android is OpenGL ES 2
   (`opengles2`); the reference scenes are compared on the desktop OpenGL
   renderer (decision 8). Kivy's blend mode is set with
