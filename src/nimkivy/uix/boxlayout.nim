@@ -246,10 +246,7 @@ properties:
       else:
         c.size = (p.w, p.h)
 
-  # GAP: `widget` is not sink, because a captured sink parameter is never freed
-  # (planetis-m/nimony-bugs-llms#348; WindowBase's override captures it, and an
-  # override keeps its base's signature)
-  method addWidget*(b: BoxLayout; widget: WidgetBase; index = 0; canvas = layerCanvas) =
+  method addWidget*(b: BoxLayout; widget: sink WidgetBase; index = 0; canvas = layerCanvas) =
     ## Binds the layout to the child's `posHint`, then adds it as Layout
     ## does. BoxLayout.add_widget
     b.bindChildPosHint(widget)

@@ -15,9 +15,7 @@
 
 import std/[strutils, unicode, sequtils, opt]
 
-# Callers set `TextSize` with `some` and `none`. Exporting std/opt also lets
-# a module that constructs an object with options compile: without it there,
-# `default` is an "ambiguous call" (planetis-m/nimony-bugs-llms#33).
+# Callers set `TextSize` with `some` and `none`.
 export opt
 
 type
@@ -278,10 +276,8 @@ proc layoutTextUnrestricted(text: string; lines: var seq[LayoutLine]; w0, h0: in
       val = i != 0
   result = (w, h, val)
 
-# GAP: `options` of `layoutText` is not sink, because
-# planetis-m/nimony-bugs-llms#346 (`float32(options.lineHeight)`)
 proc layoutText*(text: string; lines: var seq[LayoutLine]; size: (int, int);
-    textSize: TextSize; options: LabelOptions; getExtents: Extents;
+    textSize: TextSize; options: sink LabelOptions; getExtents: Extents;
     appendDown, complete: bool): (int, int, bool) =
   ## Lays `text` out into `lines`, appending to the last line (or, when
   ## `appendDown` is false, the first) until a newline. `size` is the size

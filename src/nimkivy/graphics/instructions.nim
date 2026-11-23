@@ -117,15 +117,12 @@ proc removeFirst*(s: var seq[Instruction]; x: Instruction) =
   if i >= 0:
     s.delete(i)
 
-# GAP: `i` of `radd` and `rinsert` is not sink, because
-# planetis-m/nimony-bugs-llms#346 (VertexInstruction's overrides convert a
-# field of it, and an override keeps its base's signature)
-method radd*(i: Instruction; ig: InstructionGroup) {.base.} =
+method radd*(i: sink Instruction; ig: InstructionGroup) {.base.} =
   ## Appends `i` to `ig`'s children (Kivy's `radd`).
   ig.children.add i
   i.parent = ig
 
-method rinsert*(i: Instruction; ig: InstructionGroup; index: int) {.base.} =
+method rinsert*(i: sink Instruction; ig: InstructionGroup; index: int) {.base.} =
   ## Inserts `i` into `ig`'s children at `index`; a negative one counts from the end (Kivy's `rinsert`).
   ig.children.insertAt(index, i)
   i.parent = ig
@@ -281,14 +278,14 @@ proc initVertexInstruction*(v: VertexInstruction; mode: VertexMode) =
   v.indices = @[]
   v.mode = mode
 
-method radd*(v: VertexInstruction; ig: InstructionGroup) =
+method radd*(v: sink VertexInstruction; ig: InstructionGroup) =
   ## Appends the BindTexture, then the instruction.
   ig.children.add v.textureBinding
   ig.children.add v
   v.textureBinding.parent = ig
   v.parent = ig
 
-method rinsert*(v: VertexInstruction; ig: InstructionGroup; index: int) =
+method rinsert*(v: sink VertexInstruction; ig: InstructionGroup; index: int) =
   ## Inserts the BindTexture, then the instruction at the same index. As in
   ## Kivy, the instruction ends up before its BindTexture when the index is
   ## not negative, and then draws with the texture bound before it.

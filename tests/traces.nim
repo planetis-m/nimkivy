@@ -164,9 +164,7 @@ proc traceEvents() =
 
 # ------------------------------------------------------------------ clock
 
-# GAP: `name` is not sink, because a captured sink parameter is never freed
-# (planetis-m/nimony-bugs-llms#348)
-proc caller(name: string): ClockCallback =
+proc caller(name: sink string): ClockCallback =
   result = proc (dt: float) {.closure.} = log.emit("call", name)
 
 proc traceClock() =
@@ -379,9 +377,7 @@ proc newBtnPart(tag: sink string): BtnPart =
   result.initProps()
   result.initButtonBehavior()
 
-# GAP: `tag` is not sink, because a captured sink parameter is never freed
-# (planetis-m/nimony-bugs-llms#348)
-proc newBtn(tag: string; x, y, w, h: float): Btn =
+proc newBtn(tag: sink string; x, y, w, h: float): Btn =
   result = Btn(canvas: newCanvas(), tag: tag, button: newBtnPart(tag))
   result.initProps()
   result.initWidget()

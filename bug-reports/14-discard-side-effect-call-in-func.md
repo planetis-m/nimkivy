@@ -1,5 +1,7 @@
 `discard` of a call with side effects in a `func` (or iterator) crashes nimsem ("[Bug] bug in isTrival computation") instead of reporting the side effect
 
+Fixed in nimony b1ffdf8d.
+
 Nimony 0.6.3, commit `95afaa04` (current master), Linux amd64, C backend (`nimony c`).
 
 Calling a `proc` (which has side effects) from a `func` is an error, and `let x = noisy()` in a `func` reports it at the call. When the result is discarded, `discard noisy()`, nimsem aborts with an internal error that only quotes the message. The same happens in an iterator, which has no side effects by default. `{.feature: "v2".}` changes nothing.

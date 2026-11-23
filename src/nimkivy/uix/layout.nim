@@ -71,10 +71,7 @@ proc bindChildPosHint*(l: Layout; child: sink WidgetBase) =
     let b = h.bindPosHint(proc (v: PosHint) {.closure.} = l.triggerNow())
     l.keepUnbind(child, proc () {.closure.} = h.unbindPosHint(b))
 
-# GAP: `widget` is not sink, because a captured sink parameter is never freed
-# (planetis-m/nimony-bugs-llms#348; WindowBase's override captures it, and an
-# override keeps its base's signature)
-method addWidget*(l: Layout; widget: WidgetBase; index = 0; canvas = layerCanvas) =
+method addWidget*(l: Layout; widget: sink WidgetBase; index = 0; canvas = layerCanvas) =
   ## Binds the layout to the child's size and size hints, then adds it.
   ## Layout.add_widget
   if widget of HintedWidget:

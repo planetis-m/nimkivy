@@ -73,9 +73,7 @@ method build(a: LifecycleApp): nil WidgetBase =
   discard Clock.scheduleOnce(proc (dt: float) {.closure.} = a.stop(), 0.1)
   result = newWidget()
 
-# GAP: `name` is not sink, because a captured sink parameter is never freed
-# (planetis-m/nimony-bugs-llms#348)
-proc logEvent(a: LifecycleApp; name: string): proc (): bool {.closure.} =
+proc logEvent(a: LifecycleApp; name: sink string): proc (): bool {.closure.} =
   result = proc (): bool {.closure.} =
     a.log.add name
     result = false

@@ -67,9 +67,7 @@ proc centre(w: Widget): (float, float) =
 
 type Point = proc (): (float, float) {.closure.}
 
-# GAP: `at` is not sink, because a captured sink parameter is never freed
-# (planetis-m/nimony-bugs-llms#348)
-proc tap(sc: Script; delay: float; name: string; at: Point) =
+proc tap(sc: Script; delay: float; name: string; at: sink Point) =
   # Down now, up two frames' worth later.
   sc.add(delay, name & " (down)", proc () {.closure.} =
     let (x, y) = at()

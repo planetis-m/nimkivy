@@ -1,5 +1,7 @@
 An override declared outside its class's module is silently not used (base method runs); a direct call fails in shoggoth: "method not found in class"
 
+Fixed in nimony b1ffdf8d.
+
 Filed: https://github.com/planetis-m/nimony-bugs-llms/issues/345 (labels: miscompile, phase:sem, found:llm-agents)
 
 Nimony 0.6.3, commit `88d04ab0` (current master), Linux amd64, C backend (`nimony c`).

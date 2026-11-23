@@ -1,5 +1,7 @@
 Under `{.push importc.}`, a proc with a proc-typed parameter is "??? Error: expected `string` but got: auto"
 
+Fixed in nimony b1ffdf8d.
+
 Nimony 0.6.3, commit `95afaa04` (current master), Linux amd64, C backend (`nimony c`).
 
 Inside a `{.push importc.}` section, a body-less proc declaration whose parameter has a proc type (inline, or a named `proc ... {.cdecl.}` type) is rejected with "expected `string` but got: auto", with `???` in place of the position. The same declaration with `{.importc, cdecl.}` written on the proc itself compiles, so the pushed `importc` seems to reach the parameter's proc type as well. This is the usual way to bind a C function that takes a callback (here SDL3's `SDL_OpenAudioDeviceStream`).

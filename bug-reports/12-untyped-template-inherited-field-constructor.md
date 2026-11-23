@@ -1,5 +1,7 @@
 An object constructor in an `{.untyped.}` template that sets an inherited field gives invalid C ("has no member named 'value_0'") when a proc has the field's name
 
+Fixed in nimony b1ffdf8d.
+
 Nimony 0.6.3, commit `95afaa04` (current master), Linux amd64, C backend (`nimony c`).
 
 In a template marked `{.untyped.}`, `T(value: 1.0)` with `T` a subtype whose parent declares `value` compiles in nimsem, but the C code sets `.value_0` on the subtype's own struct instead of on its parent part, and gcc rejects it. It happens only when some proc in scope is also called `value` (here an accessor of an unrelated type). The same constructor written directly, or without the proc, works.

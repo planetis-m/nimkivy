@@ -464,10 +464,7 @@ properties:
       discard screen.dispatchPreEnter()
       discard screen.dispatchEnter()
 
-  # GAP: `widget` is not sink, because a captured sink parameter is never freed
-  # (planetis-m/nimony-bugs-llms#348; WindowBase's override captures it, and an
-  # override keeps its base's signature)
-  method addWidget*(sm: ScreenManager; widget: WidgetBase; index = 0; canvas = layerCanvas) =
+  method addWidget*(sm: ScreenManager; widget: sink WidgetBase; index = 0; canvas = layerCanvas) =
     ## Manages a screen; the first one becomes `current`. Only screens that
     ## have no manager are accepted (else the program stops with Kivy's
     ## ScreenManagerException). ScreenManager.add_widget

@@ -125,12 +125,6 @@ properties:
     inc w.setterCalled
     result = true
 
-  # The test's callback: counts its calls. A proc, not a
-  # literal in the test templates: a proc literal in an {.untyped.} template
-  # crashes nimsem (planetis-m/nimony-bugs-llms#338).
-  proc countCalls[T](w: Counted): proc (v: T) {.closure.} =
-    result = proc (v: T) {.closure.} = inc w.callbackCalled
-
   proc getRight(w: XWidth): float = w.x + w.width
 
   proc setRight(w: XWidth; v: float): bool =
@@ -312,7 +306,7 @@ template aliasProperty(T: untyped) {.untyped.} =
   # kivy/tests/test_properties.py::test_alias_property
   let wid = T()
   wid.initProps()
-  discard wid.bindProp(countCalls[Opt[int]](wid))
+  discard wid.bindProp(proc (v: Opt[int]) {.closure.} = inc wid.callbackCalled)
   assert wid.getterCalled == 0 and wid.setterCalled == 0 and wid.callbackCalled == 0
   wid.prop = some(1)
   assert wid.getterCalled == 0 and wid.setterCalled == 1 and wid.callbackCalled == 0
@@ -346,7 +340,7 @@ template aliasWithBind(T: untyped) {.untyped.} =
   wid.right = 100.0
   assert wid.width == 50.0
   assert wid.x == 50.0
-  discard wid.bindRight(countCalls[float](wid))
+  discard wid.bindRight(proc (v: float) {.closure.} = inc wid.callbackCalled)
   wid.x = 100.0
   assert wid.callbackCalled == 1
   wid.x = 100.0
@@ -362,7 +356,7 @@ template aliasForceDispatchTrue(T: untyped) {.untyped.} =
   # kivy/tests/test_properties.py::test_alias_property_with_force_dispatch_true
   let wid = T()
   wid.initProps()
-  discard wid.bindProp(countCalls[Opt[int]](wid))
+  discard wid.bindProp(proc (v: Opt[int]) {.closure.} = inc wid.callbackCalled)
   assert wid.getterCalled == 0 and wid.setterCalled == 0 and wid.callbackCalled == 0
   wid.prop = some(1)
   assert wid.getterCalled == 1 and wid.setterCalled == 1 and wid.callbackCalled == 1
@@ -388,12 +382,9 @@ template aliasCacheTrueWithBind(T: untyped; eager: bool) {.untyped.} =
 
 template aliasCacheTrueForceDispatchTrue(T: untyped) {.untyped.} =
   # kivy/tests/test_properties.py::test_alias_property_cache_true_force_dispatch_true
-  # Set after the constructor: `T(baseValue: 1.0)` here gives invalid C, as
-  # Doubled has a `baseValue` accessor (planetis-m/nimony-bugs-llms#339).
-  let wid = T()
-  wid.baseValue = 1.0
+  let wid = T(baseValue: 1.0)
   wid.initProps()
-  discard wid.bindProp(countCalls[float](wid))
+  discard wid.bindProp(proc (v: float) {.closure.} = inc wid.callbackCalled)
   assert wid.baseValue == 1.0
   assert wid.getterCalled == 0 and wid.setterCalled == 0 and wid.callbackCalled == 0
   wid.prop = 16.0

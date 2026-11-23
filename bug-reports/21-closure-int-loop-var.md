@@ -1,5 +1,7 @@
 Closures capturing an int `for` loop variable all see a value the loop never had: `for i in 0 ..< 3` prints `3 3 3`
 
+Fixed in nimony b1ffdf8d.
+
 Filed: https://github.com/planetis-m/nimony-bugs-llms/issues/350 (miscompile, phase:hexer-closures, found:llm-agents). Companion: #351.
 
 Nimony 0.6.3, commit `88d04ab0` (current master), Linux amd64, C backend (`nimony c`).

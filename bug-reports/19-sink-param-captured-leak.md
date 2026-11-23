@@ -1,5 +1,7 @@
 A `sink` ref parameter captured by a closure is never freed: the closure environment's `=destroy` skips the captured field
 
+Fixed in nimony b1ffdf8d.
+
 Filed: https://github.com/planetis-m/nimony-bugs-llms/issues/348 (labels: miscompile, phase:hexer-closures, found:llm-agents)
 
 Nimony 0.6.3, commit `88d04ab0`, Linux amd64, C backend (`nimony c`). Master (`9fa64ee4`, one commit ahead, a C++ `const` change) not checked.

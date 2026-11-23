@@ -1316,11 +1316,11 @@ proc stencilMask*(a: AntiAliasingLine): Instruction {.inline.} =
   ## The shape the line is drawn around.
   a.stencilMask
 
-method radd*(a: AntiAliasingLine; ig: InstructionGroup) =
+method radd*(a: sink AntiAliasingLine; ig: InstructionGroup) =
   ## Nothing: the shape adds its line (Kivy's AntiAliasingLine.radd).
   discard
 
-method rinsert*(a: AntiAliasingLine; ig: InstructionGroup; index: int) =
+method rinsert*(a: sink AntiAliasingLine; ig: InstructionGroup; index: int) =
   ## Nothing: the shape inserts its line.
   discard
 
@@ -1429,10 +1429,7 @@ proc adjustParams(r: Rectangle; delta: float) =
       radius[corner] = (max(0.0, rx + delta), max(0.0, ry + delta))
     `radius=`(rr, radius)
 
-# GAP: `target` and `aa` of `smoothRadd` and `smoothRinsert` are not sink,
-# because planetis-m/nimony-bugs-llms#346 (their `textureBinding` is converted
-# to an Instruction)
-proc smoothRadd(ig: InstructionGroup; target: VertexInstruction; aa: AntiAliasingLine) =
+proc smoothRadd(ig: InstructionGroup; target: sink VertexInstruction; aa: sink AntiAliasingLine) =
   # vertex_instructions.pyx radd_instructions: the shape's BindTexture, the
   # shape, the line's BindTexture, the line. As in Kivy, the parent of the
   # line's BindTexture is not set (Kivy sets the shape's twice).
@@ -1444,8 +1441,8 @@ proc smoothRadd(ig: InstructionGroup; target: VertexInstruction; aa: AntiAliasin
   aa.setParent(ig)
   target.setParent(ig)
 
-proc smoothRinsert(ig: InstructionGroup; index: int; target: VertexInstruction;
-    aa: AntiAliasingLine) =
+proc smoothRinsert(ig: InstructionGroup; index: int; target: sink VertexInstruction;
+    aa: sink AntiAliasingLine) =
   # vertex_instructions.pyx rinsert_instructions: the four in order at
   # `index`, or each at `index` when it is negative (each before the last).
   let step = if index < 0: 0 else: 1
@@ -1475,11 +1472,11 @@ proc line(a: sink nil AntiAliasingLine): AntiAliasingLine =
 # Kivy's radd, rinsert and rremove of each smooth shape, and its
 # `antialiasing_line_points`.
 
-method radd*(v: SmoothRectangle; ig: InstructionGroup) =
+method radd*(v: sink SmoothRectangle; ig: InstructionGroup) =
   ## Adds the shape and its antialiasing line, each with its BindTexture.
   smoothRadd(ig, v, line(v.antialiasingLine))
 
-method rinsert*(v: SmoothRectangle; ig: InstructionGroup; index: int) =
+method rinsert*(v: sink SmoothRectangle; ig: InstructionGroup; index: int) =
   ## Inserts the shape and its antialiasing line at `index`.
   smoothRinsert(ig, index, v, line(v.antialiasingLine))
 
@@ -1495,11 +1492,11 @@ proc antialiasingLinePoints*(v: SmoothRectangle): seq[float] {.inline.} =
   ## The points of the antialiasing line after the last build (empty: none).
   line(v.antialiasingLine).points
 
-method radd*(v: SmoothEllipse; ig: InstructionGroup) =
+method radd*(v: sink SmoothEllipse; ig: InstructionGroup) =
   ## Adds the shape and its antialiasing line, each with its BindTexture.
   smoothRadd(ig, v, line(v.antialiasingLine))
 
-method rinsert*(v: SmoothEllipse; ig: InstructionGroup; index: int) =
+method rinsert*(v: sink SmoothEllipse; ig: InstructionGroup; index: int) =
   ## Inserts the shape and its antialiasing line at `index`.
   smoothRinsert(ig, index, v, line(v.antialiasingLine))
 
@@ -1515,11 +1512,11 @@ proc antialiasingLinePoints*(v: SmoothEllipse): seq[float] {.inline.} =
   ## The points of the antialiasing line after the last build (empty: none).
   line(v.antialiasingLine).points
 
-method radd*(v: SmoothRoundedRectangle; ig: InstructionGroup) =
+method radd*(v: sink SmoothRoundedRectangle; ig: InstructionGroup) =
   ## Adds the shape and its antialiasing line, each with its BindTexture.
   smoothRadd(ig, v, line(v.antialiasingLine))
 
-method rinsert*(v: SmoothRoundedRectangle; ig: InstructionGroup; index: int) =
+method rinsert*(v: sink SmoothRoundedRectangle; ig: InstructionGroup; index: int) =
   ## Inserts the shape and its antialiasing line at `index`.
   smoothRinsert(ig, index, v, line(v.antialiasingLine))
 
@@ -1535,11 +1532,11 @@ proc antialiasingLinePoints*(v: SmoothRoundedRectangle): seq[float] {.inline.} =
   ## The points of the antialiasing line after the last build (empty: none).
   line(v.antialiasingLine).points
 
-method radd*(v: SmoothTriangle; ig: InstructionGroup) =
+method radd*(v: sink SmoothTriangle; ig: InstructionGroup) =
   ## Adds the shape and its antialiasing line, each with its BindTexture.
   smoothRadd(ig, v, line(v.antialiasingLine))
 
-method rinsert*(v: SmoothTriangle; ig: InstructionGroup; index: int) =
+method rinsert*(v: sink SmoothTriangle; ig: InstructionGroup; index: int) =
   ## Inserts the shape and its antialiasing line at `index`.
   smoothRinsert(ig, index, v, line(v.antialiasingLine))
 
@@ -1555,11 +1552,11 @@ proc antialiasingLinePoints*(v: SmoothTriangle): seq[float] {.inline.} =
   ## The points of the antialiasing line after the last build (empty: none).
   line(v.antialiasingLine).points
 
-method radd*(v: SmoothQuad; ig: InstructionGroup) =
+method radd*(v: sink SmoothQuad; ig: InstructionGroup) =
   ## Adds the shape and its antialiasing line, each with its BindTexture.
   smoothRadd(ig, v, line(v.antialiasingLine))
 
-method rinsert*(v: SmoothQuad; ig: InstructionGroup; index: int) =
+method rinsert*(v: sink SmoothQuad; ig: InstructionGroup; index: int) =
   ## Inserts the shape and its antialiasing line at `index`.
   smoothRinsert(ig, index, v, line(v.antialiasingLine))
 

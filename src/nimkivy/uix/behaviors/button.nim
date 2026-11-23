@@ -120,9 +120,7 @@ properties:
     ## `super()`
     RootRef(w) in touch.claimedBy
 
-  # GAP: `touch` is not sink, because planetis-m/nimony-bugs-llms#346
-  # (`touch.pos[0]`)
-  proc touchUp*(b: ButtonBehavior; w: Widget; touch: MotionEvent): bool =
+  proc touchUp*(b: ButtonBehavior; w: Widget; touch: sink MotionEvent): bool =
     ## The end of the `grabbed` touch: ungrabs it and releases the button,
     ## with `release` when the touch is still on the widget (or
     ## `alwaysRelease`), and `state` normal after `minStateTime`. Returns

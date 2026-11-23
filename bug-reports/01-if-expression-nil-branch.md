@@ -1,5 +1,7 @@
 `if c: x else: nil` assigned to a `nil T` is "expected non-nil value"; `if not c: nil else: x` compiles
 
+Fixed in nimony b1ffdf8d.
+
 Nimony 0.6.3, commit `95afaa04` (current master), Linux amd64, C backend (`nimony c`).
 
 An `if` expression whose first branch is a non-nil `ref` and whose `else` branch is `nil` is rejected with "expected non-nil value", although it is assigned to a nullable `nil Node` result. Swapping the branches (`nil` first) compiles, so the expression seems to take the not-nil type of its first branch instead of the expected type.

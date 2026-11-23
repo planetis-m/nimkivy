@@ -216,9 +216,7 @@ boxLayout(orientation = orientationVertical) as column:
 
 ## 9. Known gap
 
-On this Nimony a closure that captures a `for` loop variable is wrong: an
-int loop variable is seen with a value it never had
-(planetis-m/nimony-bugs-llms#350), a string one gives invalid C (#351). In
-a loop of the tree, call a component proc so that each handler captures a
-fresh parameter, as the kiosk's `flagRows` calls `pickFlag` (PORTING.md,
-Gaps).
+On this Nimony a closure that captures a string `for` loop variable gives
+invalid C (planetis-m/nimony-bugs-llms#351). In a loop of the tree, call a
+component proc so that each handler captures a fresh parameter, as the
+kiosk's `flagRows` calls `pickFlag` (PORTING.md, Gaps).

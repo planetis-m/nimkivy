@@ -1,5 +1,7 @@
 A proc literal in the body of an `{.untyped.}` template crashes nimsem: "index -1 not in 0 .. 436" [IndexDefect], even when the template is never used
 
+Fixed in nimony b1ffdf8d.
+
 Nimony 0.6.3, commit `95afaa04` (current master), Linux amd64, C backend (`nimony c`).
 
 A template marked `{.untyped.}` (or every template under `{.feature: "untyped".}` or `"v2"`) whose body contains an anonymous proc crashes nimsem with an `IndexDefect`. The template does not need to be called. The same template without `{.untyped.}` compiles and runs.

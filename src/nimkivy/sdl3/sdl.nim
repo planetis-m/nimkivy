@@ -557,6 +557,10 @@ proc SDL_GetAudioStreamQueued*(stream: SDL_AudioStream): cint
   ## The bytes still queued; -1 on failure.
 proc SDL_ClearAudioStream*(stream: SDL_AudioStream): bool
   ## Drops all queued audio.
+proc SDL_OpenAudioDeviceStream*(devid: SDL_AudioDeviceID;
+    spec: nil ptr SDL_AudioSpec; callback: nil SDL_AudioStreamCallback;
+    userdata: nil pointer): nil SDL_AudioStream
+  ## A stream bound to a newly opened device, paused; nil on failure.
 proc SDL_ResumeAudioStreamDevice*(stream: SDL_AudioStream): bool
   ## Starts or resumes playback of the stream's device.
 proc SDL_PauseAudioStreamDevice*(stream: SDL_AudioStream): bool
@@ -585,11 +589,3 @@ proc SDL_GetPathInfo*(path: cstring; info: nil ptr SDL_PathInfo): bool
   ## path is looked up in the APK's assets on Android.
 
 {.pop.}
-
-# Outside the push section: under `{.push importc.}` a proc-typed parameter is
-# rejected (planetis-m/nimony-bugs-llms#329, bug-reports/02).
-proc SDL_OpenAudioDeviceStream*(devid: SDL_AudioDeviceID;
-    spec: nil ptr SDL_AudioSpec; callback: nil SDL_AudioStreamCallback;
-    userdata: nil pointer): nil SDL_AudioStream {.
-    cdecl, importc, header: SdlHeader.}
-  ## A stream bound to a newly opened device, paused; nil on failure.
